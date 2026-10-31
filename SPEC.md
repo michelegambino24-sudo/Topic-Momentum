@@ -27,7 +27,13 @@ The Worker only answers requests from the site's origin (CORS allow-list in `ALL
 
 ## 4. Worker API
 
-### GET /api/topic?q=<topic>&syn=<comma-separated synonyms>&parent=<topic id, optional>&subtopic=<OpenAlex topic ID, optional>&subtopicName=<display title, optional>
+### GET /api/topic?q=<topic>&syn=<comma-separated synonyms>&include=<comma-separated alternatives, optional>&parent=<topic id, optional>&subtopic=<OpenAlex topic ID, optional>&subtopicName=<display title, optional>
+
+Optional `include` terms are normalised, deduplicated and sorted. Search titles and abstracts with `(topic OR synonyms) AND (include term OR include term ...)`. Each multiword term is a phrase. An empty include group preserves existing behavior and cache identities. Non-empty groups append `|include:<JSON array of sorted terms>` before any sub-topic ID in the cache identity. Limit raw include input to 1,200 characters and retain the 512-byte cache-key limit. Every aggregate and paper query uses the combined expression.
+
+Suggested synonyms exclude terms already present in the topic, synonyms, or include alternatives (case-insensitive, including a complete term within a longer phrase). Apply label and suggestion fixes to saved reports on read without additional KV writes or source requests.
+
+Filtered reports carry `includeTerms` and `searchTerms` (main name, synonyms, includeTerms). Their title and headline show `main topic + term / term` (no parentheses); the exact Children 0–9 quick-fill term set displays as `main topic + Children 0–9`. A filtered report is a Library variant whose parent is the unfiltered search identity; its index entry retains the search terms and `variant: true`. If saved before the main report, the site shows a main-topic group containing the variant without fabricating main-topic data or querying OpenAlex. Filtered sub-topics inherit the include group and use the filtered parent identity. Saved links, browser history, restored forms, suggested synonyms and exploration retain the include terms. Cache-only links remain read-only. Existing reports remain valid. Daily cap, cache freshness and write budget remain unchanged.
 1. Normalise: lower-case, trim, de-duplicate terms, sort synonyms. Cache key = `topic:` + normalised query. For sub-topics, append `|primary_topic:<ID>` to the normalised parent search identity. Validate IDs as `T` followed by digits, optionally prefixed with `https://openalex.org/`. The sub-topic name is a display title, not a text search term.
 2. If the key is in KV and younger than 7 days, return it (`"cached": true`). Measure age from the precise saved timestamp. Retain expired records for fallback rather than deleting them with a KV expiry.
 3. Otherwise check today's UTC counter `count:<YYYY-MM-DD>`. At the cap, return the expired report if present (`"cached": true, "stale": true`), preserving its original `updated` date. Without a stored report, return HTTP 429 `{ "error": "daily_limit", "message": "Daily limit reached. Try again tomorrow or browse the Library." }`.
@@ -96,7 +102,7 @@ Rules:
 Follow the approved mockup: dark top bar with "Search" and "Library", accent `#C2410C`, fonts Bricolage Grotesque (headings), Instrument Sans (text), IBM Plex Mono (numbers and labels). Works at phone width.
 
 **Search / topic page**
-- Topic field, synonyms field (comma-separated, shown as removable chips), "Measure momentum" button.
+- Topic field, synonyms field (comma-separated, shown as removable chips), optional "Must also include" field (comma-separated alternatives), "Measure momentum" button. Explain that at least one additional term is required alongside the topic or a synonym. A "Children 0–9" chip fills exactly: `children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood`. It fills the field without submitting; explain that participant ages must be verified in the papers.
 - After a search: suggested synonyms as "+ term" chips that add the term and search again.
 - Four KPI cards (total, yearly growth + momentum badge, last year, fastest-growing sub-topic).
 - Dark headline banner with "Copy as slide headline".
@@ -125,3 +131,4 @@ The Worker URL is set once in `site/config.js` (`WORKER_URL`).
 4. **Connect the site to the Worker.** Search, synonyms, suggested synonyms, explore next, error states, CSV, copy headline.
 5. **Library page live.** Field sidebar, search, sort, cards from `/api/library`.
 6. **Publish.** README with exact steps: create Cloudflare account, KV namespace, `wrangler secret put OPENALEX_KEY`, deploy the Worker, set `WORKER_URL` and `ALLOWED_ORIGIN`, enable GitHub Pages on `site/`.
+7. **Filtered topic variants.** Add the grouped "Must also include" search, Children 0–9 quick-fill, explicit combined labels, Library variants and offline coverage for identities, queries, navigation and storage.

@@ -1,4 +1,4 @@
-import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary } from "./lib.js";
+import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date()) {
@@ -29,7 +29,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
     async fetch(request, env) {
       const origin = request.headers.get("Origin");
       const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Origin" };
-      const respond = (body, status = 200, extra = {}) => new Response(body === null ? null : JSON.stringify(body), { status, headers: { ...headers, ...extra } });
+      const respond = (body, status = 200, extra = {}) => new Response(body === null ? null : JSON.stringify(Array.isArray(body) ? body.map(presentReport) : presentReport(body)), { status, headers: { ...headers, ...extra } });
       const error = (code, message, status, extra) => respond({ error: code, message }, status, extra);
       if (!originAllowed(origin, env)) return error("origin_not_allowed", "This origin is not allowed. Open the configured site or use local development mode.", 403);
       if (origin !== null) headers["Access-Control-Allow-Origin"] = origin;
@@ -49,6 +49,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       }
       const rawQuery = url.searchParams.get("q") || "";
       const rawSynonyms = url.searchParams.get("syn") || "";
+      const rawInclude = url.searchParams.get("include") || "";
+      if (rawInclude.length > 1200) return error("invalid_query", "The additional terms are too long. Use fewer than 1,200 characters and try again.", 400);
       const cacheMode = url.searchParams.get("cache");
       if (cacheMode !== null && cacheMode !== "only") return error("invalid_query", "The cache option is invalid. Use cache=only to open a saved report.", 400);
       if (rawQuery.length > 200 || rawSynonyms.length > 1200) return error("invalid_query", "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters.", 400);
@@ -58,11 +60,12 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       const parent = url.searchParams.get("parent") || "";
       const parentName = url.searchParams.get("parentName") || "";
       if (subtopicName.length > 300 || parent.length > 2000 || parentName.length > 300) return error("invalid_query", "The sub-topic details are too long. Shorten them and try again.", 400);
-      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId); }
+      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId, rawInclude); }
       catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
-      const parentQuery = normaliseQuery(rawQuery, rawSynonyms);
+      const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude);
       if (subtopicId && parent && parent !== parentQuery.id) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
       if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentQuery.name });
+      else if (query.includeTerms?.length) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
       else if (parent) query.parent = parent;
       if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
       if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);

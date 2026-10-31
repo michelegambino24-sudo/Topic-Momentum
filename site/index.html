@@ -23,7 +23,9 @@
       <form id="search-form" class="search-panel">
         <div class="search-fields"><label>Research topic<input id="topic-input" name="topic" required autocomplete="off"></label><label>Synonyms <span class="muted">· comma-separated</span><input id="synonyms-input" name="synonyms" autocomplete="off"></label><button class="primary" type="submit">Measure momentum <span aria-hidden="true">↗</span></button></div>
         <div id="synonym-chips" class="chips" aria-label="Current synonyms"></div>
-        <p class="form-note">Searches include the topic and any synonyms.</p>
+        <label class="include-label">Must also include <span class="muted">· comma-separated alternatives</span><input id="include-input" name="include" autocomplete="off" aria-describedby="include-note"></label>
+        <div class="chips"><button class="chip" id="children-preset" type="button">Children 0–9</button></div>
+        <p id="include-note" class="form-note">Matches the topic or a synonym AND at least one additional term in the title or abstract. Children 0–9 fills related terms; verify participant ages in each paper.</p>
       </form>
       <div class="report-heading"><div><a id="back-parent" hidden></a><p class="eyebrow">TOPIC REPORT <span id="report-source" class="sample-label">SAMPLE DATA</span></p><h2 id="topic-name"></h2><p id="topic-meta" class="muted"></p></div></div>
       <p id="no-results" role="status" hidden>No papers found for this topic. Check the spelling or add synonyms.</p>

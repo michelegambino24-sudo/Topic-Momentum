@@ -66,6 +66,78 @@ function libraryFixture() {
 
 const libraryLinks = (app) => [...app.get("library-cards").innerHTML.matchAll(/href="([^"]+)"/g)].map((match) => match[1].replaceAll("&amp;", "&"));
 
+test("restored reports use compact labels and hide suggestions already in any search group", () => {
+  const initial = setup(async () => assert.fail("No request needed"));
+  const saved = { ...report(initial), name: "epigenetics + (children OR infant)", includeTerms: ["children", "infant"],
+    searchTerms: { name: "epigenetics", synonyms: ["neural implant"] }, synonyms: ["neural implant"],
+    headline: "Research on epigenetics + (children OR infant) is growing.",
+    suggestedSynonyms: ["Children", "epigenetics", "neural implant", "infant", "brain signals"] };
+  const app = setup(async () => assert.fail("Restoration must stay offline"), JSON.stringify(saved));
+  assert.equal(app.get("topic-name").textContent, "epigenetics + children / infant");
+  assert.equal(app.get("headline").textContent, "Research on epigenetics + children / infant is growing.");
+  const chips = app.get("suggested-synonyms").innerHTML;
+  assert(chips.includes("brain signals"));
+  for (const term of ["Children", "epigenetics", "neural implant", "infant"]) assert(!chips.includes(`data-suggest="${term}"`));
+});
+
+test("include quick-fill, searches, suggestions, sub-topics, reload and history retain the filter", async () => {
+  const calls = [];
+  const app = setup(async (url) => {
+    calls.push(new URL(url));
+    const params = new URL(url).searchParams;
+    const includeTerms = params.get("include").split(",").map((term) => term.trim()).sort();
+    const name = (params.get("subtopicName") || params.get("q")) + ` + (${includeTerms.join(" OR ")})`;
+    return { ok: true, json: async () => ({ ...report(app), name, includeTerms, id: name,
+      ...(params.has("subtopic") ? { subtopicId: params.get("subtopic"), parent: "filtered-parent" } : {}) }) };
+  });
+  app.get("topic-input").value = "neurotechnology";
+  app.get("synonyms-input").value = "neural implant";
+  app.get("children-preset").listeners.click();
+  const preset = "children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood";
+  assert.equal(app.get("include-input").value, preset);
+  assert.equal(calls.length, 0);
+  app.submit();
+  await settle();
+  assert.equal(calls[0].searchParams.get("include"), preset.split(", ").join(","));
+  assert.equal(app.get("topic-name").textContent, "neurotechnology + Children 0–9");
+  assert(new URLSearchParams(app.context.location.hash.slice(1)).has("include"));
+  app.click({ suggest: "brain interface" });
+  await settle();
+  assert(calls[1].searchParams.get("include").includes("children"));
+  app.click({ subtopic: "T123", title: "Orbital processors" });
+  await settle();
+  assert(calls[2].searchParams.get("include").includes("children"));
+  const hash = app.context.location.hash;
+  assert.equal(new URLSearchParams(hash.slice(1)).get("title"), "Orbital processors");
+  const reloadedCalls = [];
+  setup(async (url) => { reloadedCalls.push(new URL(url)); return { ok: false, json: async () => ({ message: "Fixture stop." }) }; }, null, hash + "&cache=only");
+  await settle();
+  assert(reloadedCalls[0].searchParams.get("include").includes("children"));
+  assert.equal(reloadedCalls[0].searchParams.get("cache"), "only");
+  app.context.history.back();
+  await settle();
+  assert(app.get("include-input").value.includes("children"));
+  assert.equal(calls.length, 3);
+});
+
+test("Library groups a child-first variant and links the complete combination cache-only", async () => {
+  const variant = { ...libraryFixture()[0], id: "neurotechnology|include:fixture", name: "neurotechnology + (child OR children)",
+    parent: "neurotechnology", variant: true, children: [], includeTerms: ["child", "children"],
+    searchTerms: { name: "neurotechnology", synonyms: [], includeTerms: ["child", "children"] } };
+  const app = setup(async () => ({ ok: true, json: async () => [variant] }), null, "#library");
+  await settle();
+  assert(app.get("library-cards").innerHTML.includes("VARIANTS"));
+  assert(app.get("library-cards").innerHTML.includes("neurotechnology + child / children"));
+  assert(!app.get("library-cards").innerHTML.includes("annual growth"));
+  const params = new URLSearchParams(libraryLinks(app)[0].slice(1));
+  assert.equal(params.get("topic"), "neurotechnology");
+  assert.equal(params.get("include"), "child,children");
+  assert.equal(params.get("cache"), "only");
+  app.get("library-search").value = "children";
+  app.get("library-search").listeners.input();
+  assert(app.get("library-cards").innerHTML.includes("neurotechnology + child / children"));
+});
+
 test("live library browses with one request, renders stored spark only, and filters and sorts locally", async () => {
   const calls = [];
   let release;

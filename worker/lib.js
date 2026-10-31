@@ -56,11 +56,13 @@ export function normaliseSubtopicId(value) {
   return match[1];
 }
 
-export function normaliseQuery(query, synonyms = "", subtopicId = "") {
+export function normaliseQuery(query, synonyms = "", subtopicId = "", include = "") {
   const name = cleanTerm(query);
   const terms = [...new Set(String(synonyms).split(",").map(cleanTerm).filter((term) => term && term !== name))].sort();
   const filterId = subtopicId ? normaliseSubtopicId(subtopicId) : "";
-  return { name, synonyms: terms, id: [name, ...terms, ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"), ...(filterId ? { subtopicId: filterId } : {}) };
+  const includeTerms = [...new Set(String(include).split(",").map(cleanTerm).filter(Boolean))].sort();
+  return { name, synonyms: terms, id: [name, ...terms, ...(includeTerms.length ? ["include:" + JSON.stringify(includeTerms)] : []), ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"),
+    ...(includeTerms.length ? { includeTerms } : {}), ...(filterId ? { subtopicId: filterId } : {}) };
 }
 
 export const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -87,6 +89,7 @@ export function updateLibrary(index, topic) {
     id: topic.id, name: topic.name, synonyms: topic.synonyms,
     field: topic.field, momentum: topic.kpis.momentum, growth: topic.kpis.growth5y,
     total: topic.kpis.total, updated: topic.updated, parent, children: [], spark,
+    ...(topic.includeTerms?.length ? { includeTerms: topic.includeTerms, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
     ...(topic.subtopicId ? { subtopicId: topic.subtopicId, searchTerms: topic.searchTerms } : {})
   };
   const entries = previous ? index.map((item) => item.id === topic.id ? entry : item) : index.concat(entry);
@@ -103,7 +106,8 @@ export function updateLibrary(index, topic) {
 }
 
 export function buildSearchExpression(query) {
-  return `(${[query.name, ...query.synonyms].map((term) => /[\s-]/.test(term) ? `"${term}"` : term).join(" OR ")})`;
+  const group = (terms) => `(${terms.map((term) => /[\s-]/.test(term) ? `"${term}"` : term).join(" OR ")})`;
+  return group([query.name, ...query.synonyms]) + (query.includeTerms?.length ? ` AND ${group(query.includeTerms)}` : "");
 }
 
 // Descriptors contain only public parameters; the Worker adds authentication.
@@ -217,14 +221,43 @@ export function shapePapers(response) {
 }
 
 export function suggestedSynonyms(response, query) {
-  const excluded = new Set([query.name, ...query.synonyms]);
+  return filterSuggestedTerms(ranked(response).map(displayName), query);
+}
+
+export function filterSuggestedTerms(names, query) {
+  const excluded = [query.name, ...(query.synonyms || []), ...(query.includeTerms || [])].map(cleanTerm);
   const seen = new Set();
-  return ranked(response).map(displayName).filter((name) => {
+  return names.filter((name) => {
     const normalised = cleanTerm(name);
-    if (!normalised || excluded.has(normalised) || seen.has(normalised)) return false;
+    if (!normalised || excluded.some((term) => ` ${term} `.includes(` ${normalised} `)) || seen.has(normalised)) return false;
     seen.add(normalised);
     return true;
   }).slice(0, 6);
+}
+
+const childrenTerms = "children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood".split(", ").sort();
+
+export function reportLabel(baseName, includeTerms = []) {
+  if (!includeTerms.length) return baseName;
+  const preset = JSON.stringify([...includeTerms].sort()) === JSON.stringify(childrenTerms);
+  return `${baseName} + ${preset ? "Children 0–9" : includeTerms.join(" / ")}`;
+}
+
+// Update presentation of older saved reports without refreshing data or writing KV.
+export function presentReport(report) {
+  if (!report || typeof report.name !== "string") return report;
+  const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
+  let baseName = report.searchTerms?.name || report.name;
+  if (report.subtopicId) {
+    baseName = report.name;
+    const suffixes = [` + (${terms.join(" OR ")})`, reportLabel("", terms)];
+    const suffix = terms.length && suffixes.find((item) => baseName.endsWith(item));
+    if (suffix) baseName = baseName.slice(0, -suffix.length);
+  }
+  const name = terms.length ? reportLabel(baseName, terms) : report.name;
+  return { ...report, name,
+    ...(typeof report.headline === "string" ? { headline: report.headline.replace(report.name, name) } : {}),
+    ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, includeTerms: terms }) } : {}) };
 }
 
 export function exploreNext(subtopics, topicName) {
@@ -258,10 +291,13 @@ export function shapeTopic(query, responses, date) {
   const subtopics = shapeSubtopics(responses.early, responses.late);
   const regionalCounts = shapeRegionalCounts(responses.uae, responses.gcc);
   const since2020 = years.filter((item) => item.year >= 2020).reduce((sum, item) => sum + item.count, 0);
-  const name = query.subtopicId ? query.subtopicName || query.subtopicId : query.name;
+  const baseName = query.subtopicId ? query.subtopicName || query.subtopicId : query.name;
+  const name = reportLabel(baseName, query.includeTerms);
   return {
     id: query.id, name, synonyms: query.synonyms,
-    ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name, searchTerms: { name: query.name, synonyms: query.synonyms } } : {}),
+    ...(query.includeTerms?.length ? { includeTerms: query.includeTerms, parent: query.parent || null,
+      searchTerms: { name: query.name, synonyms: query.synonyms, includeTerms: query.includeTerms } } : {}),
+    ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name, searchTerms: { name: query.name, synonyms: query.synonyms, ...(query.includeTerms?.length ? { includeTerms: query.includeTerms } : {}) } } : {}),
     field: ranked(responses.field).map(displayName)[0] || "Unclassified",
     updated: date.toISOString().slice(0, 10), years, kpis,
     headline: headline(name, kpis, currentYear - 1, regionalCounts, since2020),

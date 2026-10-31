@@ -134,6 +134,21 @@ configuration, not secrets.
 
 ## Local use after publishing
 
+### Filter a topic
+
+Enter a main topic and optional synonyms. In **Must also include**, enter
+comma-separated alternatives. For example, topic `neurotechnology`, synonym
+`neural implant`, and additional terms `children, child` search for
+`(neurotechnology OR "neural implant") AND (child OR children)` in titles and
+abstracts. Every chart, count and paper uses this combined search.
+
+**Children 0–9** fills related search terms without submitting. It does not
+verify participant ages; check those in each paper. Filtered reports show the
+combination in the title and headline and are saved as **Variants** under their
+main topic in Library. Opening a saved variant uses the cache.
+
+### Start locally
+
 Open `site/index.html` from your PC, or serve it on localhost. It automatically
 uses `http://127.0.0.1:8787`. To start the local Worker:
 
