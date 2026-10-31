@@ -21,7 +21,15 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       const rawQuery = url.searchParams.get("q") || "";
       const rawSynonyms = url.searchParams.get("syn") || "";
       if (rawQuery.length > 200 || rawSynonyms.length > 1200) return error("invalid_query", "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters.", 400);
-      const query = normaliseQuery(rawQuery, rawSynonyms);
+      let query;
+      const subtopicId = url.searchParams.get("subtopic") || "";
+      const subtopicName = url.searchParams.get("subtopicName") || "";
+      const parent = url.searchParams.get("parent") || "";
+      const parentName = url.searchParams.get("parentName") || "";
+      if (subtopicName.length > 300 || parent.length > 2000 || parentName.length > 300) return error("invalid_query", "The sub-topic details are too long. Shorten them and try again.", 400);
+      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId); }
+      catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
+      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent, parentName: parentName.trim() });
       if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);
       if (typeof env.OPENALEX_KEY !== "string" || !env.OPENALEX_KEY.trim()) return error("missing_key", "OPENALEX_KEY is not set. Add it to worker/.dev.vars.", 503);
       const controller = new AbortController();

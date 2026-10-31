@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { normaliseQuery, cleanTerm, buildSearchExpression, buildQueries, growth, momentum,
+import { normaliseQuery, normaliseSubtopicId, cleanTerm, buildSearchExpression, buildQueries, growth, momentum,
   shapeYears, shapeExperts, shapeSubtopics, shapeCountries, shapeJournals, shapePapers,
   suggestedSynonyms, exploreNext, headline, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError } from "./lib.js";
 
@@ -78,10 +78,10 @@ test("eleven query descriptors use the specified filters, date windows and limit
   assert(byId.early.filter.endsWith("from_publication_date:2020-01-01,to_publication_date:2022-12-31"));
   assert(byId.late.filter.endsWith("from_publication_date:2023-01-01,to_publication_date:2025-12-31"));
   assert.equal(byId.experts.group_by, "authorships.author.id");
-  assert(byId.experts.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:!repository"));
+  assert(byId.experts.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:!repository,type:article|review"));
   assert.equal(byId.countries.group_by, "authorships.countries");
   assert.equal(byId.journals.group_by, "primary_location.source.id");
-  assert(byId.journals.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:journal"));
+  assert(byId.journals.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:journal,type:article|review"));
   for (const { id, params } of all) {
     if (!["experts", "journals"].includes(id)) assert(!params.filter.includes("primary_location.source.type:"));
   }
@@ -202,7 +202,7 @@ test("explore-next ranks eligible growth first, then largest, excluding self and
     { name: "Self", late: 1000, growth: 50 }, { name: "Tiny", late: 19, growth: 100 },
     { name: "Fast", late: 20, growth: 3 }, { name: "Large", late: 200, growth: null },
     { name: "Slow", late: 40, growth: 1 }, { name: "Fast", late: 20, growth: 3 }
-  ], "self"), ["Fast", "Slow", "Large", "Tiny"]);
+  ], "self").map((item) => item.name), ["Fast", "Slow", "Large", "Tiny"]);
   assert.equal(exploreNext(Array.from({ length: 10 }, (_, i) => ({ name: `Topic ${i}`, late: 25, growth: i })), "self").length, 6);
 });
 
@@ -225,7 +225,7 @@ test("top lists obey their caps and unknown groups are ignored", () => {
   assert.equal(shapeExperts(input).length, 10);
   assert.equal(shapeExperts(input)[0].count, 19);
   assert.equal(shapeJournals(input).length, 10);
-  const data = responses(); data.late = input;
+  const data = responses(); data.late = { group_by: input.group_by.map((item, i) => ({ ...item, key: `https://openalex.org/T${i}` })) };
   assert.equal(shapeTopic(query, data, date).subtopics.length, 9);
   assert.deepEqual(shapeExperts({ group_by: [{ key: "unknown", key_display_name: "Unknown", count: 5 }] }), []);
 });
@@ -251,4 +251,68 @@ test("regional totals are independent of the top countries and use the GCC OR fi
   assert.deepEqual(shapeTopic(query, data, date).regionalCounts, { uae: 7, gcc: 11 });
   data.gcc = { meta: { count: -1 } };
   assert.throws(() => shapeTopic(query, data, date));
+});
+
+
+test("sub-topic IDs are canonical, validated, and separate query identities", () => {
+  assert.equal(normaliseSubtopicId("T123"), "T123");
+  assert.equal(normaliseSubtopicId("https://openalex.org/T123"), "T123");
+  for (const id of ["t123", "T", "T123,foo:bar", "https://evil.example/T123", "https://openalex.org/T123?x=1", "T123|T456", "T123/", " T123"]) {
+    assert.throws(() => normaliseQuery("moss", "", id));
+  }
+  const child = normaliseQuery("moss", "circuits", "https://openalex.org/T123");
+  assert.equal(child.id, normaliseQuery("moss", "circuits", "T123").id);
+  assert.notEqual(child.id, normaliseQuery("moss", "circuits").id);
+  assert.notEqual(child.id, normaliseQuery("moss", "circuits", "T456").id);
+  for (const { params } of buildQueries(child, 2026)) {
+    assert(params.filter.startsWith("title_and_abstract.search:(moss OR circuits),primary_topic.id:T123,"));
+  }
+  const shaped = shapeSubtopics(fixture("early"), fixture("late"));
+  assert(shaped.every((item) => /^T[0-9]+$/.test(item.id)));
+  const suggested = exploreNext(shaped, "moss");
+  assert(suggested.every((item) => shaped.some((topic) => topic.id === item.id && topic.name === item.name)));
+  const topic = shapeTopic({ ...child, subtopicName: "Named sub-topic", parent: "moss|circuits", parentName: "moss" }, responses(), date);
+  assert.equal(topic.name, "Named sub-topic");
+  assert.equal(topic.parent, "moss|circuits");
+  assert.deepEqual(topic.searchTerms, { name: "moss", synonyms: ["circuits"] });
+});
+
+test("headline GCC share uses only years since 2020, including the current year", () => {
+  const data = responses();
+  data.years = { group_by: [
+    { key: "2019", key_display_name: "2019", count: 100000 },
+    { key: "2020", key_display_name: "2020", count: 50 },
+    { key: "2025", key_display_name: "2025", count: 25 },
+    { key: "2026", key_display_name: "2026", count: 25 }
+  ] };
+  data.uae = { meta: { count: 2 } };
+  data.gcc = { meta: { count: 5 } };
+  assert(!shapeTopic(query, data, date).headline.includes("Only")); // Exactly 5%.
+  data.gcc.meta.count = 4;
+  assert(shapeTopic(query, data, date).headline.endsWith("Only 4 papers since 2020 come from the GCC (2 from the UAE)."));
+  data.gcc.meta.count = 6;
+  assert(!shapeTopic(query, data, date).headline.includes("Only"));
+  data.years = { group_by: [] };
+  data.gcc.meta.count = 0;
+  assert(!shapeTopic(query, data, date).headline.includes("Only"));
+  const kpis = { growth5y: .1, lastYear: 100, momentum: "Growing" };
+  assert(headline("moss", kpis, 2025, { gcc: 25, uae: 11 }, 1000).endsWith("Only 25 papers since 2020 come from the GCC (11 from the UAE)."));
+});
+
+
+test("only experts, journals and papers queries restrict work types to articles and reviews", () => {
+  for (const q of [query, normaliseQuery("moss", "", "T123")]) {
+    for (const { id, params } of buildQueries(q, 2026)) {
+      assert.equal(params.filter.includes(",type:article|review"), ["experts", "journals", "papers"].includes(id));
+    }
+  }
+});
+
+test("headlines use singular paper and verb for one paper", () => {
+  for (const rate of [null, .1]) {
+    const text = headline("moss", { growth5y: rate, lastYear: 1, momentum: "Growing" }, 2025, { gcc: 1, uae: 1 }, 100);
+    assert(text.includes("1 paper was published in 2025."));
+    assert(text.includes("Only 1 paper since 2020 comes from the GCC (1 from the UAE)."));
+    assert(!text.includes("1 papers"));
+  }
 });

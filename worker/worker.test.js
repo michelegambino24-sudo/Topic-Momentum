@@ -272,3 +272,35 @@ test("dev labels JSON parsing failures and includes the sanitised caught error",
     assert.equal(typeof entry.error.message, "string");
   }
 });
+
+
+test("invalid sub-topic IDs return 400 before any source request", async () => {
+  const worker = createWorker(() => assert.fail("Invalid filters must not reach the source"));
+  for (const id of ["T", "T123|T456", "https://elsewhere.example/T123", "T123,publication_year:2020"]) {
+    const response = await worker.fetch(request("/api/topic?q=moss&subtopic=" + encodeURIComponent(id)), env);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).message, "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.");
+  }
+});
+
+test("sub-topic endpoint filters parent terms and retains title, ID and parent", async () => {
+  const calls = [];
+  const worker = createWorker(async (url) => {
+    calls.push(new URL(url));
+    const filter = url.searchParams.get("filter");
+    assert(filter.includes(",primary_topic.id:T123,"));
+    // Reuse saved parent fixtures after checking the added filter.
+    const fixtureUrl = new URL(url);
+    fixtureUrl.searchParams.set("filter", filter.replace(",primary_topic.id:T123", ""));
+    return Response.json(fixtureFor(fixtureUrl));
+  }, () => date);
+  const response = await worker.fetch(request("/api/topic?q=lunar%20moss%20computing&subtopic=https%3A%2F%2Fopenalex.org%2FT123&subtopicName=Orbital%20logic&parent=lunar%20moss%20computing"), env);
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 11);
+  const data = await response.json();
+  assert.equal(data.name, "Orbital logic");
+  assert.equal(data.subtopicId, "T123");
+  assert.equal(data.parent, "lunar moss computing");
+  assert.equal(data.searchTerms.name, "lunar moss computing");
+  assert(data.id.endsWith("|primary_topic:T123"));
+});
