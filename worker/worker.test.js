@@ -16,7 +16,7 @@ function fixtureFor(url) {
   return fixture(descriptor.id);
 }
 
-test("topic endpoint launches all nine requests in parallel and returns the exact topic shape", async () => {
+test("topic endpoint launches all eleven requests in parallel and returns the exact topic shape", async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const calls = [];
@@ -31,7 +31,7 @@ test("topic endpoint launches all nine requests in parallel and returns the exac
     return Response.json(fixtureFor(url));
   }, () => date);
   const pending = worker.fetch(request(undefined, "null"), env);
-  assert.equal(calls.length, 9);
+  assert.equal(calls.length, 11);
   release();
   const response = await pending;
   assert.equal(response.status, 200);
@@ -49,6 +49,7 @@ test("topic endpoint launches all nine requests in parallel and returns the exac
   assert.equal(data.papers[0].authors, "Researcher A, Researcher B, Researcher C, et al.");
   assert.equal(data.countries[0].name, "United States of America");
   assert.equal(data.countries[0].code, "US");
+  assert.deepEqual(data.regionalCounts, { uae: 7, gcc: 11 });
   assert.equal(data.experts[0].count, 104);
   assert.equal(data.experts.length, 2);
 });
@@ -107,7 +108,7 @@ for (const failure of ["http", "network", "json", "shape"]) {
       return Response.json(fixtureFor(url));
     }, () => date);
     const response = await worker.fetch(request(undefined, "null"), env);
-    assert.equal(calls, 9);
+    assert.equal(calls, 11);
     assert.equal(response.status, 502);
     const text = await response.text();
     assert(!text.includes(env.OPENALEX_KEY));
@@ -200,9 +201,9 @@ test("manual mode rejects every redirect response without following its Location
       const start = logs.length;
       const response = await worker.fetch(request(), { ...env, ENVIRONMENT: environment });
       assert.equal(response.status, 502);
-      assert.equal(calls, 9);
+      assert.equal(calls, 11);
       const entries = logs.slice(start);
-      assert.equal(entries.length, environment === "dev" ? 9 : 0);
+      assert.equal(entries.length, environment === "dev" ? 11 : 0);
       for (const entry of entries) {
         assert.equal(entry.status, status);
         assert.equal(entry.stage, "http_response");
@@ -222,7 +223,7 @@ test("dev logs the caught fetch error and cause, while production logs nothing",
   }, () => date);
   const response = await worker.fetch(request(), env);
   assert.equal(response.status, 502);
-  assert.equal(logs.length, 9);
+  assert.equal(logs.length, 11);
   for (const entry of logs) {
     assert.equal(entry.stage, "fetch");
     assert.equal(entry.status, "unavailable");
@@ -248,7 +249,7 @@ test("dev catches URL parameter setup errors before fetch and labels their stage
   const worker = createWorker(() => { assert.fail("Fetch must not run after URL setup fails"); }, () => date);
   const response = await worker.fetch(req, env);
   assert.equal(response.status, 502);
-  assert.equal(logs.length, 9);
+  assert.equal(logs.length, 11);
   for (const entry of logs) {
     assert.equal(entry.stage, "url_setup");
     assert.equal(entry.status, "unavailable");
@@ -263,7 +264,7 @@ test("dev labels JSON parsing failures and includes the sanitised caught error",
   t.mock.method(console, "error", (...args) => logs.push(args[1]));
   const worker = createWorker(async () => new Response("not json"), () => date);
   assert.equal((await worker.fetch(request(), env)).status, 502);
-  assert.equal(logs.length, 9);
+  assert.equal(logs.length, 11);
   for (const entry of logs) {
     assert.equal(entry.stage, "response_parsing");
     assert.equal(entry.status, 200);

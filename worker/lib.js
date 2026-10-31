@@ -73,6 +73,12 @@ export function buildQueries(query, currentYear) {
     grouped("early", "primary_topic.id", "from_publication_date:2020-01-01,to_publication_date:2022-12-31", 200),
     grouped("late", "primary_topic.id", `from_publication_date:2023-01-01,to_publication_date:${currentYear - 1}-12-31`, 200),
     grouped("countries", "authorships.countries", since2020, 15),
+    ...[
+      ["uae", "countries/ae"],
+      ["gcc", "countries/ae|countries/sa|countries/qa|countries/kw|countries/bh|countries/om"]
+    ].map(([id, countries]) => ({ id, params: {
+      filter: search + "," + since2020 + ",authorships.countries:" + countries, per_page: "1", select: "id"
+    } })),
     grouped("journals", "primary_location.source.id", `${since2020},primary_location.source.type:journal`, 10),
     { id: "papers", params: { filter: `${search},from_publication_date:2022-01-01`, sort: "cited_by_count:desc", per_page: "6", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } },
     grouped("keywords", "keywords.id", since2020, 15),
@@ -189,6 +195,11 @@ export function headline(name, kpis, lastYear) {
   return `Research on ${name} is ${kpis.momentum.toLowerCase()} (${rate} a year). ${count} papers were published in ${lastYear}.`;
 }
 
+export function shapeRegionalCounts(uae, gcc) {
+  if (![uae, gcc].every((response) => validCount(response?.meta?.count))) throw new Error("Invalid source response");
+  return { uae: uae.meta.count, gcc: gcc.meta.count };
+}
+
 export function shapeTopic(query, responses, date) {
   const currentYear = date.getUTCFullYear();
   const years = shapeYears(responses.years, currentYear);
@@ -202,7 +213,7 @@ export function shapeTopic(query, responses, date) {
     updated: date.toISOString().slice(0, 10), years, kpis,
     headline: headline(query.name, kpis, currentYear - 1),
     experts: shapeExperts(responses.experts), subtopics: subtopics.slice(0, 9),
-    countries: shapeCountries(responses.countries), journals: shapeJournals(responses.journals),
+    countries: shapeCountries(responses.countries), regionalCounts: shapeRegionalCounts(responses.uae, responses.gcc), journals: shapeJournals(responses.journals),
     papers: shapePapers(responses.papers), suggestedSynonyms: suggestedSynonyms(responses.keywords, query),
     exploreNext: exploreNext(subtopics, query.name), cached: false
   };

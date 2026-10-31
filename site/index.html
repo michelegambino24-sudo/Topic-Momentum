@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Explore a fictional research dashboard in the Topic Momentum Meter static preview.">
+  <meta name="description" content="Explore research trends with Topic Momentum Meter.">
   <title>Topic Momentum Meter · Sample data</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
@@ -18,21 +18,21 @@
     <a class="brand" href="#search"><span class="brand-mark" aria-hidden="true">↗</span> Topic Momentum <span class="brand-light">Meter</span></a>
     <nav aria-label="Main navigation"><a href="#search" id="search-nav">Search</a><a href="#library" id="library-nav">Library</a></nav>
   </header>
-  <div class="sample-notice"><span class="sample-label">Sample data</span> Fictional research, illustrative numbers. Live searches are not connected.</div>
+  <div id="data-notice" class="sample-notice"><span class="sample-label">Sample data</span> Fictional research, illustrative numbers. Search to load OpenAlex data.</div>
   <main id="main" tabindex="-1">
     <section id="topic-page" aria-labelledby="topic-name">
       <form id="search-form" class="search-panel">
         <div class="search-fields"><label>Research topic<input id="topic-input" name="topic" required autocomplete="off"></label><label>Synonyms <span class="muted">· comma-separated</span><input id="synonyms-input" name="synonyms" autocomplete="off"></label><button class="primary" type="submit">Measure momentum <span aria-hidden="true">↗</span></button></div>
         <div id="synonym-chips" class="chips" aria-label="Current synonyms"></div>
-        <p class="form-note">Static preview: submitting keeps the sample report below.</p>
+        <p class="form-note">Searches include the topic and any synonyms.</p>
       </form>
-      <div class="report-heading"><div><p class="eyebrow">TOPIC REPORT <span class="sample-label">SAMPLE DATA</span></p><h2 id="topic-name"></h2><p id="topic-meta" class="muted"></p></div></div>
+      <div class="report-heading"><div><p class="eyebrow">TOPIC REPORT <span id="report-source" class="sample-label">SAMPLE DATA</span></p><h2 id="topic-name"></h2><p id="topic-meta" class="muted"></p></div></div>
       <div class="suggestions"><span class="small-label">Suggested synonyms</span><div id="suggested-synonyms" class="chips"></div></div>
       <div id="kpis" class="kpi-grid"></div>
       <section class="headline-panel" aria-label="Slide headline"><div><p class="eyebrow">THE TAKEAWAY</p><p id="headline"></p></div><button id="copy-headline" type="button">Copy as slide headline <span aria-hidden="true">↗</span></button></section>
       <section class="panel chart-panel" aria-labelledby="chart-heading"><div class="panel-heading"><div><p class="eyebrow">THE TRAJECTORY</p><h3 id="chart-heading">Papers per year</h3></div><button id="export-csv" type="button">Export CSV ↓</button></div><div id="year-chart"></div><p class="chart-note"><span class="legend-dot"></span> Complete year <span class="hatch-swatch"></span> <span id="current-year-label"></span> · year to date, excluded from growth</p></section>
-      <div class="detail-grid"><section class="panel" aria-labelledby="experts-heading"><div class="panel-heading"><h3 id="experts-heading">Leading experts</h3><span class="small-label">PAPERS</span></div><p class="section-note">Placeholder names · since 2020</p><ol id="experts" class="rank-list"></ol></section><section class="panel" aria-labelledby="subtopics-heading"><div class="panel-heading"><h3 id="subtopics-heading">Rising sub-topics</h3><span class="small-label">GROWTH</span></div><p class="section-note">2023–2025 vs. 2020–2022 · total change</p><div id="subtopics"></div></section><section class="panel" aria-labelledby="countries-heading"><div class="panel-heading"><h3 id="countries-heading">Where research happens</h3><span class="small-label">PAPERS</span></div><p class="section-note">Since 2020 · papers may span multiple countries</p><div id="countries"></div></section><section class="panel" aria-labelledby="journals-heading"><div class="panel-heading"><h3 id="journals-heading">Top journals</h3><span class="small-label">PAPERS</span></div><p class="section-note">Fictional publications · since 2020</p><ol id="journals" class="rank-list"></ol></section></div>
-      <section class="panel" aria-labelledby="papers-heading"><div class="panel-heading"><div><p class="eyebrow">READ THE RESEARCH</p><h3 id="papers-heading">Most cited recent papers</h3></div><span class="small-label">2022 ONWARDS</span></div><p class="section-note">Fictional titles and authors. No real papers are linked.</p><div id="papers" class="paper-grid"></div></section>
+      <div class="detail-grid"><section class="panel" aria-labelledby="experts-heading"><div class="panel-heading"><h3 id="experts-heading">Leading experts</h3><span class="small-label">PAPERS</span></div><p class="section-note">Since 2020</p><ol id="experts" class="rank-list"></ol></section><section class="panel" aria-labelledby="subtopics-heading"><div class="panel-heading"><h3 id="subtopics-heading">Rising sub-topics</h3><span class="small-label">GROWTH</span></div><p class="section-note">2023–2025 vs. 2020–2022 · total change</p><div id="subtopics"></div></section><section class="panel" aria-labelledby="countries-heading"><div class="panel-heading"><h3 id="countries-heading">Where research happens</h3><span class="small-label">PAPERS</span></div><p class="section-note">Since 2020 · papers may span multiple countries</p><div id="countries"></div><p id="regional-counts" class="section-note"></p></section><section class="panel" aria-labelledby="journals-heading"><div class="panel-heading"><h3 id="journals-heading">Top journals</h3><span class="small-label">PAPERS</span></div><p class="section-note">Since 2020</p><ol id="journals" class="rank-list"></ol></section></div>
+      <section class="panel" aria-labelledby="papers-heading"><div class="panel-heading"><div><p class="eyebrow">READ THE RESEARCH</p><h3 id="papers-heading">Most cited recent papers</h3></div><span class="small-label">2022 ONWARDS</span></div><p class="section-note">Ranked by citations · since 2022</p><div id="papers" class="paper-grid"></div></section>
       <section class="explore" aria-labelledby="explore-heading"><div><p class="eyebrow">KEEP FOLLOWING THE SIGNAL</p><h3 id="explore-heading">Explore next</h3></div><div id="explore-next" class="chips"></div></section>
     </section>
     <section id="library-page" aria-labelledby="library-heading" hidden>
@@ -41,6 +41,6 @@
     </section>
     <p id="status" class="status" role="status" aria-live="polite" hidden></p>
   </main>
-  <footer><span class="footer-brand">Topic Momentum Meter</span><p>Data: OpenAlex. Searches are cached anonymously to keep the tool free.</p><p>This preview uses fictional sample data only. No searches are sent or saved.</p></footer>
+  <footer><span class="footer-brand">Topic Momentum Meter</span><p>Data: OpenAlex. Searches are cached anonymously to keep the tool free.</p><p>The Library currently shows fictional sample data.</p></footer>
 </body>
 </html>

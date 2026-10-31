@@ -1,2 +1,1 @@
-// Reserved for the live Worker connection in a later step.
-window.WORKER_URL = "";
+window.WORKER_URL = "http://127.0.0.1:8787";

@@ -8,7 +8,7 @@ import { normaliseQuery, cleanTerm, buildSearchExpression, buildQueries, growth,
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const date = new Date("2026-10-31T12:00:00Z");
 const query = normaliseQuery("Lunar moss computing", "moon moss circuits");
-const responses = () => Object.fromEntries(["years", "experts", "early", "late", "countries", "journals", "papers", "keywords", "field"].map((name) => [name, fixture(name)]));
+const responses = () => Object.fromEntries(["years", "experts", "early", "late", "countries", "journals", "papers", "keywords", "field", "uae", "gcc"].map((name) => [name, fixture(name)]));
 
 test("source error sanitisation extracts messages, removes URLs and credential variants before truncating", () => {
   const marker = "fixture-only /?&=marker";
@@ -69,9 +69,9 @@ test("search expression quotes spaces and hyphens and excludes filter delimiters
   assert.equal(expression, '(mossx OR foobar)');
 });
 
-test("nine query descriptors use the specified filters, date windows and limits", () => {
+test("eleven query descriptors use the specified filters, date windows and limits", () => {
   const all = buildQueries(query, 2026);
-  assert.equal(all.length, 9);
+  assert.equal(all.length, 11);
   const byId = Object.fromEntries(all.map((item) => [item.id, item.params]));
   assert.equal(byId.years.group_by, "publication_year");
   assert(byId.years.filter.endsWith("publication_year:2010-2026"));
@@ -111,7 +111,7 @@ test("years fill missing years; KPIs exclude current year from growth and last-y
   assert.equal(topic.cached, false);
   assert.equal(topic.updated, "2026-10-31");
   assert.equal(topic.field, "Computer Science");
-  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "field", "updated", "years", "kpis", "headline", "experts", "subtopics", "countries", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
+  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "field", "updated", "years", "kpis", "headline", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
   assert(topic.headline.includes("249 papers were published in 2025"));
 });
 
@@ -208,6 +208,7 @@ test("explore-next ranks eligible growth first, then largest, excluding self and
 
 test("empty responses produce complete zero-valued topic; malformed responses throw", () => {
   const empty = Object.fromEntries(Object.keys(responses()).map((name) => [name, fixture(name === "papers" ? "empty-papers" : "empty-groups")]));
+  empty.uae = empty.gcc = { meta: { count: 0 }, results: [] };
   const topic = shapeTopic(query, empty, date);
   assert.deepEqual(topic.kpis, { total: 0, lastYear: 0, growth5y: null, momentum: "Not enough data" });
   assert.equal(topic.field, "Unclassified");
@@ -239,4 +240,15 @@ test("origin rules allow only exact configured origin, local dev origins and dev
   assert(originAllowed("http://localhost:9000", dev));
   assert(originAllowed("http://localhost", dev));
   for (const origin of ["http://localhost.evil.test:9000", "https://localhost:9000", "http://localhost:9000/path", "http://127.0.0.1:9000"]) assert.equal(originAllowed(origin, dev), false);
+});
+
+test("regional totals are independent of the top countries and use the GCC OR filter", () => {
+  const descriptors = Object.fromEntries(buildQueries(query, 2026).map(({id, params}) => [id, params]));
+  assert(descriptors.gcc.filter.endsWith("authorships.countries:countries/ae|countries/sa|countries/qa|countries/kw|countries/bh|countries/om"));
+  assert(descriptors.uae.filter.endsWith("authorships.countries:countries/ae"));
+  const data = responses();
+  data.countries = { group_by: [] };
+  assert.deepEqual(shapeTopic(query, data, date).regionalCounts, { uae: 7, gcc: 11 });
+  data.gcc = { meta: { count: -1 } };
+  assert.throws(() => shapeTopic(query, data, date));
 });
