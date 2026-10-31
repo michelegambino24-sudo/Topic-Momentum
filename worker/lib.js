@@ -63,6 +63,42 @@ export function normaliseQuery(query, synonyms = "", subtopicId = "") {
   return { name, synonyms: terms, id: [name, ...terms, ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"), ...(filterId ? { subtopicId: filterId } : {}) };
 }
 
+export const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function cacheIsFresh(record, time) {
+  const age = time - record?.savedAt;
+  return Number.isFinite(record?.savedAt) && age >= 0 && age < CACHE_MAX_AGE_MS;
+}
+
+export function dailyCap(value = 90) {
+  if (!/^(0|[1-9][0-9]*)$/.test(String(value)) || !Number.isSafeInteger(Number(value))) throw new Error("Invalid daily cap");
+  return Number(value);
+}
+
+// Whitelist topic fields; request headers and visitor details never enter the index.
+export function updateLibrary(index, topic) {
+  if (!Array.isArray(index)) throw new Error("Invalid library index");
+  const previous = index.find((entry) => entry.id === topic.id);
+  const parent = topic.parent || previous?.parent || null;
+  const entry = {
+    id: topic.id, name: topic.name, synonyms: topic.synonyms,
+    field: topic.field, momentum: topic.kpis.momentum, growth: topic.kpis.growth5y,
+    total: topic.kpis.total, updated: topic.updated, parent, children: [],
+    ...(topic.subtopicId ? { subtopicId: topic.subtopicId, searchTerms: topic.searchTerms } : {})
+  };
+  const entries = previous ? index.map((item) => item.id === topic.id ? entry : item) : index.concat(entry);
+  const byId = new Map(entries.map((item) => [item.id, item]));
+  const seen = new Set([topic.id]);
+  let ancestor = parent;
+  while (ancestor) {
+    if (seen.has(ancestor)) throw new Error("Invalid parent relationship");
+    seen.add(ancestor);
+    ancestor = byId.get(ancestor)?.parent;
+  }
+  // Rebuild links so refreshing a parent keeps its children, including child-first searches.
+  return entries.map((item) => ({ ...item, children: entries.filter((child) => child.parent === item.id).map((child) => child.id) }));
+}
+
 export function buildSearchExpression(query) {
   return `(${[query.name, ...query.synonyms].map((term) => /[\s-]/.test(term) ? `"${term}"` : term).join(" OR ")})`;
 }

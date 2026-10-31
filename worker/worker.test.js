@@ -1,12 +1,14 @@
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createWorker } from "./worker.js";
+import { MemoryKV } from "./kv-fixture.js";
 import { buildQueries, normaliseQuery } from "./lib.js";
 
 const date = new Date("2026-10-31T12:00:00Z");
 // A non-credential marker. No real API key is used by any test.
 const env = { OPENALEX_KEY: "fixture-only-not-a-credential", ENVIRONMENT: "dev", ALLOWED_ORIGIN: "https://sample.example" };
+beforeEach(() => { env.TMM = new MemoryKV(); });
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const request = (path = "/api/topic?q=lunar%20moss%20computing", origin, method = "GET", extra = {}) => new Request(`http://localhost:8787${path}`, { method, headers: { ...(origin === undefined ? {} : { Origin: origin }), ...extra } });
 function fixtureFor(url) {
@@ -31,6 +33,7 @@ test("topic endpoint launches all eleven requests in parallel and returns the ex
     return Response.json(fixtureFor(url));
   }, () => date);
   const pending = worker.fetch(request(undefined, "null"), env);
+  await new Promise(setImmediate);
   assert.equal(calls.length, 11);
   release();
   const response = await pending;
@@ -57,7 +60,7 @@ test("topic endpoint launches all eleven requests in parallel and returns the ex
 test("missing key gives the required message without any upstream call", async () => {
   const worker = createWorker(() => { assert.fail("Must not call the source"); });
   for (const value of [undefined, "", "   "]) {
-    const response = await worker.fetch(request(), { OPENALEX_KEY: value });
+    const response = await worker.fetch(request(), { TMM: new MemoryKV(), OPENALEX_KEY: value });
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { error: "missing_key", message: "OPENALEX_KEY is not set. Add it to worker/.dev.vars." });
   }
@@ -67,7 +70,7 @@ test("disallowed origins, invalid queries, routes and methods fail before networ
   const worker = createWorker(() => { assert.fail("Must not call the source"); });
   for (const [req, expected] of [
     [request(undefined, "https://untrusted.example"), 403],
-    [request("/api/library"), 404], [request(undefined, undefined, "POST"), 405],
+    [request("/missing"), 404], [request(undefined, undefined, "POST"), 405],
     [request("/api/topic"), 400], [request("/api/topic?q=%5B%5D%7C%22"), 400],
     [request(`/api/topic?q=${"a".repeat(201)}`), 400],
     [request(`/api/topic?q=moss&syn=${"a".repeat(1201)}`), 400]

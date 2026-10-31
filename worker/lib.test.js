@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { normaliseQuery, normaliseSubtopicId, cleanTerm, buildSearchExpression, buildQueries, growth, momentum,
   shapeYears, shapeExperts, shapeSubtopics, shapeCountries, shapeJournals, shapePapers,
-  suggestedSynonyms, exploreNext, headline, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError } from "./lib.js";
+  suggestedSynonyms, exploreNext, headline, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError,
+  cacheIsFresh, dailyCap, updateLibrary, CACHE_MAX_AGE_MS } from "./lib.js";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const date = new Date("2026-10-31T12:00:00Z");
@@ -315,4 +316,33 @@ test("headlines use singular paper and verb for one paper", () => {
     assert(text.includes("Only 1 paper since 2020 comes from the GCC (1 from the UAE)."));
     assert(!text.includes("1 papers"));
   }
+});
+
+
+test("cache freshness rejects missing and future timestamps and uses the precise seven-day boundary", () => {
+  const savedAt = date.getTime();
+  assert(cacheIsFresh({ savedAt }, savedAt));
+  assert(cacheIsFresh({ savedAt }, savedAt + CACHE_MAX_AGE_MS - 1));
+  assert(!cacheIsFresh({ savedAt }, savedAt + CACHE_MAX_AGE_MS));
+  assert(!cacheIsFresh({ savedAt }, savedAt - 1));
+  assert(!cacheIsFresh({}, savedAt));
+  assert(!cacheIsFresh({ savedAt: "not a timestamp" }, savedAt));
+  assert.equal(dailyCap(), 90);
+  assert.equal(dailyCap("0"), 0);
+  for (const value of [null, "", "-1", "1.5", "1e3", "wrong", Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => dailyCap(value));
+});
+
+test("library handles child-first searches, preserves links on refresh, and rejects cycles without mutating input", () => {
+  const parent = shapeTopic(query, responses(), date);
+  const child = shapeTopic({ ...normaliseQuery(query.name, query.synonyms.join(","), "T123"), subtopicName: "Orbital logic", parent: parent.id }, responses(), date);
+  const childOnly = updateLibrary([], child);
+  assert.equal(childOnly[0].parent, parent.id);
+  const linked = updateLibrary(childOnly, parent);
+  assert.deepEqual(linked.find((entry) => entry.id === parent.id).children, [child.id]);
+  assert.equal(childOnly.length, 1);
+  assert.deepEqual(updateLibrary(linked, child), linked);
+  const updated = updateLibrary(linked, { ...parent, updated: "2026-11-07" });
+  assert.deepEqual(updated.find((entry) => entry.id === parent.id).children, [child.id]);
+  assert.throws(() => updateLibrary(linked, { ...parent, parent: child.id }));
+  assert.throws(() => updateLibrary(linked, { ...parent, parent: parent.id }));
 });

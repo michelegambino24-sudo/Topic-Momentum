@@ -10,7 +10,7 @@ Data source: OpenAlex (api.openalex.org). No AI is used anywhere: every number i
 - **The owner's OpenAlex key is never in the repo or the website.** It lives only as a Cloudflare Worker secret (`OPENALEX_KEY`).
 - **Website:** plain HTML, CSS and JavaScript in `site/`. No framework, no npm, no build step. Hosted on GitHub Pages (public repo).
 - **Worker:** one Cloudflare Worker in `worker/`, free plan, using one KV namespace (`TMM`) for the cache and the library.
-- **Daily cap:** the Worker calls OpenAlex for at most `NEW_TOPICS_PER_DAY` (default 100) new searches per UTC day. Cached topics never count.
+- **Daily cap:** `NEW_TOPICS_PER_DAY` defaults to 90 attempts per UTC day. Reserve an attempt before calling OpenAlex; failed source requests still count. Cached topics never count. KV counters are eventually consistent, so concurrent requests can slightly overshoot this cap.
 - **English** for UI, code, comments and commits.
 
 ## 3. Architecture
@@ -27,19 +27,21 @@ The Worker only answers requests from the site's origin (CORS allow-list in `ALL
 
 ## 4. Worker API
 
-### GET /api/topic?q=<topic>&syn=<comma-separated synonyms>&parent=<topic id, optional>
-1. Normalise: lower-case, trim, de-duplicate terms, sort synonyms. Cache key = `topic:` + normalised query.
-2. If the key is in KV and younger than 7 days, return it (`"cached": true`).
-3. Otherwise check today's counter `count:<YYYY-MM-DD>`. If it is at the cap, return HTTP 429 `{ "error": "daily_limit" }`.
-4. Call OpenAlex (Section 5), build the topic JSON (Section 6), store it in KV, add or update its entry in the library index, increment the counter, return it.
-5. If `parent` is given, record the new topic as a child of the parent in the library index.
+### GET /api/topic?q=<topic>&syn=<comma-separated synonyms>&parent=<topic id, optional>&subtopic=<OpenAlex topic ID, optional>&subtopicName=<display title, optional>
+1. Normalise: lower-case, trim, de-duplicate terms, sort synonyms. Cache key = `topic:` + normalised query. For sub-topics, append `|primary_topic:<ID>` to the normalised parent search identity. Validate IDs as `T` followed by digits, optionally prefixed with `https://openalex.org/`. The sub-topic name is a display title, not a text search term.
+2. If the key is in KV and younger than 7 days, return it (`"cached": true`). Measure age from the precise saved timestamp. Retain expired records for fallback rather than deleting them with a KV expiry.
+3. Otherwise check today's UTC counter `count:<YYYY-MM-DD>`. At the cap, return the expired report if present (`"cached": true, "stale": true`), preserving its original `updated` date. Without a stored report, return HTTP 429 `{ "error": "daily_limit", "message": "Daily limit reached. Try again tomorrow or browse the Library." }`.
+4. Increment and persist the counter before calling OpenAlex (Section 5). On success, build the topic JSON (Section 6), store it in KV, add or update its entry in the library index, and return it. On source failure, keep the counter increment and save no partial results.
+5. If `parent` is given, record the new topic as a child of the parent in the library index. For a sub-topic, infer the parent from its normalised search terms when omitted; reject a conflicting supplied parent. Preserve children when refreshing a parent, and avoid duplicate child IDs. Sub-topic reports and index entries retain the OpenAlex ID and parent search terms.
 6. On OpenAlex errors return HTTP 502 `{ "error": "source_unavailable" }`. Never return the key or the upstream URL.
 
 ### GET /api/library
 Returns the library index: `[{ id, name, synonyms, field, momentum, growth, total, updated, parent, children: [ids] }]`.
 
+Store only topic data, relationships and aggregate daily counters. Never store IP addresses or visitor identifiers.
+
 ### KV writes budget
-Free plan: 1,000 writes a day. A new topic uses at most 3 writes (topic, index, counter), so the cap of 100 stays well under it.
+Free plan: 1,000 writes a day. A successful new report uses at most 3 writes (counter, topic, index); a failed source attempt uses one counter write. The default cap of 90 attempts budgets at most 270 such writes. Ordinary cache hits use no writes; a missing index entry or relationship can be repaired with one index write.
 
 ## 5. OpenAlex queries for one topic
 Search expression: `(term1 OR "multi word term" OR ...)` over the topic and its synonyms, used as `filter=title_and_abstract.search:<expr>`. Strip commas, pipes, brackets and quotes from user input before building it; quote terms containing spaces or hyphens. Add `api_key=<OPENALEX_KEY>`.
