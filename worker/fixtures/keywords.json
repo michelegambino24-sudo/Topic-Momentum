@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "count": 550,
+    "db_response_time_ms": 12,
+    "page": 1,
+    "per_page": 15,
+    "groups_count": 4
+  },
+  "group_by": [
+    {
+      "key": "https://openalex.org/keywords/lunar-moss-computing",
+      "key_display_name": "Lunar moss computing",
+      "count": 200
+    },
+    {
+      "key": "https://openalex.org/keywords/moon-moss-circuits",
+      "key_display_name": "Moon moss circuits",
+      "count": 150
+    },
+    {
+      "key": "https://openalex.org/keywords/orbital-processors",
+      "key_display_name": "Orbital processors",
+      "count": 110
+    },
+    {
+      "key": "https://openalex.org/keywords/spore-networks",
+      "key_display_name": "Spore networks",
+      "count": 90
+    }
+  ]
+}

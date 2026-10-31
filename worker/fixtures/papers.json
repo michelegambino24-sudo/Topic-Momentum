@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "count": 2,
+    "db_response_time_ms": 12,
+    "page": 1,
+    "per_page": 6,
+    "groups_count": null
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W900000001",
+      "display_name": "A fictional moss memory circuit",
+      "publication_year": 2024,
+      "cited_by_count": 85,
+      "doi": null,
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A900000001",
+            "display_name": "Researcher A",
+            "orcid": null
+          },
+          "institutions": [],
+          "countries": [],
+          "is_corresponding": false,
+          "raw_author_name": "Researcher A",
+          "raw_affiliation_strings": [],
+          "affiliations": []
+        }
+      ],
+      "primary_location": {
+        "id": "doi:10.0000/fictional-example",
+        "is_oa": false,
+        "landing_page_url": null,
+        "pdf_url": null,
+        "source": {
+          "id": "https://openalex.org/S900000001",
+          "display_name": "Journal of Fictional Moss Logic",
+          "issn_l": null,
+          "issn": [],
+          "is_oa": false,
+          "is_in_doaj": false,
+          "is_core": false,
+          "host_organization": null,
+          "host_organization_name": null,
+          "host_organization_lineage": [],
+          "host_organization_lineage_names": [],
+          "type": "journal"
+        },
+        "license": null,
+        "license_id": null,
+        "version": "publishedVersion",
+        "is_accepted": true,
+        "is_published": true,
+        "raw_source_name": "Journal of Fictional Moss Logic",
+        "raw_type": "journal-article"
+      }
+    },
+    {
+      "id": "https://openalex.org/W900000002",
+      "display_name": "Imaginary spore signal routing without a journal",
+      "publication_year": 2025,
+      "cited_by_count": 32,
+      "doi": null,
+      "authorships": [],
+      "primary_location": null
+    }
+  ],
+  "group_by": []
+}

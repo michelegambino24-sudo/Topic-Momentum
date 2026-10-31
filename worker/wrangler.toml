@@ -1,0 +1,13 @@
+name = "topic-momentum-meter"
+main = "worker.js"
+compatibility_date = "2026-10-30"
+workers_dev = false
+
+[vars]
+ALLOWED_ORIGIN = ""
+
+# Development-only bindings are passed with: npx wrangler dev --var ENVIRONMENT:dev
+[dev]
+ip = "127.0.0.1"
+port = 8787
+local_protocol = "http"
