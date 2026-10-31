@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#C2410C}a:hover{color:#9A3412}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1240px; box-sizing: border-box; background: #F4F5F7; color: #14202B; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 15px; display: flex; flex-direction: column">
+
+  <header style="background: #14202B; color: #F4F5F7; padding: 18px 56px; display: flex; align-items: center; justify-content: space-between">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="16" width="5" height="9" rx="1" fill="#F4F5F7" opacity="0.5"></rect><rect x="11.5" y="10" width="5" height="15" rx="1" fill="#F4F5F7" opacity="0.75"></rect><rect x="20" y="3" width="5" height="22" rx="1" fill="{{accent}}"></rect></svg>
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 20px">Topic Momentum Meter</span>
+    </div>
+    <nav style="display: flex; gap: 8px">
+      <a href="Main.dc.html" style="color: #C7CFD7; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600">Search</a>
+      <a href="Library.dc.html" style="color: #F4F5F7; text-decoration: none; padding: 10px 16px; border-radius: 8px; background: rgba(255,255,255,0.12); font-weight: 600">Library</a>
+    </nav>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #A9B4BF">Data: OpenAlex · updated weekly</span>
+  </header>
+
+  <main style="padding: 32px 56px 56px; display: flex; flex-direction: column; gap: 22px">
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 34px">Library</h1>
+        <p style="margin: 0; color: #5B6773">Every topic searched, sorted by research field. Open one to see its full page and the sub-topics explored from it.</p>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: flex-end">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="libsearch" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5B6773">Search the library</label>
+          <input id="libsearch" type="text" placeholder="e.g. epigenetics" style="width: 300px; font: 500 15px 'Instrument Sans', sans-serif; padding: 11px 14px; border: 1px solid #DDE2E8; border-radius: 10px; background: #FFFFFF; color: #14202B">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="sort" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5B6773">Sort by</label>
+          <select id="sort" style="font: 500 15px 'Instrument Sans', sans-serif; padding: 11px 14px; border: 1px solid #DDE2E8; border-radius: 10px; background: #FFFFFF; color: #14202B"><option>Momentum</option><option>Name</option><option>Last updated</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 24px; align-items: flex-start">
+      <aside style="width: 250px; flex-shrink: 0; background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 4px">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5B6773; padding: 6px 10px">Fields</span>
+        <sc-for list="{{fields}}" as="f" hint-placeholder-count="7">
+          <a href="#" style="{{f.style}}"><span>{{f.name}}</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; opacity: 0.7">{{f.count}}</span></a>
+        </sc-for>
+      </aside>
+
+      <section style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{topics}}" as="t" hint-placeholder-count="6">
+          <article style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #5B6773">{{t.field}}</span>
+              <span style="{{t.badgeStyle}}">{{t.badge}}</span>
+            </div>
+            <a href="Main.dc.html" style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 22px; color: #14202B; text-decoration: none">{{t.name}}</a>
+            <div style="display: flex; gap: 4px; align-items: flex-end; height: 44px">
+              <sc-for list="{{t.spark}}" as="s" hint-placeholder-count="10"><div style="{{s}}"></div></sc-for>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #EEF1F4; padding-top: 10px">
+              <span style="font-size: 12px; color: #5B6773">Sub-topics explored</span>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px">
+                <sc-for list="{{t.children}}" as="c" hint-placeholder-count="2"><a href="Main.dc.html" style="font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 999px; background: #F4F5F7; border: 1px solid #DDE2E8; color: #14202B; text-decoration: none">↳ {{c}}</a></sc-for>
+              </div>
+            </div>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5B6773">Updated [date] · [N] papers</span>
+          </article>
+        </sc-for>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#C2410C","options":["#C2410C","#0F766E","#1D4ED8","#7C3AED"]},"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? '#C2410C';
+    const fieldBase = 'display:flex; justify-content:space-between; align-items:center; padding:10px; border-radius:8px; text-decoration:none; font-weight:500; ';
+    const fields = [['All topics', '[n]'], ['Neuroscience', '[n]'], ['Computer Science', '[n]'], ['Medicine', '[n]'], ['Genetics & Molecular Biology', '[n]'], ['Engineering', '[n]'], ['Physics', '[n]']]
+      .map(([name, count], i) => ({ name, count, style: fieldBase + (i === 0 ? 'background:#14202B; color:#F4F5F7' : 'color:#14202B') }));
+    const badge = (label) => {
+      const m = { Accelerating: 'background:#FBE7DC; color:#9A3412', Growing: 'background:#DCF2E3; color:#166534', Stable: 'background:#EEF1F4; color:#4B5563' };
+      return 'font-size:12px; font-weight:600; padding:3px 10px; border-radius:999px; white-space:nowrap; ' + m[label];
+    };
+    const spark = (arr) => arr.map((v, i) => 'flex:1; border-radius:2px; height:' + v + '%; background:' + accent + '; opacity:' + (0.35 + i * 0.065).toFixed(2));
+    const topics = [
+      { field: 'Neuroscience', name: 'Neurotechnology', badge: 'Accelerating', spark: [15,18,22,27,33,40,48,58,72,90], children: ['Neurofeedback', 'Deep brain stimulation'] },
+      { field: 'Genetics & Molecular Biology', name: 'Epigenetics', badge: 'Growing', spark: [40,44,48,52,55,60,63,68,72,78], children: ['DNA methylation', 'Epigenetic clocks'] },
+      { field: 'Computer Science', name: 'Agentic AI', badge: 'Accelerating', spark: [5,6,8,10,13,18,26,40,62,95], children: ['Multi-agent systems'] },
+      { field: 'Physics', name: 'Quantum computing', badge: 'Growing', spark: [30,34,38,44,50,55,61,67,72,80], children: ['Quantum sensing', 'Quantum algorithms'] },
+      { field: 'Medicine', name: 'Microbiome', badge: 'Stable', spark: [55,60,64,68,70,72,73,74,75,76], children: ['Gut-brain axis'] },
+      { field: 'Engineering', name: 'Wearable sensors', badge: 'Growing', spark: [25,29,34,38,44,50,55,62,68,74], children: ['Biosensors', 'Smart textiles'] }
+    ].map((t) => ({ ...t, badgeStyle: badge(t.badge), spark: spark(t.spark) }));
+    return { accent, fields, topics };
+  }
+}
+</script>
+</body>
+</html>

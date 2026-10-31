@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Topic page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#C2410C}a:hover{color:#9A3412}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2280px; box-sizing: border-box; background: #F4F5F7; color: #14202B; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 15px; display: flex; flex-direction: column">
+
+  <header style="background: #14202B; color: #F4F5F7; padding: 18px 56px; display: flex; align-items: center; justify-content: space-between">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="16" width="5" height="9" rx="1" fill="#F4F5F7" opacity="0.5"></rect><rect x="11.5" y="10" width="5" height="15" rx="1" fill="#F4F5F7" opacity="0.75"></rect><rect x="20" y="3" width="5" height="22" rx="1" fill="{{accent}}"></rect></svg>
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 20px">Topic Momentum Meter</span>
+    </div>
+    <nav style="display: flex; gap: 8px">
+      <a href="Main.dc.html" style="color: #F4F5F7; text-decoration: none; padding: 10px 16px; border-radius: 8px; background: rgba(255,255,255,0.12); font-weight: 600">Search</a>
+      <a href="Library.dc.html" style="color: #C7CFD7; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600">Library</a>
+    </nav>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #A9B4BF">Data: OpenAlex · updated weekly</span>
+  </header>
+
+  <main style="padding: 32px 56px 56px; display: flex; flex-direction: column; gap: 22px">
+
+    <section style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; gap: 12px; align-items: flex-end">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+          <label for="topic" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5B6773">Topic</label>
+          <input id="topic" type="text" value="neurotechnology" style="font: 500 20px 'Instrument Sans', sans-serif; padding: 13px 16px; border: 1px solid #DDE2E8; border-radius: 10px; background: #F4F5F7; color: #14202B">
+        </div>
+        <button type="button" style="font: 600 15px 'Instrument Sans', sans-serif; padding: 15px 22px; border-radius: 10px; border: 0; background: {{accent}}; color: #FFFFFF">Measure momentum</button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5B6773; margin-right: 4px">Synonyms</span>
+        <sc-for list="{{synonyms}}" as="s" hint-placeholder-count="3">
+          <span style="display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px; background: #14202B; color: #F4F5F7; font-size: 13px; font-weight: 500">{{s}} <span aria-hidden="true" style="opacity: 0.6">×</span></span>
+        </sc-for>
+        <span style="width: 1px; height: 22px; background: #DDE2E8; margin: 0 6px"></span>
+        <span style="font-size: 13px; color: #5B6773">Suggested from the papers:</span>
+        <sc-for list="{{suggested}}" as="s" hint-placeholder-count="3">
+          <button type="button" style="font: 500 13px 'Instrument Sans', sans-serif; padding: 6px 12px; border-radius: 999px; border: 1px dashed #9AA6B2; background: #FFFFFF; color: #14202B">+ {{s}}</button>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px">[N]</span>
+        <span style="font-size: 13px; color: #5B6773">papers on the topic since 2010</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px">[+X%]</span>
+        <span style="font-size: 13px; color: #5B6773">average yearly growth, last 5 years</span>
+        <span style="align-self: flex-start; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #FBE7DC; color: #9A3412">Accelerating</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px">[N]</span>
+        <span style="font-size: 13px; color: #5B6773">papers published last year</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px">[Sub-topic]</span>
+        <span style="font-size: 13px; color: #5B6773">fastest-growing sub-topic</span>
+      </div>
+    </section>
+
+    <section style="background: #14202B; color: #F4F5F7; border-radius: 14px; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px">
+      <p style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 21px; line-height: 1.35; max-width: 980px">Research on neurotechnology is accelerating ([+X%] a year). [Country] leads the field, and [sub-topic] is the fastest-growing area.</p>
+      <button type="button" style="font: 600 14px 'Instrument Sans', sans-serif; padding: 11px 16px; border-radius: 10px; border: 1px solid rgba(244,245,247,0.4); background: transparent; color: #F4F5F7; white-space: nowrap">Copy as slide headline</button>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Papers published per year</h2>
+        <div style="display: flex; gap: 10px; align-items: center">
+          <span style="font-size: 12px; color: #5B6773">2026* = year to date</span>
+          <button type="button" style="font: 600 13px 'Instrument Sans', sans-serif; padding: 8px 12px; border-radius: 8px; border: 1px solid #DDE2E8; background: #FFFFFF; color: #14202B">Export CSV</button>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; height: 260px; align-items: flex-end; border-bottom: 1px solid #DDE2E8; padding: 0 4px">
+        <sc-for list="{{bars}}" as="b" hint-placeholder-count="17">
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end">
+            <div style="{{b.style}}"></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 10px; padding: 0 4px">
+        <sc-for list="{{bars}}" as="b" hint-placeholder-count="17">
+          <span style="flex: 1; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5B6773">{{b.label}}</span>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Leading experts</h2><span style="font-size: 12px; color: #5B6773">papers since 2020</span></div>
+        <sc-for list="{{experts}}" as="e" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 1.6fr 1fr 48px; gap: 14px; align-items: center; padding: 9px 0; border-top: 1px solid #EEF1F4">
+            <div style="display: flex; flex-direction: column"><a href="#" style="font-weight: 600; text-decoration: none">{{e.name}}</a><span style="font-size: 12px; color: #5B6773">{{e.inst}}</span></div>
+            <div style="height: 6px; border-radius: 3px; background: #EEF1F4"><div style="{{e.bar}}"></div></div>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right">[n]</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Sub-topics</h2><span style="font-size: 12px; color: #5B6773">2023–25 vs 2020–22</span></div>
+        <sc-for list="{{subs}}" as="s" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 1fr 70px 80px; gap: 14px; align-items: center; padding: 11px 0; border-top: 1px solid #EEF1F4">
+            <span style="font-weight: 500">{{s.name}}</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right; color: #5B6773">[n]</span>
+            <span style="{{s.chip}}">{{s.trend}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Where the research happens</h2><span style="font-size: 12px; color: #5B6773">top countries</span></div>
+        <sc-for list="{{countries}}" as="c" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 170px 1fr 48px; gap: 14px; align-items: center; padding: 8px 0; border-top: 1px solid #EEF1F4">
+            <span style="display: flex; gap: 8px; align-items: center">{{c.name}}<sc-if value="{{c.gcc}}" hint-placeholder-val="{{false}}"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #FBE7DC; color: #9A3412">GCC</span></sc-if></span>
+            <div style="height: 8px; border-radius: 4px; background: #EEF1F4"><div style="{{c.bar}}"></div></div>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right">[n]</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Top journals</h2><span style="font-size: 12px; color: #5B6773">where the field publishes</span></div>
+        <sc-for list="{{journals}}" as="j" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 28px 1fr 48px; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid #EEF1F4">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5B6773">{{j.rank}}</span>
+            <span style="font-weight: 500">{{j.name}}</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right">[n]</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #DDE2E8; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 4px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px"><h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Most cited recent papers</h2><span style="font-size: 12px; color: #5B6773">since 2022</span></div>
+      <sc-for list="{{papers}}" as="p" hint-placeholder-count="3">
+        <div style="display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; border-top: 1px solid #EEF1F4">
+          <div style="display: flex; flex-direction: column; gap: 2px"><a href="#" style="font-weight: 600; text-decoration: none">[Paper title]</a><span style="font-size: 13px; color: #5B6773">[Authors] · [Year] · [Journal]</span></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; white-space: nowrap">[n] citations</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <section style="border: 1.5px dashed #C2410C; border-radius: 14px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; background: #FDF4EE">
+      <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px">Explore next</h2><span style="font-size: 12px; color: #5B6773">one click searches it and files it under “neurotechnology” in the library</span></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px">
+        <sc-for list="{{next}}" as="n" hint-placeholder-count="6">
+          <button type="button" style="font: 600 14px 'Instrument Sans', sans-serif; padding: 10px 16px; border-radius: 10px; border: 1px solid #E8C9B6; background: #FFFFFF; color: #14202B">{{n}} →</button>
+        </sc-for>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#C2410C","options":["#C2410C","#0F766E","#1D4ED8","#7C3AED"]},"$preview":{"width":1440,"height":2280}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? '#C2410C';
+    const h = [9,10,12,13,15,17,20,23,27,31,36,42,49,57,67,80,52];
+    const bars = h.map((v, i) => {
+      const y = 2010 + i, partial = y === 2026;
+      const bg = partial ? 'repeating-linear-gradient(45deg,' + accent + ' 0 4px, #F8D9C6 4px 8px)' : accent;
+      return { label: partial ? '2026*' : "'" + String(y).slice(2), style: 'width:100%; height:' + v + '%; border-radius:3px 3px 0 0; background:' + bg };
+    });
+    const ew = [100, 84, 72, 63, 55, 48];
+    const experts = ew.map((w) => ({ name: '[Expert name]', inst: '[Institution · Country]', bar: 'height:6px; border-radius:3px; background:' + accent + '; width:' + w + '%' }));
+    const up = 'justify-self:end; font-family:IBM Plex Mono, monospace; font-size:12px; font-weight:600; padding:3px 8px; border-radius:6px; background:#DCF2E3; color:#166534';
+    const flat = 'justify-self:end; font-family:IBM Plex Mono, monospace; font-size:12px; font-weight:600; padding:3px 8px; border-radius:6px; background:#EEF1F4; color:#4B5563';
+    const subs = [
+      { name: 'Brain-computer interfaces', trend: '▲ [x%]', chip: up },
+      { name: 'Neuromodulation', trend: '▲ [x%]', chip: up },
+      { name: 'Neural decoding', trend: '▲ [x%]', chip: up },
+      { name: 'Neurofeedback', trend: '■ [x%]', chip: flat },
+      { name: 'Deep brain stimulation', trend: '■ [x%]', chip: flat },
+      { name: 'Neuroethics', trend: '▲ [x%]', chip: up }
+    ];
+    const cw = [100, 70, 52, 44, 37, 12];
+    const cn = ['[Country 1]', '[Country 2]', '[Country 3]', '[Country 4]', '[Country 5]', 'United Arab Emirates'];
+    const countries = cn.map((n, i) => ({ name: n, gcc: i === 5, bar: 'height:8px; border-radius:4px; width:' + cw[i] + '%; background:' + (i === 5 ? '#14202B' : accent) }));
+    const journals = ['[Journal 1]', '[Journal 2]', '[Journal 3]', '[Journal 4]', '[Journal 5]', '[Journal 6]'].map((n, i) => ({ rank: String(i + 1).padStart(2, '0'), name: n }));
+    return {
+      accent, bars, experts, subs, countries, journals,
+      synonyms: ['brain-computer interface', 'neural implant', 'neuromodulation'],
+      suggested: ['neural interface', 'neuroprosthetics', 'EEG wearable'],
+      papers: [1, 2, 3],
+      next: ['Neurofeedback', 'Deep brain stimulation', 'Neural decoding', 'Closed-loop stimulation', 'Neuroethics', 'Neuroprosthetics']
+    };
+  }
+}
+</script>
+</body>
+</html>
