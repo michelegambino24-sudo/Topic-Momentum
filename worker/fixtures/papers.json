@@ -27,6 +27,48 @@
           "raw_author_name": "Researcher A",
           "raw_affiliation_strings": [],
           "affiliations": []
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A900000002",
+            "display_name": "Researcher B",
+            "orcid": null
+          },
+          "institutions": [],
+          "countries": [],
+          "is_corresponding": false,
+          "raw_author_name": "Researcher B",
+          "raw_affiliation_strings": [],
+          "affiliations": []
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A900000003",
+            "display_name": "Researcher C",
+            "orcid": null
+          },
+          "institutions": [],
+          "countries": [],
+          "is_corresponding": false,
+          "raw_author_name": "Researcher C",
+          "raw_affiliation_strings": [],
+          "affiliations": []
+        },
+        {
+          "author_position": "last",
+          "author": {
+            "id": "https://openalex.org/A900000004",
+            "display_name": "Researcher D",
+            "orcid": null
+          },
+          "institutions": [],
+          "countries": [],
+          "is_corresponding": false,
+          "raw_author_name": "Researcher D",
+          "raw_affiliation_strings": [],
+          "affiliations": []
         }
       ],
       "primary_location": {

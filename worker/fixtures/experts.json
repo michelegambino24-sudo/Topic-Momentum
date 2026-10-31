@@ -1,21 +1,26 @@
 {
   "meta": {
-    "count": 119,
+    "count": 194,
     "db_response_time_ms": 12,
     "page": 1,
     "per_page": 10,
-    "groups_count": 2
+    "groups_count": 3
   },
   "group_by": [
+    {
+      "key": "https://openalex.org/A900000002",
+      "key_display_name": "Researcher B",
+      "count": 90
+    },
     {
       "key": "https://openalex.org/A900000001",
       "key_display_name": "Researcher A",
       "count": 74
     },
     {
-      "key": "https://openalex.org/A900000002",
-      "key_display_name": "Researcher B",
-      "count": 45
+      "key": "https://openalex.org/A900000003",
+      "key_display_name": "Researcher A",
+      "count": 30
     }
   ]
 }

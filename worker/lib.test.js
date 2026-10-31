@@ -78,8 +78,13 @@ test("nine query descriptors use the specified filters, date windows and limits"
   assert(byId.early.filter.endsWith("from_publication_date:2020-01-01,to_publication_date:2022-12-31"));
   assert(byId.late.filter.endsWith("from_publication_date:2023-01-01,to_publication_date:2025-12-31"));
   assert.equal(byId.experts.group_by, "authorships.author.id");
+  assert(byId.experts.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:!repository"));
   assert.equal(byId.countries.group_by, "authorships.countries");
   assert.equal(byId.journals.group_by, "primary_location.source.id");
+  assert(byId.journals.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:journal"));
+  for (const { id, params } of all) {
+    if (!["experts", "journals"].includes(id)) assert(!params.filter.includes("primary_location.source.type:"));
+  }
   assert.equal(byId.keywords.group_by, "keywords.id");
   assert.equal(byId.field.group_by, "primary_topic.field.id");
   assert.equal(byId.field.per_page, "1");
@@ -111,7 +116,10 @@ test("years fill missing years; KPIs exclude current year from growth and last-y
 });
 
 test("response shapers preserve names and counts; zero-early sub-topics have null growth", () => {
-  assert.deepEqual(shapeExperts(fixture("experts"))[0], { name: "Researcher A", openalexUrl: "https://openalex.org/A900000001", count: 74 });
+  assert.deepEqual(shapeExperts(fixture("experts")), [
+    { name: "Researcher A", openalexUrl: "https://openalex.org/A900000001", count: 104 },
+    { name: "Researcher B", openalexUrl: "https://openalex.org/A900000002", count: 90 }
+  ]);
   assert.deepEqual(shapeJournals(fixture("journals"))[0], { name: "Journal of Fictional Moss Logic", count: 160 });
   const items = shapeSubtopics(fixture("early"), fixture("late"));
   assert.equal(items.find((item) => item.name === "Low-gravity logic gates").growth, null);
@@ -120,15 +128,15 @@ test("response shapers preserve names and counts; zero-early sub-topics have nul
   assert.equal(shapeSubtopics(renamed, fixture("late")).find((item) => item.name === "Moss memory arrays").growth, 2);
 });
 
-test("country codes become names and only the six GCC countries are tagged", () => {
+test("country URLs become codes, names come from OpenAlex, and only the six GCC countries are tagged", () => {
   const countries = shapeCountries(fixture("countries"));
-  assert.deepEqual(countries[0], { name: "United States", code: "US", count: 180, gcc: false });
+  assert.deepEqual(countries[0], { name: "United States of America", code: "US", count: 180, gcc: false });
   assert.deepEqual(countries.filter((item) => item.gcc).map((item) => item.code).sort(), ["AE", "BH", "KW", "OM", "QA", "SA"]);
 });
 
 test("papers tolerate missing journals, missing authors, and absent DOI; unsafe links are discarded", () => {
   const papers = shapePapers(fixture("papers"));
-  assert.equal(papers[0].authors, "Researcher A");
+  assert.equal(papers[0].authors, "Researcher A, Researcher B, Researcher C, et al.");
   assert.equal(papers[0].journal, "Journal of Fictional Moss Logic");
   assert.equal(papers[1].journal, "Unknown journal");
   assert.equal(papers[1].authors, "Unknown authors");
@@ -140,6 +148,45 @@ test("papers tolerate missing journals, missing authors, and absent DOI; unsafe 
   assert.equal(shapePapers(input)[0].url, "");
   input.results[1].primary_location = { source: null };
   assert.equal(shapePapers(input)[1].journal, "Unknown journal");
+});
+
+test("expert names are merged before ranking and limiting, with the largest record's link retained", () => {
+  const input = { group_by: Array.from({ length: 12 }, (_, i) => ({ key: `https://openalex.org/A${900000010 + i}`, key_display_name: `Researcher ${i}`, count: 100 - i })) };
+  input.group_by.push({ key: "https://openalex.org/A900000099", key_display_name: "Researcher 11", count: 50 });
+  const experts = shapeExperts(input);
+  assert.equal(experts.length, 10);
+  assert.deepEqual(experts[0], { name: "Researcher 11", openalexUrl: "https://openalex.org/A900000021", count: 139 });
+  assert.equal(experts.filter((item) => item.name === "Researcher 11").length, 1);
+});
+
+test("countries support bare and URL keys, skip invalid keys, retain display names, and cap at fifteen", () => {
+  const mixed = fixture("countries");
+  mixed.group_by[0].key = "us";
+  mixed.group_by[1].key = "https://openalex.org/countries/ae";
+  mixed.group_by[1].key_display_name = "Source-provided country name";
+  for (const key of ["https://untrusted.example/countries/US", "https://openalex.org/not-countries/US", "not-a-country", "unknown", null]) {
+    mixed.group_by.push({ key, key_display_name: "Invalid group", count: 1000 });
+  }
+  const countries = shapeCountries(mixed);
+  assert.equal(countries.length, 7);
+  assert.equal(countries[0].code, "US");
+  assert.equal(countries[1].code, "AE");
+  assert.equal(countries[1].gcc, true);
+  assert.equal(countries[1].name, "Source-provided country name");
+  const input = { group_by: ["US", "AE", "SA", "QA", "KW", "BH", "OM", "JP", "GB", "DE", "FR", "IT", "CA", "CN", "BR", "AU"].map((code, i) => ({ key: `https://openalex.org/countries/${code}`, key_display_name: `Country ${code}`, count: 100 - i })) };
+  assert.equal(shapeCountries(input).length, 15);
+});
+
+test("paper authors keep source order, show up to three names, and add et al. only for longer lists", () => {
+  const data = fixture("papers");
+  const allAuthors = data.results[0].authorships;
+  for (const [count, expected] of [
+    [0, "Unknown authors"], [1, "Researcher A"], [2, "Researcher A, Researcher B"],
+    [3, "Researcher A, Researcher B, Researcher C"], [4, "Researcher A, Researcher B, Researcher C, et al."]
+  ]) {
+    data.results[0].authorships = allAuthors.slice(0, count);
+    assert.equal(shapePapers(data)[0].authors, expected);
+  }
 });
 
 test("keyword suggestions exclude search terms and duplicates, and are capped at six", () => {

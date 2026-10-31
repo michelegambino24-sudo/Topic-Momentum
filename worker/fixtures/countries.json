@@ -8,37 +8,37 @@
   },
   "group_by": [
     {
-      "key": "us",
+      "key": "https://openalex.org/countries/US",
       "key_display_name": "United States of America",
       "count": 180
     },
     {
-      "key": "ae",
+      "key": "https://openalex.org/countries/AE",
       "key_display_name": "United Arab Emirates",
       "count": 70
     },
     {
-      "key": "sa",
+      "key": "https://openalex.org/countries/SA",
       "key_display_name": "Saudi Arabia",
       "count": 65
     },
     {
-      "key": "qa",
+      "key": "https://openalex.org/countries/QA",
       "key_display_name": "Qatar",
       "count": 40
     },
     {
-      "key": "kw",
+      "key": "https://openalex.org/countries/KW",
       "key_display_name": "Kuwait",
       "count": 30
     },
     {
-      "key": "bh",
+      "key": "https://openalex.org/countries/BH",
       "key_display_name": "Bahrain",
       "count": 20
     },
     {
-      "key": "om",
+      "key": "https://openalex.org/countries/OM",
       "key_display_name": "Oman",
       "count": 10
     }

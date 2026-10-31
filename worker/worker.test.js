@@ -46,6 +46,11 @@ test("topic endpoint launches all nine requests in parallel and returns the exac
   assert.equal(data.kpis.total, 1992);
   assert.equal(data.cached, false);
   assert.equal(data.papers[1].journal, "Unknown journal");
+  assert.equal(data.papers[0].authors, "Researcher A, Researcher B, Researcher C, et al.");
+  assert.equal(data.countries[0].name, "United States of America");
+  assert.equal(data.countries[0].code, "US");
+  assert.equal(data.experts[0].count, 104);
+  assert.equal(data.experts.length, 2);
 });
 
 test("missing key gives the required message without any upstream call", async () => {

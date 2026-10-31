@@ -69,11 +69,11 @@ export function buildQueries(query, currentYear) {
   const since2020 = "from_publication_date:2020-01-01";
   return [
     grouped("years", "publication_year", `publication_year:2010-${currentYear}`, 200),
-    grouped("experts", "authorships.author.id", since2020, 10),
+    grouped("experts", "authorships.author.id", `${since2020},primary_location.source.type:!repository`, 10),
     grouped("early", "primary_topic.id", "from_publication_date:2020-01-01,to_publication_date:2022-12-31", 200),
     grouped("late", "primary_topic.id", `from_publication_date:2023-01-01,to_publication_date:${currentYear - 1}-12-31`, 200),
     grouped("countries", "authorships.countries", since2020, 15),
-    grouped("journals", "primary_location.source.id", since2020, 10),
+    grouped("journals", "primary_location.source.id", `${since2020},primary_location.source.type:journal`, 10),
     { id: "papers", params: { filter: `${search},from_publication_date:2022-01-01`, sort: "cited_by_count:desc", per_page: "6", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } },
     grouped("keywords", "keywords.id", since2020, 15),
     grouped("field", "primary_topic.field.id", since2020, 1)
@@ -115,7 +115,17 @@ export function shapeYears(response, currentYear) {
 }
 
 export function shapeExperts(response) {
-  return ranked(response).slice(0, 10).map((item) => ({ name: displayName(item), openalexUrl: entityUrl(item.key, "A"), count: item.count }));
+  const merged = new Map();
+  for (const item of ranked(response)) {
+    const name = displayName(item);
+    if (merged.has(name)) {
+      merged.get(name).count += item.count;
+    } else {
+      // Keep the highest-count record's link as the representative for this name.
+      merged.set(name, { name, openalexUrl: entityUrl(item.key, "A"), count: item.count });
+    }
+  }
+  return [...merged.values()].sort((a, b) => b.count - a.count).slice(0, 10);
 }
 
 export function shapeSubtopics(earlyResponse, lateResponse) {
@@ -124,11 +134,12 @@ export function shapeSubtopics(earlyResponse, lateResponse) {
 }
 
 export function shapeCountries(response) {
-  const names = new Intl.DisplayNames(["en"], { type: "region" });
-  return ranked(response).filter((item) => /^[a-z]{2}$/i.test(String(item.key))).slice(0, 15).map((item) => {
-    const code = String(item.key).toUpperCase();
-    return { name: names.of(code), code, count: item.count, gcc: ["AE", "SA", "QA", "KW", "BH", "OM"].includes(code) };
-  });
+  return ranked(response).flatMap((item) => {
+    const match = String(item.key).match(/^(?:https:\/\/openalex\.org\/countries\/)?([a-z]{2})$/i);
+    if (!match) return [];
+    const code = match[1].toUpperCase();
+    return [{ name: item.key_display_name || code, code, count: item.count, gcc: ["AE", "SA", "QA", "KW", "BH", "OM"].includes(code) }];
+  }).slice(0, 15);
 }
 
 export function shapeJournals(response) {
@@ -140,14 +151,17 @@ export function shapePapers(response) {
     Number.isInteger(item.publication_year) && validCount(item.cited_by_count) && Array.isArray(item.authorships))) {
     throw new Error("Invalid source response");
   }
-  return response.results.slice().sort((a, b) => b.cited_by_count - a.cited_by_count).slice(0, 6).map((item) => ({
-    title: item.display_name,
-    authors: item.authorships.map((entry) => entry.author?.display_name).filter(Boolean).join(", ") || "Unknown authors",
-    year: item.publication_year,
-    journal: item.primary_location?.source?.display_name || "Unknown journal",
-    citations: item.cited_by_count,
-    url: /^https:\/\/doi\.org\/\S+$/i.test(item.doi || "") ? item.doi : entityUrl(item.id, "W")
-  }));
+  return response.results.slice().sort((a, b) => b.cited_by_count - a.cited_by_count).slice(0, 6).map((item) => {
+    const authors = item.authorships.map((entry) => entry.author?.display_name).filter(Boolean);
+    return {
+      title: item.display_name,
+      authors: authors.length ? `${authors.slice(0, 3).join(", ")}${authors.length > 3 ? ", et al." : ""}` : "Unknown authors",
+      year: item.publication_year,
+      journal: item.primary_location?.source?.display_name || "Unknown journal",
+      citations: item.cited_by_count,
+      url: /^https:\/\/doi\.org\/\S+$/i.test(item.doi || "") ? item.doi : entityUrl(item.id, "W")
+    };
+  });
 }
 
 export function suggestedSynonyms(response, query) {
