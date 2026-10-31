@@ -22,6 +22,7 @@ function setup(fetch, saved = null, initialHash = "#search") {
   const hashes = [initialHash];
   let index = 0;
   const location = {
+    protocol: "file:", hostname: "",
     get hash() { return hashes[index]; },
     set hash(value) {
       if (hashes[index] === value) return;

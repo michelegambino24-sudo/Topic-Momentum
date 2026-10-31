@@ -1,16 +1,16 @@
 name = "topic-momentum-meter"
 main = "worker.js"
 compatibility_date = "2026-10-30"
-workers_dev = false
+workers_dev = true
 
 [vars]
-ALLOWED_ORIGIN = ""
+ALLOWED_ORIGIN = "https://michelegambino24-sudo.github.io"
 NEW_TOPICS_PER_DAY = "90"
 
 [[kv_namespaces]]
 binding = "TMM"
 # Local-only placeholder. Replace with the real namespace ID in step 6.
-id = "00000000000000000000000000000000"
+id = "276a9e65cd504d1092c476a7e5eabc9a"
 
 # Development-only bindings are passed with: npx wrangler dev --var ENVIRONMENT:dev
 [dev]
