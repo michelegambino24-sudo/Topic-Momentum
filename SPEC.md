@@ -35,8 +35,10 @@ The Worker only answers requests from the site's origin (CORS allow-list in `ALL
 5. If `parent` is given, record the new topic as a child of the parent in the library index. For a sub-topic, infer the parent from its normalised search terms when omitted; reject a conflicting supplied parent. Preserve children when refreshing a parent, and avoid duplicate child IDs. Sub-topic reports and index entries retain the OpenAlex ID and parent search terms.
 6. On OpenAlex errors return HTTP 502 `{ "error": "source_unavailable" }`. Never return the key or the upstream URL.
 
+Library report links add `cache=only`. In this mode return the stored report even if expired, marking expired reports `"stale": true` and preserving their original `updated` date. If absent, return HTTP 404 `{ "error": "cache_miss", "message": "This saved report is unavailable. Enter the topic and select Measure momentum to search again." }`. Cache-only reads never call OpenAlex, check or change the daily counter, or write KV.
+
 ### GET /api/library
-Returns the library index: `[{ id, name, synonyms, field, momentum, growth, total, updated, parent, children: [ids] }]`.
+Returns the library index: `[{ id, name, synonyms, field, momentum, growth, total, updated, parent, children: [ids], spark: [counts] }]`. Each saved report adds a compact `spark` array containing paper counts for the last 10 complete years, oldest first, relative to the report's `updated` year. Missing years have zero counts; the current partial year is excluded. Older entries without `spark` remain valid.
 
 Store only topic data, relationships and aggregate daily counters. Never store IP addresses or visitor identifiers.
 
@@ -107,6 +109,7 @@ Follow the approved mockup: dark top bar with "Search" and "Library", accent `#C
 **Library page** (`#library`)
 - Field sidebar with counts, search box, sort by Momentum / Name / Last updated.
 - One card per top-level topic: field, momentum badge, mini growth chart, "Sub-topics explored" chips, "Updated <date> · <N> papers". Clicking opens the topic page from the cache.
+- Browsing makes one request to `/api/library`; filtering, sorting and mini charts use this response locally. Draw charts from `spark` only, and omit them for older entries without it. Card and child-chip links use `cache=only`, including reloads and browser history, so opening a saved report never starts a new OpenAlex search.
 
 The Worker URL is set once in `site/config.js` (`WORKER_URL`).
 

@@ -49,6 +49,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       }
       const rawQuery = url.searchParams.get("q") || "";
       const rawSynonyms = url.searchParams.get("syn") || "";
+      const cacheMode = url.searchParams.get("cache");
+      if (cacheMode !== null && cacheMode !== "only") return error("invalid_query", "The cache option is invalid. Use cache=only to open a saved report.", 400);
       if (rawQuery.length > 200 || rawSynonyms.length > 1200) return error("invalid_query", "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters.", 400);
       let query;
       const subtopicId = url.searchParams.get("subtopic") || "";
@@ -72,6 +74,10 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           const date = now();
           const record = await env.TMM.get(key, "json");
           const cached = record?.topic?.id === query.id ? record : null;
+          if (cacheMode === "only") {
+            if (!cached) return error("cache_miss", "This saved report is unavailable. Enter the topic and select Measure momentum to search again.", 404);
+            return respond({ ...cached.topic, cached: true, ...(!cacheIsFresh(cached, date.getTime()) ? { stale: true } : {}) });
+          }
           if (cached && cacheIsFresh(cached, date.getTime())) {
             await indexTopic(env.TMM, { ...cached.topic, ...(query.parent ? { parent: query.parent } : {}) });
             return respond({ ...cached.topic, cached: true });

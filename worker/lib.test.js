@@ -346,3 +346,16 @@ test("library handles child-first searches, preserves links on refresh, and reje
   assert.throws(() => updateLibrary(linked, { ...parent, parent: child.id }));
   assert.throws(() => updateLibrary(linked, { ...parent, parent: parent.id }));
 });
+
+test("library spark contains exactly the last ten complete years of the saved report", () => {
+  const topic = shapeTopic(query, responses(), date);
+  topic.years = [
+    { year: 2015, count: 500 }, { year: 2016, count: 1 },
+    { year: 2020, count: 7 }, { year: 2025, count: 10 }, { year: 2026, count: 999 }
+  ];
+  const entry = updateLibrary([], topic)[0];
+  assert.deepEqual(entry.spark, [1, 0, 0, 0, 7, 0, 0, 0, 0, 10]);
+  assert.equal(entry.spark.length, 10);
+  const nextYear = updateLibrary([entry], { ...topic, updated: "2027-01-01" })[0];
+  assert.deepEqual(nextYear.spark, [0, 0, 0, 7, 0, 0, 0, 0, 10, 999]);
+});

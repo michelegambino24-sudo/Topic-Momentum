@@ -80,10 +80,13 @@ export function updateLibrary(index, topic) {
   if (!Array.isArray(index)) throw new Error("Invalid library index");
   const previous = index.find((entry) => entry.id === topic.id);
   const parent = topic.parent || previous?.parent || null;
+  const lastYear = Number(topic.updated.slice(0, 4)) - 1;
+  const counts = new Map(topic.years.map((item) => [item.year, item.count]));
+  const spark = Array.from({ length: 10 }, (_, i) => counts.get(lastYear - 9 + i) ?? 0);
   const entry = {
     id: topic.id, name: topic.name, synonyms: topic.synonyms,
     field: topic.field, momentum: topic.kpis.momentum, growth: topic.kpis.growth5y,
-    total: topic.kpis.total, updated: topic.updated, parent, children: [],
+    total: topic.kpis.total, updated: topic.updated, parent, children: [], spark,
     ...(topic.subtopicId ? { subtopicId: topic.subtopicId, searchTerms: topic.searchTerms } : {})
   };
   const entries = previous ? index.map((item) => item.id === topic.id ? entry : item) : index.concat(entry);

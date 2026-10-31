@@ -1,4 +1,4 @@
-/* Topic searches use the Worker; the Library remains a sample until step 5. */
+/* Live searches and saved reports share report navigation. */
 (() => {
   "use strict";
   let topic = window.SAMPLE_TOPIC;
@@ -8,7 +8,13 @@
   let requestVersion = 0;
   let requestController;
   const storageKey = "topic-momentum:last-topic";
-  const library = window.SAMPLE_LIBRARY;
+  let library = [];
+  let libraryLoaded = false;
+  let libraryLoading = false;
+  let libraryDirty = false;
+  let libraryRevision = 0;
+  let libraryError = "";
+  let cacheOnlyView = false;
   const $ = (id) => document.getElementById(id);
   const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   const number = (value) => new Intl.NumberFormat("en-US").format(value);
@@ -55,7 +61,7 @@
 
   function renderTopic() {
     $("report-source").textContent = isSample ? "SAMPLE DATA" : "OPENALEX";
-    $("data-notice").textContent = location.hash === "#library" ? "Library sample: fictional topics and illustrative numbers." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
+    $("data-notice").textContent = location.hash === "#library" ? "Saved research reports. Opening a report uses the cache without running a new search." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
     $("topic-input").value = topic.searchTerms?.name || topic.name;
     $("synonyms-input").value = (topic.searchTerms?.synonyms || topic.synonyms).join(", ");
     renderSynonyms();
@@ -64,9 +70,10 @@
     const parentName = topic.searchTerms?.name || topic.parentName || topic.name;
     $("back-parent").hidden = !topic.subtopicId;
     $("back-parent").textContent = `← Back to ${parentName}`;
-    $("back-parent").href = reportHash({ ...topic, name: parentName, subtopicId: null });
+    $("back-parent").href = reportHash({ ...topic, name: parentName, subtopicId: null }, cacheOnlyView);
     $("subtopics-panel").hidden = Boolean(topic.subtopicId);
     if (topic.subtopicId) $("topic-meta").textContent += ` · Under ${parentName}`;
+    if (topic.stale) $("topic-meta").textContent += " · Saved report, older than 7 days";
     const empty = topic.kpis.total === 0;
     $("no-results").hidden = !empty;
     $("report-content").hidden = empty;
@@ -104,23 +111,82 @@
     $("synonym-chips").innerHTML = synonyms().map((term) => `<button class="chip" type="button" data-remove="${escape(term)}" aria-label="Remove synonym ${escape(term)}">${escape(term)} ×</button>`).join("");
   }
 
+  function sparkChart(entry) {
+    if (!Array.isArray(entry.spark) || entry.spark.length !== 10 || !entry.spark.every((count) => Number.isSafeInteger(count) && count >= 0)) return "";
+    const lastYear = Number(entry.updated.slice(0, 4)) - 1;
+    const max = Math.max(1, ...entry.spark);
+    const bars = entry.spark.map((count, i) => {
+      const height = count / max * 64;
+      return `<rect x="${i * 65 + 8}" y="${64 - height}" width="45" height="${height}" rx="2" fill="#C2410C"><title>${lastYear - 9 + i}: ${papers(count)}</title></rect>`;
+    }).join("");
+    return `<svg class="mini-chart" viewBox="0 0 650 64" role="img" aria-label="Papers per year, ${lastYear - 9} to ${lastYear}">${bars}</svg>`;
+  }
+
+  function libraryLink(entry) {
+    const parent = library.find((item) => item.id === entry.parent);
+    const subtopicId = entry.subtopicId || entry.id.match(/\|primary_topic:(T[0-9]+)$/)?.[1];
+    const searchTerms = entry.searchTerms || (subtopicId && parent ? { name: parent.name, synonyms: parent.synonyms } : undefined);
+    return reportHash({ ...entry, subtopicId, searchTerms }, true);
+  }
+
   function renderLibrary() {
+    $("library-page").toggleAttribute("aria-busy", libraryLoading);
+    $("library-error").textContent = libraryError;
+    $("library-error").hidden = !libraryError;
+    $("library-retry").hidden = !libraryError;
+    if (!libraryLoaded) {
+      $("fields").innerHTML = "";
+      $("library-cards").innerHTML = "";
+      $("library-empty").hidden = true;
+      $("library-count").textContent = libraryLoading ? "Loading library…" : "";
+      return;
+    }
     const roots = library.filter((item) => !item.parent);
+    const childrenFor = (item) => item.children.map((id) => library.find((child) => child.id === id)).filter(Boolean);
     const query = $("library-search").value.trim().toLowerCase();
     const fields = ["All fields", ...new Set(roots.map((item) => item.field))];
+    if (!fields.includes(selectedField)) selectedField = "All fields";
     $("fields").innerHTML = fields.map((field) => `<button type="button" class="field-button" data-field="${escape(field)}" aria-pressed="${field === selectedField}"><span>${escape(field)}</span><span class="number">${roots.filter((item) => field === "All fields" || item.field === field).length}</span></button>`).join("");
-    const entries = roots.filter((item) => (selectedField === "All fields" || item.field === selectedField) && [item.name, ...item.synonyms].join(" ").toLowerCase().includes(query));
+    const entries = roots.filter((item) => (selectedField === "All fields" || item.field === selectedField) &&
+      [item.name, ...item.synonyms, ...childrenFor(item).flatMap((child) => [child.name, ...child.synonyms])].join(" ").toLowerCase().includes(query));
     const sort = $("library-sort").value;
-    entries.sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "updated" ? b.updated.localeCompare(a.updated) : (b.growth ?? -Infinity) - (a.growth ?? -Infinity));
-    $("library-count").textContent = `${entries.length} SAMPLE ${entries.length === 1 ? "TOPIC" : "TOPICS"} · ${library.filter((item) => item.parent).length} SUB-TOPICS EXPLORED`;
+    entries.sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "updated" ? b.updated.localeCompare(a.updated) : (b.growth ?? -Infinity) - (a.growth ?? -Infinity) || a.name.localeCompare(b.name));
+    const childCount = entries.reduce((sum, item) => sum + childrenFor(item).length, 0);
+    $("library-count").textContent = libraryLoading ? "Loading library…" : `${entries.length} ${entries.length === 1 ? "TOPIC" : "TOPICS"} · ${childCount} ${childCount === 1 ? "SUB-TOPIC" : "SUB-TOPICS"} EXPLORED`;
+    $("library-empty").textContent = roots.length ? "No topics match. Try a different search or choose All fields." : "The Library is empty. Search for a topic to save its report.";
     $("library-empty").hidden = entries.length !== 0;
     $("library-cards").innerHTML = entries.map((item) => {
-      const children = item.children.map((id) => library.find((child) => child.id === id)).filter(Boolean);
-      return `<article class="library-card"><div class="card-meta"><span class="small-label">${escape(item.field)}</span>${badge(item.momentum)}</div><h2><a href="#search">${escape(item.name)} ↗</a></h2><p class="muted">${percent(item.growth)} annual growth · <span class="sample-label">Sample data</span></p>${item.id === topic.id ? chart(topic.years, true) : ""}<span class="small-label">SUB-TOPICS EXPLORED</span><div class="chips">${children.map((child) => `<button type="button" class="chip" data-explore="${escape(child.name)}">${escape(child.name)} ↗</button>`).join("")}</div><p class="updated">Updated ${escape(item.updated)} · ${papers(item.total)}</p></article>`;
+      const children = childrenFor(item);
+      return `<article class="library-card"><div class="card-meta"><span class="small-label">${escape(item.field)}</span>${badge(item.momentum)}</div><h2><a href="${escape(libraryLink(item))}">${escape(item.name)} ↗</a></h2><p class="muted">${item.growth === null ? "Not enough data for annual growth" : `${percent(item.growth)} annual growth`}</p>${sparkChart(item)}${children.length ? `<span class="small-label">SUB-TOPICS EXPLORED</span><div class="chips">${children.map((child) => `<a class="chip" href="${escape(libraryLink(child))}">${escape(child.name)} ↗</a>`).join("")}</div>` : ""}<p class="updated">Updated ${escape(item.updated)} · ${papers(item.total)}</p></article>`;
     }).join("");
   }
 
-  function reportHash(report) {
+  async function loadLibrary(force = false) {
+    if (libraryLoading) return;
+    if (libraryLoaded && !libraryDirty && !force) { renderLibrary(); return; }
+    libraryLoading = true;
+    const revision = libraryRevision;
+    libraryError = "";
+    renderLibrary();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      let response;
+      try { response = await fetch(window.WORKER_URL.replace(/\/$/, "") + "/api/library", { signal: controller.signal }); }
+      catch { throw new Error("Can’t reach the data service. Start the Worker and try again."); }
+      let data;
+      try { data = await response.json(); }
+      catch { throw new Error("The data service returned an unreadable library. Try again later."); }
+      if (!response.ok) throw new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The Library could not be loaded. Try again later.");
+      if (!Array.isArray(data) || !data.every((item) => item && typeof item.id === "string" && typeof item.name === "string" && typeof item.field === "string" && typeof item.updated === "string" && Array.isArray(item.synonyms) && Array.isArray(item.children))) throw new Error("The data service returned an unreadable library. Try again later.");
+      library = data;
+      libraryLoaded = true;
+      libraryDirty = libraryRevision !== revision;
+    } catch (error) { libraryError = error.message; }
+    finally { clearTimeout(timeout); libraryLoading = false; renderLibrary(); }
+  }
+
+  function reportHash(report, cacheOnly = false) {
     const terms = report.searchTerms || { name: report.name, synonyms: report.synonyms };
     const params = new URLSearchParams({ topic: terms.name });
     if (terms.synonyms.length) params.set("syn", terms.synonyms.join(","));
@@ -128,12 +194,13 @@
       params.set("sub", report.subtopicId);
       params.set("title", report.name);
     }
+    if (cacheOnly) params.set("cache", "only");
     return "#" + params.toString();
   }
 
   function rememberReport() {
-    reports.set(reportHash(topic), topic);
-    try { localStorage.setItem(storageKey, JSON.stringify(topic)); } catch { /* Storage may be unavailable. */ }
+    reports.set(reportHash(topic, cacheOnlyView), topic);
+    try { localStorage.setItem(storageKey, JSON.stringify({ ...topic, _cacheOnlyView: cacheOnlyView })); } catch { /* Storage may be unavailable. */ }
   }
 
   function setLoading(loading) {
@@ -150,15 +217,15 @@
     $("library-nav").toggleAttribute("aria-current", isLibrary);
     $(isLibrary ? "library-nav" : "search-nav").setAttribute("aria-current", "page");
     document.title = `${isLibrary ? "Library" : "Search"} · Topic Momentum Meter`;
-    $("data-notice").textContent = isLibrary ? "Library sample: fictional topics and illustrative numbers." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
-    if (isLibrary) renderLibrary();
+    $("data-notice").textContent = isLibrary ? "Saved research reports. Opening a report uses the cache without running a new search." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
+    if (isLibrary) { if (loadReport) loadLibrary(); else renderLibrary(); }
     if (!loadReport) return;
     const params = new URLSearchParams(location.hash.slice(1));
     if (!params.has("topic")) {
       if (busy) { requestController?.abort(); requestVersion++; setLoading(false); $("status").hidden = true; }
       return;
     }
-    if (!isSample && reportHash(topic) === location.hash) {
+    if (!isSample && reportHash(topic, cacheOnlyView) === location.hash) {
       if (busy) { requestController?.abort(); requestVersion++; setLoading(false); renderTopic(); $("status").hidden = true; }
       return;
     }
@@ -167,6 +234,7 @@
     setLoading(false);
     if (reports.has(location.hash)) {
       topic = reports.get(location.hash);
+      cacheOnlyView = new URLSearchParams(location.hash.slice(1)).get("cache") === "only";
       isSample = false;
       renderTopic();
       rememberReport();
@@ -179,10 +247,10 @@
     const id = params.get("sub");
     if (id && !/^T[0-9]+$/.test(id)) { notify("The sub-topic ID is invalid. Run the parent search again.", true); return; }
     const parent = [name.toLowerCase().trim(), ...terms.map((term) => term.toLowerCase().trim()).sort()].join("|");
-    search(name, terms, id ? { id, name: params.get("title") || id, parent, parentName: name } : null, true);
+    search(name, terms, id ? { id, name: params.get("title") || id, parent, parentName: name } : null, true, params.get("cache") === "only");
   }
 
-  async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false) {
+  async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false, cacheOnly = false) {
     if (busy) return;
     if (!name.trim()) { notify("Enter a research topic and try again.", true); return; }
     setLoading(true);
@@ -195,6 +263,7 @@
       const url = new URL(window.WORKER_URL.replace(/\/$/, "") + "/api/topic");
       url.searchParams.set("q", name.trim());
       url.searchParams.set("syn", terms.join(","));
+      if (cacheOnly) url.searchParams.set("cache", "only");
       if (selection) {
         url.searchParams.set("subtopic", selection.id);
         url.searchParams.set("subtopicName", selection.name);
@@ -213,9 +282,11 @@
       if (version !== requestVersion) return;
       topic = { ...data, searchTerms: { name: name.trim(), synonyms: terms } };
       isSample = false;
+      cacheOnlyView = cacheOnly;
+      if (!cacheOnly) { libraryDirty = true; libraryRevision++; }
       renderTopic();
       rememberReport();
-      if (!fromRoute) location.hash = reportHash(topic);
+      if (!fromRoute) location.hash = reportHash(topic, cacheOnlyView);
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
       else notify("Research data loaded.");
@@ -238,6 +309,7 @@
   $("synonyms-input").addEventListener("input", renderSynonyms);
   $("library-search").addEventListener("input", renderLibrary);
   $("library-sort").addEventListener("change", renderLibrary);
+  $("library-retry").addEventListener("click", () => loadLibrary(true));
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
@@ -292,7 +364,9 @@
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
     if (saved && typeof saved.name === "string" && Array.isArray(saved.years) && saved.kpis) {
-      topic = saved;
+      const { _cacheOnlyView, ...savedTopic } = saved;
+      topic = savedTopic;
+      cacheOnlyView = _cacheOnlyView === true;
       isSample = false;
       renderTopic();
     }
@@ -300,7 +374,7 @@
   renderTopic();
   if (!isSample) {
     rememberReport();
-    if (!location.hash || location.hash === "#search") history.replaceState(null, "", reportHash(topic));
+    if (!location.hash || location.hash === "#search") history.replaceState(null, "", reportHash(topic, cacheOnlyView));
   }
   route();
 })();

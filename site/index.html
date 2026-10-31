@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="styles.css">
   <script defer src="config.js"></script>
   <script defer src="sample-topic.js"></script>
-  <script defer src="sample-library.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -39,11 +38,11 @@
       </div>
     </section>
     <section id="library-page" aria-labelledby="library-heading" hidden>
-      <div class="intro"><p class="eyebrow">A SHARED MAP OF RESEARCH</p><h1 id="library-heading">The topic library.</h1><p>Find a signal worth following. Start with our fictional sample.</p></div>
-      <div class="library-layout"><aside class="panel field-panel"><h2>Research fields</h2><div id="fields"></div></aside><div><div class="library-tools"><label>Search the library<input id="library-search" type="search" placeholder="Find a topic or synonym"></label><label>Sort by<select id="library-sort"><option value="momentum">Momentum</option><option value="name">Name</option><option value="updated">Last updated</option></select></label></div><p id="library-count" class="small-label" role="status"></p><div id="library-cards"></div><p id="library-empty" class="panel" hidden>No sample topics match. Try a different search or choose All fields.</p></div></div>
+      <div class="intro"><p class="eyebrow">A SHARED MAP OF RESEARCH</p><h1 id="library-heading">The topic library.</h1><p>Browse saved research topics and the sub-topics explored within them.</p></div>
+      <div class="library-layout"><aside class="panel field-panel"><h2>Research fields</h2><div id="fields"></div></aside><div><div class="library-tools"><label>Search the library<input id="library-search" type="search" placeholder="Find a topic or synonym"></label><label>Sort by<select id="library-sort"><option value="momentum">Momentum</option><option value="name">Name</option><option value="updated">Last updated</option></select></label></div><p id="library-error" role="status" hidden></p><button id="library-retry" type="button" hidden>Try loading the Library again</button><p id="library-count" class="small-label" role="status"></p><div id="library-cards"></div><p id="library-empty" class="panel" hidden>No topics match. Try a different search or choose All fields.</p></div></div>
     </section>
     <p id="status" class="status" role="status" aria-live="polite" hidden></p>
   </main>
-  <footer><span class="footer-brand">Topic Momentum Meter</span><p>Data: OpenAlex. Searches are cached anonymously to keep the tool free.</p><p>The Library currently shows fictional sample data.</p></footer>
+  <footer><span class="footer-brand">Topic Momentum Meter</span><p>Data: OpenAlex. Searches are cached anonymously to keep the tool free.</p></footer>
 </body>
 </html>

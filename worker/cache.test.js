@@ -185,7 +185,7 @@ test("stored data is topic-only and library responses use the required topic fie
   const app = setup();
   await app.search(req(undefined, { ignored: "visitor@example.test" }, { "CF-Connecting-IP": "192.0.2.42", "User-Agent": "Private visitor marker", Cookie: "identity=hidden" }));
   const index = await (await app.worker.fetch(new Request("http://localhost:8787/api/library"), app.env)).json();
-  assert.deepEqual(Object.keys(index[0]), ["id", "name", "synonyms", "field", "momentum", "growth", "total", "updated", "parent", "children"]);
+  assert.deepEqual(Object.keys(index[0]), ["id", "name", "synonyms", "field", "momentum", "growth", "total", "updated", "parent", "children", "spark"]);
   assert.equal(index[0].total, 1992);
   assert.equal(index[0].parent, null);
   const stored = JSON.stringify([...app.kv.values]);
@@ -223,4 +223,54 @@ test("missing bindings and invalid caps or counters fail closed without source c
   assert.equal((await app.search()).status, 503);
   assert.equal(app.state.calls, 0);
   assert.equal(app.kv.writes.length, 0);
+});
+
+test("cache-only reads serve both fresh and stale reports without counters, index reads, writes or a source key", async () => {
+  const app = setup();
+  const topic = await (await app.search()).json();
+  delete app.env.OPENALEX_KEY;
+  app.env.NEW_TOPICS_PER_DAY = "invalid"; // Cache-only mode bypasses all new-search configuration.
+  const writes = app.kv.writes.length;
+  app.kv.reads.length = 0;
+  const fresh = await app.search(req(undefined, { cache: "only" }));
+  assert.equal(fresh.status, 200);
+  assert.deepEqual(await fresh.json(), { ...topic, cached: true });
+  app.state.time += CACHE_MAX_AGE_MS;
+  const stale = await app.search(req(undefined, { cache: "only" }));
+  assert.equal(stale.status, 200);
+  assert.deepEqual(await stale.json(), { ...topic, cached: true, stale: true });
+  assert.deepEqual(app.kv.reads, ["topic:" + topic.id, "topic:" + topic.id]);
+  assert.equal(app.kv.writes.length, writes);
+  assert.equal(app.state.calls, 11);
+});
+
+test("missing cache-only reports return 404 and never fall back to a source request", async () => {
+  const app = setup();
+  const response = await app.search(req(undefined, { cache: "only" }));
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), {
+    error: "cache_miss", message: "This saved report is unavailable. Enter the topic and select Measure momentum to search again."
+  });
+  assert.equal((await app.search(req(undefined, { cache: "onyl" }))).status, 400);
+  assert.equal((await app.search(req(undefined, { cache: "only", subtopic: "T123|T456" }))).status, 400);
+  assert.equal(app.state.calls, 0);
+  assert.equal(app.kv.writes.length, 0);
+  assert.deepEqual(app.kv.reads, ["topic:lunar moss computing"]);
+});
+
+test("library browsing reads only the index, returning new spark arrays and older entries unchanged", async () => {
+  const app = setup();
+  await app.search();
+  const index = await app.kv.get("library", "json");
+  assert.equal(index[0].spark.length, 10);
+  const legacy = { ...index[0], id: "older topic", name: "older topic" };
+  delete legacy.spark;
+  app.kv.values.set("library", JSON.stringify([...index, legacy]));
+  app.kv.reads.length = 0;
+  const writes = app.kv.writes.length;
+  const response = await app.worker.fetch(new Request("http://localhost:8787/api/library"), app.env);
+  assert.deepEqual(await response.json(), [...index, legacy]);
+  assert.deepEqual(app.kv.reads, ["library"]);
+  assert.equal(app.kv.writes.length, writes);
+  assert.equal(app.state.calls, 11);
 });
