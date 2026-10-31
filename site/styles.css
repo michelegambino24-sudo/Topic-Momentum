@@ -7,3 +7,4 @@
 .library-card{position:relative}.library-card h2 a::after{content:"";position:absolute;inset:0;border-radius:6px}.library-card .chips a{position:relative;z-index:1;display:inline-flex;text-decoration:none;border:1px solid var(--line)}.library-card .chips a:hover{color:var(--accent);border-color:var(--accent)}
 
 .include-label{margin-top:16px}
+.search-intro{margin:20px 0 16px}.search-intro h1{font:600 20px/1.25 var(--heading);color:var(--ink);margin:0 0 6px}.search-intro p{font-size:14px;line-height:1.5;color:var(--muted);margin:0;overflow-wrap:anywhere}
