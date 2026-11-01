@@ -5,7 +5,7 @@ const vm = require("node:vm");
 const source = (name) => readFileSync(__dirname + "/" + name, "utf8");
 const settle = () => new Promise(setImmediate);
 
-function setup(fetch, saved = null, initialHash = "#search") {
+function setup(fetch, saved = null, initialHash = "#search", summaries = null) {
   const nodes = new Map();
   function element() {
     return { value: "", textContent: "", innerHTML: "", hidden: false, disabled: false, dataset: {}, listeners: {},
@@ -18,6 +18,7 @@ function setup(fetch, saved = null, initialHash = "#search") {
   doc.createElement = element;
   doc.body = element();
   const stored = new Map(saved ? [["topic-momentum:last-topic", saved]] : []);
+  if (summaries) stored.set("topic-momentum:my-library", JSON.stringify(summaries));
   let copied;
   const hashes = [initialHash];
   let index = 0;
@@ -120,28 +121,42 @@ test("include quick-fill, searches, suggestions, sub-topics, reload and history 
   assert.equal(calls.length, 3);
 });
 
-test("Library groups a child-first variant and links the complete combination cache-only", async () => {
-  const variant = { ...libraryFixture()[0], id: "neurotechnology|include:fixture", name: "neurotechnology + (child OR children)",
-    parent: "neurotechnology", variant: true, children: [], includeTerms: ["child", "children"],
-    searchTerms: { name: "neurotechnology", synonyms: [], includeTerms: ["child", "children"] } };
-  const app = setup(async () => ({ ok: true, json: async () => [variant] }), null, "#library");
+test("My library persists compact summaries, opens variants cache-only, and removes only locally", async () => {
+  let data;
+  const calls = [];
+  const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => new URL(url).pathname === "/api/library" ? [] : data }; });
+  data = { ...report(app), id: 'neurotechnology|include:["child","children"]', name: "neurotechnology + child / children", includeTerms: ["child", "children"], parent: "neurotechnology" };
+  app.get("topic-input").value = "neurotechnology";
+  app.get("include-input").value = "child,children";
+  app.submit(); await settle();
+  const summaries = JSON.parse(app.stored.get("topic-momentum:my-library"));
+  assert.deepEqual(Object.keys(summaries[0]).sort(), ["id", "name", "parent", "field", "momentum", "growth", "total", "spark", "updated"].sort());
+  assert.equal(summaries[0].spark.length, 10);
+  const restored = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => new URL(url).pathname === "/api/library" ? [] : data }; }, null, "#library", summaries);
   await settle();
-  assert(app.get("library-cards").innerHTML.includes("VARIANTS"));
-  assert(app.get("library-cards").innerHTML.includes("neurotechnology + child / children"));
-  assert(!app.get("library-cards").innerHTML.includes("annual growth"));
-  const params = new URLSearchParams(libraryLinks(app)[0].slice(1));
-  assert.equal(params.get("topic"), "neurotechnology");
+  assert(restored.get("library-cards").innerHTML.includes("neurotechnology + child / children"));
+  const link = libraryLinks(restored)[0];
+  const params = new URLSearchParams(link.slice(1));
   assert.equal(params.get("include"), "child,children");
   assert.equal(params.get("cache"), "only");
-  app.get("library-search").value = "children";
-  app.get("library-search").listeners.input();
-  assert(app.get("library-cards").innerHTML.includes("neurotechnology + child / children"));
+  restored.navigate(link); await settle();
+  assert.equal(calls.at(-1).searchParams.get("cache"), "only");
+  restored.navigate("#library"); await settle();
+  restored.click({ removeReport: data.id });
+  assert.equal(restored.stored.get("topic-momentum:my-library"), "[]");
+  assert.equal(restored.get("library-empty").textContent, "Your library is empty. Search a topic and it will appear here.");
+  const reloaded = setup(() => assert.fail("Reloading the last report stays offline"), restored.stored.get("topic-momentum:last-topic"), link, []);
+  assert.equal(reloaded.stored.get("topic-momentum:my-library"), "[]");
+  restored.navigate(link); await settle();
+  assert.equal(JSON.parse(restored.stored.get("topic-momentum:my-library")).length, 1);
+  assert.equal(calls.filter((url) => url.pathname === "/api/topic").length, 2);
 });
 
 test("live library browses with one request, renders stored spark only, and filters and sorts locally", async () => {
   const calls = [];
   let release;
   const app = setup(async (url) => { calls.push(new URL(url)); return new Promise((resolve) => { release = resolve; }); }, null, "#library");
+  app.get("all-topics-tab").listeners.click();
   assert.equal(app.get("library-count").textContent, "Loading library…");
   assert.equal(app.get("library-empty").hidden, true);
   release({ ok: true, json: async () => libraryFixture() });
@@ -158,6 +173,7 @@ test("live library browses with one request, renders stored spark only, and filt
   assert.match(cards, /Updated 2026-10-01 · 1 paper</);
   assert(!cards.includes("Sample data"));
   assert.match(app.get("fields").innerHTML, /Computer Science<\/span><span class="number">1<\/span>/);
+  app.get("all-topics-tab").listeners.click();
   const links = libraryLinks(app);
   assert(links.every((href) => new URLSearchParams(href.slice(1)).get("cache") === "only"));
   const child = links.map((href) => new URLSearchParams(href.slice(1))).find((params) => params.has("sub"));
@@ -211,7 +227,7 @@ test("library empty and error states use live data, with an explicit retry", asy
   assert.equal(calls, 2);
   assert.equal(app.get("library-error").hidden, true);
   assert.equal(app.get("library-empty").hidden, false);
-  assert.equal(app.get("library-empty").textContent, "The Library is empty. Search for a topic to save its report.");
+  assert.equal(app.get("library-empty").textContent, "Your library is empty. Search a topic and it will appear here.");
   const disconnected = setup(async () => { throw new TypeError("Failed to fetch"); }, null, "#library");
   await settle();
   assert.equal(disconnected.get("library-error").textContent, "Can’t reach the data service. Start the Worker and try again.");
@@ -238,6 +254,7 @@ test("a search completed during an older library request refreshes the index on 
   await settle();
   app.navigate("#library");
   await settle();
+  app.get("all-topics-tab").listeners.click();
   assert.equal(libraryCalls, 2);
   assert.equal(app.get("library-count").textContent, "2 TOPICS · 1 SUB-TOPIC EXPLORED");
 });
@@ -284,6 +301,7 @@ test("library and child links open real Worker cache records without any OpenAle
   await settle();
   assert.equal(calls.length, 1);
   assert.deepEqual(kv.reads, ["library"]);
+  app.get("all-topics-tab").listeners.click();
   const links = libraryLinks(app);
   const childLink = links.find((href) => new URLSearchParams(href.slice(1)).has("sub"));
   app.navigate(childLink);
@@ -557,4 +575,35 @@ test("Back during a pending search preserves the restored report when the old re
   assert.equal(app.get("topic-name").textContent, "fixture topic");
   assert.equal(app.context.location.hash, parentHash);
   assert.equal(app.get("topic-input").disabled, false);
+});
+
+test("new browsers default to an empty personal library and public browsing excludes variants", async () => {
+  const entries = libraryFixture();
+  entries.push({ ...entries[0], id: 'main|include:["private"]', name: "Private variant", variant: true });
+  const app = setup(async () => ({ ok: true, json: async () => entries }), null, "#library");
+  await settle();
+  assert.equal(app.get("library-empty").textContent, "Your library is empty. Search a topic and it will appear here.");
+  assert.equal(app.get("library-cards").innerHTML, "");
+  app.get("all-topics-tab").listeners.click();
+  assert.match(app.get("library-cards").innerHTML, /zeta moss logic/);
+  assert(!app.get("library-cards").innerHTML.includes("Private variant"));
+  assert(!app.get("library-cards").innerHTML.includes("Remove from my library"));
+});
+
+test("personal main topics and sub-topics remain independent cards after removal and reload", async () => {
+  const entries = libraryFixture();
+  const summaries = entries.map(({ synonyms, children, subtopicId, searchTerms, ...summary }) => summary);
+  const fetch = async () => ({ ok: true, json: async () => entries });
+  const app = setup(fetch, null, "#library", summaries);
+  await settle();
+  assert.equal((app.get("library-cards").innerHTML.match(/Remove from my library/g) || []).length, 3);
+  const child = libraryLinks(app).find((link) => new URLSearchParams(link.slice(1)).has("sub"));
+  const params = new URLSearchParams(child.slice(1));
+  assert.equal(params.get("sub"), "T123");
+  assert.equal(params.get("topic"), entries[0].name);
+  app.click({ removeReport: entries[0].id });
+  const restored = setup(fetch, null, "#library", JSON.parse(app.stored.get("topic-momentum:my-library")));
+  await settle();
+  assert.equal((restored.get("library-cards").innerHTML.match(/Remove from my library/g) || []).length, 2);
+  assert.match(restored.get("library-cards").innerHTML, /Orbital processors/);
 });

@@ -1,4 +1,4 @@
-import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport } from "./lib.js";
+import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date()) {
@@ -44,7 +44,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       const storageError = () => error("storage_unavailable", "The topic storage is unavailable. Try again later.", 503);
       if (url.pathname === "/api/library") {
         if (!env.TMM) return storageError();
-        try { return respond(await env.TMM.get("library", "json") || []); }
+        try { return respond(publicLibrary(await env.TMM.get("library", "json") || [])); }
         catch { return storageError(); }
       }
       const rawQuery = url.searchParams.get("q") || "";

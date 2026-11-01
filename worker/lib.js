@@ -319,3 +319,17 @@ export function originAllowed(origin, env) {
     return url.origin === origin && url.protocol === "http:" && url.hostname === "localhost";
   } catch { return false; }
 }
+// Remove filtered reports and their relationships from public browsing only.
+export function publicLibrary(index) {
+  const hidden = new Set(index.filter((item) => item.variant || item.includeTerms?.length || item.searchTerms?.includeTerms?.length || item.id.includes("|include:")).map((item) => item.id));
+  let changed;
+  do {
+    changed = false;
+    for (const item of index) {
+      if (hidden.has(item.parent) && !hidden.has(item.id)) { hidden.add(item.id); changed = true; }
+    }
+  } while (changed);
+  const visible = index.filter((item) => !hidden.has(item.id));
+  const ids = new Set(visible.map((item) => item.id));
+  return visible.map((item) => ({ ...item, children: (item.children || []).filter((id) => ids.has(id)) }));
+}

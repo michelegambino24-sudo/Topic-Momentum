@@ -98,3 +98,26 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   assert.equal((await fetch({ include: "x".repeat(1201) })).status, 400);
   assert.equal(calls, 22);
 });
+
+ test("public library removes variants, filtered descendants and all references without cache writes", async () => {
+  const { publicLibrary } = await import("./lib.js");
+  const kv = new MemoryKV();
+  const base = { id: "main", name: "Main", synonyms: [], field: "Biology", updated: "2026-10-31", parent: null, children: ["child", "secret"] };
+  const index = [base, { ...base, id: "child", parent: "main", children: [] },
+    { ...base, id: "secret", name: "Private combination", variant: true, parent: "main", children: ["filtered-child"] },
+    { ...base, id: "filtered-child", parent: "secret", children: [] },
+    { ...base, id: 'main|include:["private"]', parent: null, children: [] }];
+  const original = JSON.stringify(index);
+  kv.values.set("library", original);
+  const worker = createWorker(() => assert.fail("Public browsing must not call OpenAlex"), () => date);
+  const result = await (await worker.fetch(new Request("http://localhost/api/library"), { TMM: kv })).json();
+  assert.deepEqual(result, publicLibrary(index));
+  assert.deepEqual(result.map((item) => item.id), ["main", "child"]);
+  assert.deepEqual(result[0].children, ["child"]);
+  assert(!JSON.stringify(result).includes("secret"));
+  assert(!JSON.stringify(result).includes("private"));
+  assert.equal(JSON.stringify(index), original);
+  assert.equal(kv.values.get("library"), original);
+  assert.equal(kv.writes.length, 0);
+  assert.deepEqual(kv.reads, ["library"]);
+ });

@@ -8,6 +8,13 @@
   let requestVersion = 0;
   let requestController;
   const storageKey = "topic-momentum:last-topic";
+  const myLibraryKey = "topic-momentum:my-library";
+  let myLibrary = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(myLibraryKey));
+    if (Array.isArray(saved)) myLibrary = saved.filter((item) => item && typeof item.id === "string" && typeof item.name === "string" && typeof item.updated === "string");
+  } catch { /* Storage may be unavailable or damaged. */ }
+  let libraryTab = "my";
   let library = [];
   let libraryLoaded = false;
   let libraryLoading = false;
@@ -15,6 +22,7 @@
   let libraryRevision = 0;
   let libraryError = "";
   let cacheOnlyView = false;
+  let previousRouteHash;
   const $ = (id) => document.getElementById(id);
   const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   const number = (value) => new Intl.NumberFormat("en-US").format(value);
@@ -145,6 +153,16 @@
   }
 
   function libraryLink(entry) {
+    if (libraryTab === "my") {
+      // Rebuild the cache-only request from the normalised report identity.
+      const [name, ...parts] = entry.id.split("|");
+      const includePart = parts.find((part) => part.startsWith("include:"));
+      const subtopicId = parts.find((part) => part.startsWith("primary_topic:"))?.slice(14);
+      const synonyms = parts.filter((part) => !part.startsWith("include:") && !part.startsWith("primary_topic:"));
+      let includeTerms = [];
+      try { if (includePart) includeTerms = JSON.parse(includePart.slice(8)); } catch { /* Older identities may lack include terms. */ }
+      return reportHash({ ...entry, subtopicId, includeTerms, searchTerms: { name, synonyms, includeTerms } }, true);
+    }
     const parent = library.find((item) => item.id === entry.parent);
     const subtopicId = entry.subtopicId || entry.id.match(/\|primary_topic:(T[0-9]+)$/)?.[1];
     const searchTerms = entry.searchTerms || (subtopicId && parent ? { name: parent.name, synonyms: parent.synonyms } : undefined);
@@ -156,45 +174,36 @@
     $("library-error").textContent = libraryError;
     $("library-error").hidden = !libraryError;
     $("library-retry").hidden = !libraryError;
-    if (!libraryLoaded) {
+    $("my-library-tab").setAttribute("aria-selected", String(libraryTab === "my"));
+    $("all-topics-tab").setAttribute("aria-selected", String(libraryTab === "all"));
+    if (!libraryLoaded && libraryTab === "all") {
       $("fields").innerHTML = "";
       $("library-cards").innerHTML = "";
       $("library-empty").hidden = true;
       $("library-count").textContent = libraryLoading ? "Loading library…" : "";
       return;
     }
-    // A variant can be the first saved search; show its main topic as a group,
-    // without inventing an unfiltered report or spending an extra source request.
-    const missingParents = new Map();
-    for (const item of library) {
-      if (item.variant && !library.some((entry) => entry.id === item.parent)) {
-        missingParents.set(item.parent, { id: item.parent, name: item.searchTerms.name, synonyms: item.synonyms,
-          field: item.field, children: library.filter((child) => child.parent === item.parent).map((child) => child.id), groupOnly: true });
-      }
-    }
-    const roots = library.filter((item) => !item.parent).concat([...missingParents.values()]);
-    const childrenFor = (item) => item.children.map((id) => library.find((child) => child.id === id)).filter(Boolean);
+    const visible = library.filter((item) => !item.variant && !item.includeTerms?.length && !item.id.includes("|include:"));
+    const roots = libraryTab === "my" ? myLibrary : visible.filter((item) => !item.parent);
+    const childrenFor = (item) => libraryTab === "my" ? [] : (item.children || []).map((id) => visible.find((child) => child.id === id)).filter(Boolean);
     const query = $("library-search").value.trim().toLowerCase();
     const fields = ["All fields", ...new Set(roots.map((item) => item.field))];
     if (!fields.includes(selectedField)) selectedField = "All fields";
     $("fields").innerHTML = fields.map((field) => `<button type="button" class="field-button" data-field="${escape(field)}" aria-pressed="${field === selectedField}"><span>${escape(field)}</span><span class="number">${roots.filter((item) => field === "All fields" || item.field === field).length}</span></button>`).join("");
     const entries = roots.filter((item) => (selectedField === "All fields" || item.field === selectedField) &&
-      [item.name, ...item.synonyms, ...childrenFor(item).flatMap((child) => [child.name, ...child.synonyms])].join(" ").toLowerCase().includes(query));
+      [item.name, ...(item.synonyms || []), ...childrenFor(item).flatMap((child) => [child.name, ...(child.synonyms || [])])].join(" ").toLowerCase().includes(query));
     const sort = $("library-sort").value;
     entries.sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "updated" ? (b.updated || "").localeCompare(a.updated || "") : (b.growth ?? -Infinity) - (a.growth ?? -Infinity) || a.name.localeCompare(b.name));
     const childCount = entries.reduce((sum, item) => sum + childrenFor(item).length, 0);
-    const relatedLabel = entries.some((item) => childrenFor(item).some((child) => child.variant)) ? "RELATED REPORTS SAVED" : `${childCount === 1 ? "SUB-TOPIC" : "SUB-TOPICS"} EXPLORED`;
+    const relatedLabel = `${childCount === 1 ? "SUB-TOPIC" : "SUB-TOPICS"} EXPLORED`;
     $("library-count").textContent = libraryLoading ? "Loading library…" : `${entries.length} ${entries.length === 1 ? "TOPIC" : "TOPICS"} · ${childCount} ${relatedLabel}`;
-    $("library-empty").textContent = roots.length ? "No topics match. Try a different search or choose All fields." : "The Library is empty. Search for a topic to save its report.";
+    $("library-empty").textContent = roots.length ? "No topics match. Try a different search or choose All fields." : libraryTab === "my" ? "Your library is empty. Search a topic and it will appear here." : "The Library is empty. Search for a topic to save its report.";
     $("library-empty").hidden = entries.length !== 0;
     $("library-cards").innerHTML = entries.map((item) => {
       const children = childrenFor(item);
       const links = (items) => items.map((child) => `<a class="chip" href="${escape(libraryLink(child))}">${escape(child.name)} ↗</a>`).join("");
-      const variants = children.filter((child) => child.variant);
-      const subtopics = children.filter((child) => !child.variant);
-      const variantLinks = variants.length ? `<span class="small-label">VARIANTS</span><div class="chips">${variants.map((variant) => links([variant, ...childrenFor(variant)])).join("")}</div>` : "";
-      if (item.groupOnly) return `<article class="library-card"><span class="small-label">${escape(item.field)}</span><h2>${escape(item.name)}</h2><p class="muted">Filtered reports saved under this topic.</p>${variantLinks}</article>`;
-      return `<article class="library-card"><div class="card-meta"><span class="small-label">${escape(item.field)}</span>${badge(item.momentum)}</div><h2><a href="${escape(libraryLink(item))}">${escape(item.name)} ↗</a></h2><p class="muted">${item.growth === null ? "Not enough data for annual growth" : `${percent(item.growth)} annual growth`}</p>${sparkChart(item)}${variantLinks}${subtopics.length ? `<span class="small-label">SUB-TOPICS EXPLORED</span><div class="chips">${links(subtopics)}</div>` : ""}<p class="updated">Updated ${escape(item.updated)} · ${papers(item.total)}</p></article>`;
+      const subtopics = children;
+      return `<article class="library-card"><div class="card-meta"><span class="small-label">${escape(item.field)}</span>${badge(item.momentum)}</div><h2><a href="${escape(libraryLink(item))}">${escape(item.name)} ↗</a></h2><p class="muted">${item.growth === null ? "Not enough data for annual growth" : `${percent(item.growth)} annual growth`}</p>${sparkChart(item)}${subtopics.length ? `<span class="small-label">SUB-TOPICS EXPLORED</span><div class="chips">${links(subtopics)}</div>` : ""}<p class="updated">Updated ${escape(item.updated)} · ${papers(item.total)}</p>${libraryTab === "my" ? `<button type="button" class="remove-report" data-remove-report="${escape(item.id)}">Remove from my library</button>` : ""}</article>`;
     }).join("");
   }
 
@@ -237,7 +246,20 @@
     return "#" + params.toString();
   }
 
-  function rememberReport() {
+  function persistMyLibrary() {
+    try { localStorage.setItem(myLibraryKey, JSON.stringify(myLibrary)); }
+    catch { notify("Your library could not be saved in this browser. Allow browser storage and try again.", true); }
+  }
+
+  function rememberReport(saveSummary = true) {
+    if (saveSummary) {
+      const lastYear = Number(topic.updated.slice(0, 4)) - 1;
+      const summary = { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field,
+        momentum: topic.kpis.momentum, growth: topic.kpis.growth5y, total: topic.kpis.total,
+        spark: Array.from({ length: 10 }, (_, i) => topic.years.find((year) => year.year === lastYear - 9 + i)?.count || 0), updated: topic.updated };
+      myLibrary = myLibrary.filter((item) => item.id !== summary.id).concat(summary);
+      persistMyLibrary();
+    }
     reports.set(reportHash(topic, cacheOnlyView), topic);
     try { localStorage.setItem(storageKey, JSON.stringify({ ...topic, _cacheOnlyView: cacheOnlyView })); } catch { /* Storage may be unavailable. */ }
   }
@@ -249,6 +271,8 @@
   }
 
   function route(loadReport = true) {
+    const reopeningFromLibrary = previousRouteHash === "#library";
+    previousRouteHash = location.hash;
     const isLibrary = location.hash === "#library";
     $("library-page").hidden = !isLibrary;
     $("topic-page").hidden = isLibrary;
@@ -265,6 +289,7 @@
       return;
     }
     if (!isSample && reportHash(topic, cacheOnlyView) === location.hash) {
+      if (reopeningFromLibrary) rememberReport();
       if (busy) { requestController?.abort(); requestVersion++; setLoading(false); renderTopic(); $("status").hidden = true; }
       return;
     }
@@ -351,12 +376,27 @@
     $("include-input").value = childrenPreset;
     $("include-input").focus();
   });
+  for (const [id, tab] of [["my-library-tab", "my"], ["all-topics-tab", "all"]]) {
+    $(id).addEventListener("click", () => { libraryTab = tab; selectedField = "All fields"; renderLibrary(); });
+    $(id).addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const target = event.key === "Home" ? "my-library-tab" : event.key === "End" ? "all-topics-tab" : tab === "my" ? "all-topics-tab" : "my-library-tab";
+      $(target).click();
+      $(target).focus();
+    });
+  }
   $("library-search").addEventListener("input", renderLibrary);
   $("library-sort").addEventListener("change", renderLibrary);
   $("library-retry").addEventListener("click", () => loadLibrary(true));
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
+    if (button.dataset.removeReport !== undefined) {
+      myLibrary = myLibrary.filter((item) => item.id !== button.dataset.removeReport);
+      persistMyLibrary();
+      renderLibrary();
+    }
     if (button.dataset.remove !== undefined) {
       $("synonyms-input").value = synonyms().filter((term) => term !== button.dataset.remove).join(", ");
       renderSynonyms();
@@ -417,7 +457,7 @@
   } catch { topic = window.SAMPLE_TOPIC; isSample = true; }
   renderTopic();
   if (!isSample) {
-    rememberReport();
+    rememberReport(false);
     if (!location.hash || location.hash === "#search") history.replaceState(null, "", reportHash(topic, cacheOnlyView));
   }
   route();
