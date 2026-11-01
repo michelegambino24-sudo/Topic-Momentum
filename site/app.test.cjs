@@ -45,7 +45,7 @@ function setup(fetch, saved = null, initialHash = "#search", summaries = null) {
   for (const name of ["config.js", "sample-topic.js", "app.js"]) vm.runInContext(source(name), context);
   return { context, stored, navigate(hash) { context.location.hash = hash; }, get: doc.getElementById, copied: () => copied,
     submit() { doc.getElementById("search-form").listeners.submit({ preventDefault() {} }); },
-    click(dataset) { const button = { dataset }; doc.listeners.click({ target: { closest: () => button } }); }
+    click(dataset) { const button = { dataset, setAttribute() {} }; doc.listeners.click({ target: { closest: () => button } }); }
   };
 }
 
@@ -67,6 +67,82 @@ function libraryFixture() {
 
 const libraryLinks = (app) => [...app.get("library-cards").innerHTML.matchAll(/href="([^"]+)"/g)].map((match) => match[1].replaceAll("&amp;", "&"));
 
+test("More options starts collapsed and opens for restored filters, ranges and invalid hidden inputs", async () => {
+  const app = setup(() => assert.fail("No request expected"));
+  assert.equal(app.get("search-options").open, false);
+  app.get("search-options").open = true;
+  app.click({ rangePreset: "2024" });
+  assert.equal(app.get("search-options").open, true);
+  assert.equal(app.get("to-input").value, "");
+  app.get("search-options").open = false;
+  app.get("from-input").value = "1999";
+  app.submit(); await settle();
+  assert.equal(app.get("search-options").open, true);
+  for (const extra of [{ synonyms: ["alternate"] }, { includeTerms: ["child"] }, { from: 2023, to: null }, { from: 2010, to: 2020 }]) {
+    const saved = { ...report(app), synonyms: [], ...extra };
+    const restored = setup(() => assert.fail("Restore must stay offline"), JSON.stringify(saved));
+    assert.equal(restored.get("search-options").open, true);
+  }
+});
+
+test("expert and country expansion reveals every record in place without another request", async () => {
+  let data, calls = 0;
+  const app = setup(async () => { calls++; return { ok: true, json: async () => data }; });
+  data = report(app);
+  data.experts = Array.from({ length: 8 }, (_, i) => ({ name: "Expert " + i, count: 20 - i, openalexUrl: "https://openalex.org/A" + (100 + i) }));
+  data.countries = Array.from({ length: 9 }, (_, i) => ({ name: "Country " + i, count: 30 - i, code: "ZZ", gcc: false }));
+  app.submit(); await settle();
+  const hash = app.context.location.hash;
+  assert.equal((app.get("experts").innerHTML.match(/<li>/g) || []).length, 5);
+  assert.equal((app.get("countries").innerHTML.match(/class="country-row"/g) || []).length, 5);
+  app.get("experts-toggle").listeners.click();
+  app.get("countries-toggle").listeners.click();
+  assert.equal((app.get("experts").innerHTML.match(/<li>/g) || []).length, 8);
+  assert.equal((app.get("countries").innerHTML.match(/class="country-row"/g) || []).length, 9);
+  assert.equal(app.get("experts-toggle").textContent, "Show less");
+  assert.equal(app.context.location.hash, hash);
+  assert.equal(calls, 1);
+  app.get("experts-toggle").listeners.click();
+  assert.equal((app.get("experts").innerHTML.match(/<li>/g) || []).length, 5);
+  assert.equal(data.experts.length, 8);
+  assert.equal(data.countries.length, 9);
+});
+
+test("Save to My library is idempotent, restores a removed report and reports storage failures truthfully", () => {
+  const initial = setup(() => assert.fail("Sample stays offline"));
+  const data = report(initial);
+  const app = setup(() => assert.fail("Saving must stay offline"), JSON.stringify(data));
+  assert.equal(app.get("save-report").textContent, "Save to My library");
+  app.get("save-report").listeners.click();
+  app.get("save-report").listeners.click();
+  assert.equal(JSON.parse(app.stored.get("topic-momentum:my-library")).length, 1);
+  assert.equal(app.get("save-report").textContent, "Saved");
+  app.click({ removeReport: data.id });
+  assert.equal(app.get("save-report").textContent, "Save to My library");
+  app.context.localStorage.setItem = () => { throw new Error("Storage blocked"); };
+  app.get("save-report").listeners.click();
+  assert.equal(app.get("save-report").textContent, "Save to My library");
+  assert.match(app.get("status").textContent, /could not be saved/);
+});
+
+test("line chart marks only the current year as partial and preserves all exact counts", async () => {
+  let data;
+  const year = new Date().getFullYear();
+  const app = setup(async () => ({ ok: true, json: async () => data }));
+  data = { ...report(app), from: year - 2, to: null, years: [{ year: year - 2, count: 17 }, { year: year - 1, count: 24 }, { year, count: 6 }] };
+  app.submit(); await settle();
+  const chart = app.get("year-chart").innerHTML;
+  assert.equal((chart.match(/class="chart-line partial-year"/g) || []).length, 1);
+  assert.match(chart, new RegExp(year + ": 6 papers \\(year to date\\)"));
+  assert(chart.includes((year - 1) + ": 24 papers"));
+  assert(!chart.includes("<rect"));
+  assert.equal((app.get("kpis").innerHTML.match(/class="kpi"/g) || []).length, 3);
+  data = { ...data, to: year - 1 };
+  app.submit(); await settle();
+  assert(!app.get("year-chart").innerHTML.includes('class="chart-line partial-year"'));
+  assert(!app.get("year-chart").innerHTML.includes("year to date)</title>"));
+});
+
 test("open ranges survive combined searches, sub-topics, exploration, cache-only cards, reload and history", async () => {
   const { normaliseQuery, shapeTopic } = await import("../worker/lib.js");
   const names = ["years", "experts", "early", "late", "countries", "uae", "gcc", "journals", "papers", "keywords", "field"];
@@ -87,13 +163,13 @@ test("open ranges survive combined searches, sub-topics, exploration, cache-only
   app.submit(); await settle();
   const mainHash = app.context.location.hash;
   assert.equal(calls[0].get("from"), "2023");
-  assert.equal(app.get("topic-name").textContent, "moss + child / children · since 2023");
+  assert.equal(app.get("topic-name").textContent, "Moss + child / children");
   assert.match(app.get("headline").textContent, /since 2023/);
-  assert.match(app.get("kpis").innerHTML, /GROWTH 2023–2025/);
+  assert.match(app.get("kpis").innerHTML, /Average yearly increase in papers since 2023/);
   assert(!app.get("year-chart").innerHTML.includes("2022:"));
   assert(app.get("year-chart").innerHTML.includes("2023:"));
-  assert.equal(app.get("subtopics-note").textContent, "2024–2025 vs. 2023 · total change");
-  assert.equal(app.get("experts-note").textContent, "Since 2023");
+  assert.equal(app.get("subtopics-note").textContent, "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.");
+  assert.equal(app.get("experts-note").textContent, "Authors with the most papers on this topic since 2023. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted.");
   app.click({ subtopic: "T123", title: "Orbital logic" }); await settle();
   assert.equal(calls.at(-1).get("from"), "2023");
   assert.equal(calls.at(-1).get("include"), "child,children");
@@ -102,16 +178,16 @@ test("open ranges survive combined searches, sub-topics, exploration, cache-only
   assert.equal(calls.at(-1).get("from"), "2023");
   assert.equal(calls.at(-1).get("include"), "child,children");
   app.context.history.back(); await settle();
-  assert.equal(app.get("topic-name").textContent, "Orbital logic + child / children · since 2023");
+  assert.equal(app.get("topic-name").textContent, "Orbital logic + child / children");
   app.context.history.back(); await settle();
   assert.equal(app.context.location.hash, mainHash);
   app.get("from-input").value = "2025";
   app.submit(); await settle();
-  assert.equal(app.get("subtopics-heading").textContent, "Sub-topics by paper count");
-  assert.equal(app.get("subtopics-metric").textContent, "PAPERS");
+  assert.equal(app.get("subtopics-heading").textContent, "Sub-topics");
+  assert.equal(app.get("subtopics-metric").textContent, "Growth");
   assert(!app.get("subtopics").innerHTML.includes("%"));
   assert(!app.get("subtopics").innerHTML.includes("New"));
-  assert.match(app.get("kpis").innerHTML, /LARGEST SUB-TOPIC/);
+  assert.equal(app.get("subtopics").innerHTML.includes("Growth unavailable"), true);
   const restored = setup(() => assert.fail("Restoring stays offline"), app.stored.get("topic-momentum:last-topic"));
   assert.equal(restored.get("from-input").value, "2025");
   app.navigate("#library"); await settle();
@@ -123,7 +199,7 @@ test("open ranges survive combined searches, sub-topics, exploration, cache-only
   assert.equal(calls.at(-1).get("cache"), "only");
   assert.equal(calls.at(-1).get("from"), "2023");
   assert.equal(calls.at(-1).get("include"), "child,children");
-  assert.equal(reopened.get("topic-name").textContent, "Orbital logic + child / children · since 2023");
+  assert.equal(reopened.get("topic-name").textContent, "Orbital logic + child / children");
 });
 
 test("quick-fill years clear To without searching and invalid ranges show plain errors", async () => {
@@ -137,7 +213,7 @@ test("quick-fill years clear To without searching and invalid ranges show plain 
     assert.equal(app.get("to-input").value, "");
   }
   const currentYear = new Date().getFullYear();
-  for (const [from, to, message] of [["", "", "From year"], ["1999", "", "From year"], [String(currentYear + 1), "", "From year"], ["2020", "bad", "To year"], ["2020", String(currentYear + 1), "To year"], ["2025", "2020", "From must be earlier"]]) {
+  for (const [from, to, message] of [["", "", "From year"], ["1999", "", "From year"], [String(currentYear + 1), "", "From year"], ["2020", "bad", "To year"], ["2020", String(currentYear + 1), "To year"], ["2025", "2020", "The From year must be"]]) {
     app.get("from-input").value = from;
     app.get("to-input").value = to;
     app.submit(); await settle();
@@ -166,11 +242,11 @@ test("bounded ranges keep both years across report links, exploration, My librar
   app.get("from-input").value = "2015";
   app.get("to-input").value = "2020";
   app.submit(); await settle();
-  assert.equal(app.get("topic-name").textContent, "moss + child · 2015–2020");
-  assert.match(app.get("headline").textContent, /2015–2020/);
-  assert.match(app.get("kpis").innerHTML, /GROWTH 2015–2020/);
+  assert.equal(app.get("topic-name").textContent, "Moss + child");
+  assert.match(app.get("headline").textContent, /Moss \+ child is a new research topic:/);
+  assert.match(app.get("kpis").innerHTML, /Average yearly increase in papers between 2015 and 2020/);
   assert.equal(app.get("experts-heading").textContent, "Leading experts");
-  assert.equal(app.get("experts-note").textContent, "2015–2020");
+  assert.equal(app.get("experts-note").textContent, "Authors with the most papers on this topic between 2015 and 2020. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted.");
   assert(!app.get("year-chart").innerHTML.includes("2021:"));
   assert(!app.get("year-chart").innerHTML.includes("2014:"));
   assert(app.get("year-chart").innerHTML.includes("2015:"));
@@ -197,7 +273,7 @@ test("bounded ranges keep both years across report links, exploration, My librar
   const reopened = setup(fetch, null, link); await settle();
   assert.equal(calls.at(-1).get("cache"), "only");
   assert.equal(calls.at(-1).get("to"), "2020");
-  assert.equal(reopened.get("topic-name").textContent, "Orbital logic + child · 2015–2020");
+  assert.equal(reopened.get("topic-name").textContent, "Orbital logic + child");
 });
 
 test("CSV exports the chosen period and only its displayed years", async () => {
@@ -217,9 +293,9 @@ test("legacy saved reports keep truthful aggregate labels without fetching or re
   const saved = report(initial);
   const restored = setup(() => assert.fail("Legacy restoration stays offline"), JSON.stringify(saved));
   assert.equal(restored.get("from-input").value, "2010");
-  assert.equal(restored.get("experts-heading").textContent, "Active since 2020");
-  assert.equal(restored.get("journals-note").textContent, "Since 2020");
-  assert.equal(restored.get("papers-period").textContent, "Since 2022");
+  assert.equal(restored.get("experts-heading").textContent, "Leading experts");
+  assert.equal(restored.get("journals-note").textContent, "Journals that published the most papers on this topic. Preprint servers are excluded.");
+  assert.equal(restored.get("papers-period").textContent, "The papers other researchers cite most, published since 2022.");
   assert.equal(JSON.parse(restored.stored.get("topic-momentum:last-topic")).kpis.total, saved.kpis.total);
 });
 
@@ -230,7 +306,7 @@ test("restored reports use compact labels and hide suggestions already in any se
     headline: "Research on epigenetics + (children OR infant) is growing.",
     suggestedSynonyms: ["Children", "epigenetics", "neural implant", "infant", "brain signals"] };
   const app = setup(async () => assert.fail("Restoration must stay offline"), JSON.stringify(saved));
-  assert.equal(app.get("topic-name").textContent, "epigenetics + children / infant");
+  assert.equal(app.get("topic-name").textContent, "Epigenetics + children / infant");
   assert.equal(app.get("headline").textContent, "Research on epigenetics + children / infant is growing.");
   const chips = app.get("suggested-synonyms").innerHTML;
   assert(chips.includes("brain signals"));
@@ -256,7 +332,7 @@ test("include quick-fill, searches, suggestions, sub-topics, reload and history 
   app.submit();
   await settle();
   assert.equal(calls[0].searchParams.get("include"), preset.split(", ").join(","));
-  assert.equal(app.get("topic-name").textContent, "neurotechnology + Children 0–9");
+  assert.equal(app.get("topic-name").textContent, "Neurotechnology + Children 0–9");
   assert(new URLSearchParams(app.context.location.hash.slice(1)).has("include"));
   app.click({ suggest: "brain interface" });
   await settle();
@@ -286,11 +362,12 @@ test("My library persists compact summaries, opens variants cache-only, and remo
   app.get("include-input").value = "child,children";
   app.submit(); await settle();
   const summaries = JSON.parse(app.stored.get("topic-momentum:my-library"));
-  assert.deepEqual(Object.keys(summaries[0]).sort(), ["id", "name", "parent", "field", "momentum", "growth", "total", "spark", "updated"].sort());
-  assert.equal(summaries[0].spark.length, 10);
+  assert.deepEqual(Object.keys(summaries[0]).sort(), ["id", "name", "parent", "field", "momentum", "growth", "total", "spark", "updated", "from", "to", "sparkStartYear", "growthLabel", "growthStartCount", "growthEndCount", "growthStartYear", "growthEndYear"].sort());
+  assert.equal(summaries[0].spark.length, 16);
+  assert.equal(summaries[0].sparkStartYear, 2010);
   const restored = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => new URL(url).pathname === "/api/library" ? [] : data }; }, null, "#library", summaries);
   await settle();
-  assert(restored.get("library-cards").innerHTML.includes("neurotechnology + child / children"));
+  assert(restored.get("library-cards").innerHTML.includes("Must also include: child / children"));
   const link = libraryLinks(restored)[0];
   const params = new URLSearchParams(link.slice(1));
   assert.equal(params.get("include"), "child,children");
@@ -300,7 +377,7 @@ test("My library persists compact summaries, opens variants cache-only, and remo
   restored.navigate("#library"); await settle();
   restored.click({ removeReport: data.id });
   assert.equal(restored.stored.get("topic-momentum:my-library"), "[]");
-  assert.equal(restored.get("library-empty").textContent, "Your library is empty. Search a topic and it will appear here.");
+  assert.equal(restored.get("library-empty").textContent, "Your library is empty. Search for a topic and it will appear here.");
   const reloaded = setup(() => assert.fail("Reloading the last report stays offline"), restored.stored.get("topic-momentum:last-topic"), link, []);
   assert.equal(reloaded.stored.get("topic-momentum:my-library"), "[]");
   restored.navigate(link); await settle();
@@ -319,16 +396,16 @@ test("live library browses with one request, renders stored spark only, and filt
   await settle();
   assert.equal(calls.length, 1);
   assert.equal(calls[0].pathname, "/api/library");
-  assert.equal(app.get("library-count").textContent, "2 TOPICS · 1 SUB-TOPIC EXPLORED");
+  assert.equal(app.get("library-count").textContent, "2 topics, 1 sub-topic, 0 saved versions");
   const cards = app.get("library-cards").innerHTML;
   assert.equal((cards.match(/<article /g) || []).length, 2);
   assert.equal((cards.match(/class="mini-chart"/g) || []).length, 1);
   assert.match(cards, /2016: 0 papers/);
   assert.match(cards, /2025: 9 papers/);
   assert(!cards.includes("2026:"));
-  assert.match(cards, /Updated 2026-10-01 · 1 paper</);
+  assert.match(cards, /Accelerating, 1 paper since 2010\. Updated 1 Oct 2026\./);
   assert(!cards.includes("Sample data"));
-  assert.match(app.get("fields").innerHTML, /Computer Science<\/span><span class="number">1<\/span>/);
+  assert.match(app.get("fields").innerHTML, /Computer Science<\/span><span class="number">2<\/span>/);
   app.get("all-topics-tab").listeners.click();
   const links = libraryLinks(app);
   assert(links.every((href) => new URLSearchParams(href.slice(1)).get("cache") === "only"));
@@ -338,21 +415,21 @@ test("live library browses with one request, renders stored spark only, and filt
   assert.equal(child.get("syn"), "moon circuits");
   app.get("library-sort").value = "name";
   app.get("library-sort").listeners.change();
-  assert(app.get("library-cards").innerHTML.indexOf("alpha spore mapping ↗") < app.get("library-cards").innerHTML.indexOf("zeta moss logic ↗"));
+  assert(app.get("library-cards").innerHTML.indexOf("alpha spore mapping") < app.get("library-cards").innerHTML.indexOf("zeta moss logic"));
   app.get("library-sort").value = "updated";
   app.get("library-sort").listeners.change();
-  assert(app.get("library-cards").innerHTML.indexOf("alpha spore mapping ↗") < app.get("library-cards").innerHTML.indexOf("zeta moss logic ↗"));
+  assert(app.get("library-cards").innerHTML.indexOf("alpha spore mapping") < app.get("library-cards").innerHTML.indexOf("zeta moss logic"));
   app.get("library-sort").value = "momentum";
   app.get("library-sort").listeners.change();
-  assert(app.get("library-cards").innerHTML.indexOf("zeta moss logic ↗") < app.get("library-cards").innerHTML.indexOf("alpha spore mapping ↗"));
+  assert(app.get("library-cards").innerHTML.indexOf("zeta moss logic") < app.get("library-cards").innerHTML.indexOf("alpha spore mapping"));
   app.click({ field: "Biology" });
-  assert.equal(app.get("library-count").textContent, "1 TOPIC · 0 SUB-TOPICS EXPLORED");
+  assert.equal(app.get("library-count").textContent, "1 topic, 0 sub-topics, 0 saved versions");
   assert(!app.get("library-cards").innerHTML.includes("zeta moss logic"));
   app.click({ field: "All fields" });
   for (const text of ["MOON CIRCUITS", "orbital processors"]) {
     app.get("library-search").value = text;
     app.get("library-search").listeners.input();
-    assert.equal(app.get("library-count").textContent, "1 TOPIC · 1 SUB-TOPIC EXPLORED");
+    assert.equal(app.get("library-count").textContent, "1 topic, 1 sub-topic, 0 saved versions");
   }
   app.get("library-search").value = "no matches";
   app.get("library-search").listeners.input();
@@ -383,7 +460,7 @@ test("library empty and error states use live data, with an explicit retry", asy
   assert.equal(calls, 2);
   assert.equal(app.get("library-error").hidden, true);
   assert.equal(app.get("library-empty").hidden, false);
-  assert.equal(app.get("library-empty").textContent, "Your library is empty. Search a topic and it will appear here.");
+  assert.equal(app.get("library-empty").textContent, "Your library is empty. Search for a topic and it will appear here.");
   const disconnected = setup(async () => { throw new TypeError("Failed to fetch"); }, null, "#library");
   await settle();
   assert.equal(disconnected.get("library-error").textContent, "Can’t reach the data service. Start the Worker and try again.");
@@ -412,7 +489,7 @@ test("a search completed during an older library request refreshes the index on 
   await settle();
   app.get("all-topics-tab").listeners.click();
   assert.equal(libraryCalls, 2);
-  assert.equal(app.get("library-count").textContent, "2 TOPICS · 1 SUB-TOPIC EXPLORED");
+  assert.equal(app.get("library-count").textContent, "2 topics, 1 sub-topic, 0 saved versions");
 });
 
 test("saved report links and reloads preserve dates and surface Worker failures without a second request", async () => {
@@ -422,12 +499,12 @@ test("saved report links and reloads preserve dates and surface Worker failures 
   const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => data }; }, null, hash);
   data = { ...report(app), cached: true, stale: true, updated: "2026-09-01" };
   await settle();
-  assert.match(app.get("topic-meta").textContent, /Updated 2026-09-01/);
-  assert.match(app.get("topic-meta").textContent, /older than 7 days/);
+  assert.match(app.get("report-freshness").textContent, /Saved on 1 Sept 2026/);
+  assert.match(app.get("report-freshness").textContent, /may be out of date/);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].searchParams.get("cache"), "only");
   const restored = setup(() => assert.fail("Restoring a report must not fetch"), app.stored.get("topic-momentum:last-topic"), hash);
-  assert.equal(restored.get("topic-name").textContent, "fixture topic");
+  assert.equal(restored.get("topic-name").textContent, "Fixture topic");
   const missingCalls = [];
   const missing = setup(async (url) => {
     missingCalls.push(new URL(url));
@@ -453,7 +530,7 @@ test("opening a Library card backed only by v1 rebuilds through its saved reques
   let sourceCalls = 0;
   const worker = createWorker(async (url) => {
     sourceCalls++;
-    const descriptor = buildQueries(q, 2026).find(({ params }) => Object.entries(params).every(([key, value]) => url.searchParams.get(key) === value));
+    const descriptor = [...buildQueries(q, 2026), ...buildQueries(q, 2026, false)].find(({ params }) => Object.entries(params).every(([key, value]) => url.searchParams.get(key) === value));
     assert(descriptor);
     return Response.json(responses[descriptor.id]);
   }, () => date);
@@ -466,11 +543,11 @@ test("opening a Library card backed only by v1 rebuilds through its saved reques
   app.get("all-topics-tab").listeners.click();
   app.navigate(libraryLinks(app)[0]); await settle();
   assert.equal(requests[1].searchParams.get("cache"), "only");
-  assert.equal(sourceCalls, 11);
-  assert.equal(app.get("topic-name").textContent, "lunar moss computing · since 2010");
-  assert.match(app.get("topic-meta").textContent, /Updated 2026-11-01/);
+  assert.equal(sourceCalls, 13);
+  assert.equal(app.get("topic-name").textContent, "Lunar moss computing");
+  assert.match(app.get("report-freshness").textContent, /Updated 1 Nov 2026/);
   assert.equal(kv.values.get("topic:" + old.id), original);
-  assert(kv.values.has("v2:topic:" + old.id));
+  assert(kv.values.has("v3:topic:" + old.id));
   app.navigate("#library"); await settle();
   assert.equal(requests.filter((url) => url.pathname === "/api/library").length, 2);
 });
@@ -486,7 +563,7 @@ test("library and child links open real Worker cache records without any OpenAle
   const child = shapeTopic({ ...normaliseQuery("lunar moss computing", "moon circuits", "T123"), subtopicName: "Orbital logic", parent: parent.id }, responses, saved);
   const kv = new MemoryKV();
   kv.values.set("library", JSON.stringify(updateLibrary(updateLibrary([], parent), child)));
-  for (const topic of [parent, child]) kv.values.set("v2:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
+  for (const topic of [parent, child]) kv.values.set("v3:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
   const worker = createWorker(() => assert.fail("Library navigation must never call OpenAlex"), () => new Date("2026-11-08T12:00:00Z"));
   const calls = [];
   const app = setup(async (url) => { calls.push(new URL(url)); return worker.fetch(new Request(url), { TMM: kv }); }, null, "#library");
@@ -498,26 +575,26 @@ test("library and child links open real Worker cache records without any OpenAle
   const childLink = links.find((href) => new URLSearchParams(href.slice(1)).has("sub"));
   app.navigate(childLink);
   await settle();
-  assert.equal(app.get("topic-name").textContent, "Orbital logic · since 2010");
+  assert.equal(app.get("topic-name").textContent, "Orbital logic");
   assert.equal(app.get("topic-input").value, "lunar moss computing");
-  assert.match(app.get("topic-meta").textContent, /Under lunar moss computing/);
-  assert.match(app.get("topic-meta").textContent, /older than 7 days/);
+  assert.match(app.get("report-freshness").textContent, /Part of lunar moss computing/);
+  assert.match(app.get("report-freshness").textContent, /may be out of date/);
   assert.equal(calls[1].searchParams.get("subtopic"), "T123");
   assert.equal(calls[1].searchParams.get("cache"), "only");
   const backLink = app.get("back-parent").href;
   assert.equal(new URLSearchParams(backLink.slice(1)).get("cache"), "only");
   app.navigate(backLink);
   await settle();
-  assert.equal(app.get("topic-name").textContent, "lunar moss computing · since 2010");
+  assert.equal(app.get("topic-name").textContent, "Lunar moss computing");
   app.context.history.back();
   await settle();
-  assert.equal(app.get("topic-name").textContent, "Orbital logic · since 2010");
+  assert.equal(app.get("topic-name").textContent, "Orbital logic");
   app.context.history.back();
   await settle();
   assert.equal(app.context.location.hash, "#library");
   assert.equal(calls.length, 3);
   assert.equal(kv.writes.length, 0);
-  assert.deepEqual(kv.reads, ["library", "v2:topic:" + child.id, "v2:topic:" + parent.id]);
+  assert.deepEqual(kv.reads, ["library", "v3:topic:" + child.id, "v3:topic:" + parent.id]);
 });
 
 test("site searches, adds synonyms, sends explore parent, and restores the last successful topic", async () => {
@@ -532,8 +609,8 @@ test("site searches, adds synonyms, sends explore parent, and restores the last 
   await settle();
   assert.equal(calls[0].origin, "http://127.0.0.1:8787");
   assert.equal(calls[0].searchParams.get("syn"), "alternate");
-  assert.match(app.get("regional-counts").textContent, /UAE: 0 papers · GCC: 12 papers/);
-  assert.match(app.get("kpis").innerHTML, /Not enough data/);
+  assert.match(app.get("regional-counts").textContent, /UAE: 0 papers\. GCC: 12 papers/);
+  assert.equal(app.get("kpis").innerHTML.match(/class="kpi"/g).length, 3);
   app.click({ suggest: "extra term" });
   await settle();
   assert(calls[1].searchParams.get("syn").includes("extra term"));
@@ -545,10 +622,10 @@ test("site searches, adds synonyms, sends explore parent, and restores the last 
   assert.equal(calls[2].searchParams.get("subtopic"), "T123");
   assert.equal(calls[2].searchParams.get("subtopicName"), "next topic");
   await app.get("copy-headline").listeners.click();
-  assert.equal(app.copied(), data.headline);
+  assert.equal(app.copied(), app.get("headline").textContent);
   const restored = setup(() => assert.fail("Restoring must not call the network"), app.stored.get("topic-momentum:last-topic"));
-  assert.equal(restored.get("topic-name").textContent, "fixture topic");
-  assert.equal(restored.get("report-source").textContent, "OPENALEX");
+  assert.equal(restored.get("topic-name").textContent, "Fixture topic");
+  assert.equal(restored.get("report-source").textContent, "");
 });
 
 test("site keeps the sample on network failure and shows the required message", async () => {
@@ -556,7 +633,7 @@ test("site keeps the sample on network failure and shows the required message", 
   app.submit();
   await settle();
   assert.equal(app.get("status").textContent, "Can’t reach the data service. Start the Worker and try again.");
-  assert.equal(app.get("report-source").textContent, "SAMPLE DATA");
+  assert.equal(app.get("report-source").textContent, "Sample data");
   assert.equal(app.get("topic-input").disabled, false);
 });
 
@@ -606,7 +683,7 @@ test("sub-topic titles retain parent input terms; typing a new topic clears syno
   app.click({ subtopic: "T123", title: "A long sub-topic title" });
   await settle();
   assert.equal(app.get("topic-name").textContent, "A long sub-topic title");
-  assert.match(app.get("topic-meta").textContent, /Under Parent Topic/);
+  assert.match(app.get("report-freshness").textContent, /Part of Parent Topic/);
   assert.equal(app.get("topic-input").value, "Parent Topic");
   assert.equal(app.get("synonyms-input").value, "first, second");
   const restored = setup(() => assert.fail("No network on restore"), app.stored.get("topic-momentum:last-topic"));
@@ -651,18 +728,18 @@ test("report hashes support parent links, browser Back/Forward, and parent form 
   const childHash = app.context.location.hash;
   assert(childHash.includes("sub=T123"));
   assert.notEqual(childHash, parentHash);
-  assert.equal(app.get("back-parent").textContent, "← Back to Parent Topic");
+  assert.equal(app.get("back-parent").textContent, "Back to Parent Topic");
   assert.equal(app.get("back-parent").href, parentHash);
   assert.equal(app.get("back-parent").hidden, false);
-  assert.match(app.get("topic-meta").textContent, /Under Parent Topic/);
+  assert.match(app.get("report-freshness").textContent, /Part of Parent Topic/);
   assert.equal(app.get("subtopics-panel").hidden, true);
-  assert.match(app.get("kpis").innerHTML, /TOP COUNTRY/);
-  assert.match(app.get("kpis").innerHTML, /Test country/);
+  assert.equal(app.get("countries").innerHTML.includes("Test country"), true);
+  assert.match(app.get("countries").innerHTML, /Test country/);
   assert(!app.get("kpis").innerHTML.includes("FASTEST-GROWING"));
   app.context.history.back();
   await settle();
   assert.equal(app.context.location.hash, parentHash);
-  assert.equal(app.get("topic-name").textContent, "fixture topic");
+  assert.equal(app.get("topic-name").textContent, "Fixture topic");
   assert.equal(app.get("back-parent").hidden, true);
   assert.equal(app.get("subtopics-panel").hidden, false);
   assert.equal(calls.length, 2);
@@ -696,7 +773,7 @@ test("direct child report links load filters and the back link loads the parent"
   assert.equal(app.get("back-parent").hidden, true);
 });
 
-test("child Explore next uses parent plus suggested term as an ordinary text search and hides when empty", async () => {
+test("suggested terms remain in More options and legacy exploration keeps parent filters", async () => {
   const calls = [];
   let data;
   const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => data }; });
@@ -704,8 +781,8 @@ test("child Explore next uses parent plus suggested term as an ordinary text sea
   app.get("topic-input").value = "Parent Topic";
   app.submit();
   await settle();
-  assert.match(app.get("explore-next").innerHTML, /data-next-term="genetics"/);
-  assert.equal(app.get("explore-section").hidden, false);
+  assert.match(app.get("suggested-synonyms").innerHTML, /data-suggest="genetics"/);
+  assert(!source("index.html").includes('id="explore-next"'));
   app.click({ nextTerm: "genetics" });
   await settle();
   assert.equal(calls[1].searchParams.get("q"), "Parent Topic genetics");
@@ -714,11 +791,11 @@ test("child Explore next uses parent plus suggested term as an ordinary text sea
   data.suggestedSynonyms = [];
   app.submit();
   await settle();
-  assert.equal(app.get("explore-section").hidden, true);
+  assert.equal(app.get("topics-section").hidden, true);
   data = { ...report(app), exploreNext: [] };
   app.submit();
   await settle();
-  assert.equal(app.get("explore-section").hidden, true);
+  assert.equal(app.get("topics-section").hidden, true);
 });
 
 test("paper and citation counts use singular and plural wording", async () => {
@@ -733,10 +810,10 @@ test("paper and citation counts use singular and plural wording", async () => {
   await settle();
   assert.match(app.get("year-chart").innerHTML, /2025: 1 paper</);
   assert.match(app.get("year-chart").innerHTML, /2026: 2 papers/);
-  assert.match(app.get("subtopics").innerHTML, /1 paper in late period/);
-  assert.match(app.get("subtopics").innerHTML, /2 papers in late period/);
-  assert.match(app.get("regional-counts").textContent, /UAE: 1 paper · GCC: 2 papers/);
-  assert.match(app.get("papers").innerHTML, /1 CITATION</);
+  assert.match(app.get("subtopics").innerHTML, /Paper count: 1/);
+  assert.match(app.get("subtopics").innerHTML, /Paper count: 2/);
+  assert.match(app.get("regional-counts").textContent, /UAE: 1 paper\. GCC: 2 papers/);
+  assert.match(app.get("papers").innerHTML, /1 citation</);
 });
 
 
@@ -761,10 +838,10 @@ test("Back during a pending search preserves the restored report when the old re
   app.context.history.back();
   await settle();
   assert.equal(app.context.location.hash, parentHash);
-  assert.equal(app.get("topic-name").textContent, "fixture topic");
+  assert.equal(app.get("topic-name").textContent, "Fixture topic");
   release({ ok: true, json: async () => ({ ...data, name: "Stale report" }) });
   await settle();
-  assert.equal(app.get("topic-name").textContent, "fixture topic");
+  assert.equal(app.get("topic-name").textContent, "Fixture topic");
   assert.equal(app.context.location.hash, parentHash);
   assert.equal(app.get("topic-input").disabled, false);
 });
@@ -774,7 +851,7 @@ test("new browsers default to an empty personal library and public browsing excl
   entries.push({ ...entries[0], id: 'main|include:["private"]', name: "Private variant", variant: true });
   const app = setup(async () => ({ ok: true, json: async () => entries }), null, "#library");
   await settle();
-  assert.equal(app.get("library-empty").textContent, "Your library is empty. Search a topic and it will appear here.");
+  assert.equal(app.get("library-empty").textContent, "Your library is empty. Search for a topic and it will appear here.");
   assert.equal(app.get("library-cards").innerHTML, "");
   app.get("all-topics-tab").listeners.click();
   assert.match(app.get("library-cards").innerHTML, /zeta moss logic/);
@@ -788,7 +865,7 @@ test("personal main topics and sub-topics remain independent cards after removal
   const fetch = async () => ({ ok: true, json: async () => entries });
   const app = setup(fetch, null, "#library", summaries);
   await settle();
-  assert.equal((app.get("library-cards").innerHTML.match(/Remove from my library/g) || []).length, 3);
+  assert.equal((app.get("library-cards").innerHTML.match(/class="remove-report"/g) || []).length, 3);
   const child = libraryLinks(app).find((link) => new URLSearchParams(link.slice(1)).has("sub"));
   const params = new URLSearchParams(child.slice(1));
   assert.equal(params.get("sub"), "T123");
@@ -796,6 +873,277 @@ test("personal main topics and sub-topics remain independent cards after removal
   app.click({ removeReport: entries[0].id });
   const restored = setup(fetch, null, "#library", JSON.parse(app.stored.get("topic-momentum:my-library")));
   await settle();
-  assert.equal((restored.get("library-cards").innerHTML.match(/Remove from my library/g) || []).length, 2);
+  assert.equal((restored.get("library-cards").innerHTML.match(/class="remove-report"/g) || []).length, 2);
   assert.match(restored.get("library-cards").innerHTML, /Orbital processors/);
+});
+
+test("all four ranked lists default to five and expand without changing the report", async () => {
+  let data;
+  const app = setup(async () => ({ ok: true, json: async () => data }));
+  data = report(app);
+  data.journals = Array.from({length: 7}, (_, i) => ({name: "Journal " + i, count: 10-i}));
+  data.papers = Array.from({length: 7}, (_, i) => ({title: "Paper " + i, citations: 100-i, authors: "Author A", journal: "Journal A", year: 2025, url: ""}));
+  app.submit(); await settle();
+  for (const [id, pattern] of [["journals", /<li>/g], ["papers", /class="paper"/g]]) {
+    assert.equal([...app.get(id).innerHTML.matchAll(pattern)].length, 5);
+    app.get(id+"-toggle").listeners.click();
+    assert.equal([...app.get(id).innerHTML.matchAll(pattern)].length, 7);
+    assert.equal(app.get(id+"-toggle").textContent, "Show less");
+    app.get(id+"-toggle").listeners.click();
+    assert.equal([...app.get(id).innerHTML.matchAll(pattern)].length, 5);
+  }
+  assert.match(app.get("papers").innerHTML, /class="paper-heading"><h3>Paper 0<\/h3><span class="number citations">100 citations<\/span><\/div><p class="paper-meta">Author A, Journal A, 2025<\/p>/);
+});
+
+test("sub-topic table uses only this report's measured rows with uniform styles", async () => {
+  let data;
+  const app = setup(async () => ({ok:true,json:async()=>data}));
+  data = {...report(app), subtopics: [
+    {id:"T1",name:"Measured",late:70,growth:.5},
+    {id:"T2",name:"New signal",late:30,growth:null},
+    {id:"T3",name:"Missing count",growth:.2},
+    {id:"T4",name:"Missing growth",late:40}],
+    exploreNext:[{id:"T5",name:"Previously explored"}]};
+  app.submit(); await settle();
+  const rows=app.get("subtopics").innerHTML;
+  assert.equal((rows.match(/class="topic-row"/g)||[]).length,2);
+  assert.match(rows,/Measured/); assert.match(rows,/New signal/);
+  assert(!/Previously explored|Missing count|Missing growth|is-fastest|<strong/.test(rows));
+  data.subtopicWindow={countsOnly:true};
+  app.submit(); await settle();
+  assert(!app.get("subtopics").innerHTML.includes('Growth: New'));
+});
+
+test("personal library groups sub-topics and combined range variants, counts actual reports and retains orphans", async () => {
+  const parent={...libraryFixture()[0],from:2010,to:null,sparkStartYear:2010,spark:Array.from({length:16},(_,i)=>i),growthLabel:"Growth 2010–2025"};
+  const sub={...libraryFixture()[2]};
+  const short={...parent,id:parent.id+"|since:2025",parent:parent.id,name:parent.name+" · since 2025",from:2025,sparkStartYear:2025,spark:[17],growthLabel:"5-year growth"};
+  const include={...parent,id:parent.id+'|include:["child"]|range:2015-2020',parent:parent.id,name:parent.name+" + child · 2015–2020",from:2015,to:2020,sparkStartYear:2015,spark:[1,2,3,4,5,6]};
+  const orphan={...sub,id:"orphan|primary_topic:T88",parent:"orphan",name:"Unsaved parent child"};
+  const app=setup(async()=>({ok:true,json:async()=>[]}),null,"#library",[parent,sub,short,include,orphan]);
+  await settle();
+  const rows=app.get("library-cards").innerHTML;
+  assert.equal((rows.match(/class="library-card"/g)||[]).length,2);
+  assert.equal((rows.match(/data-report-id=/g)||[]).length,5);
+  assert.equal(app.get("library-count").textContent,"1 topic, 2 sub-topics, 2 saved versions");
+  assert.match(rows,/Parent topic not saved/);
+  assert.match(rows,/Must also include: child/);
+  assert.match(rows,/Since 2025/);
+  assert.match(rows,/class="growth-basis"[^>]*>5y/);
+  assert.match(rows,/Papers per year, 2015 to 2020/);
+  assert.match(rows,/2025: 17 papers/);
+  assert(!rows.includes("help-trigger"));
+  assert.equal((rows.match(/data-remove-report=/g)||[]).length,5);
+  app.get("library-search").value="Unsaved parent child";
+  app.get("library-search").listeners.input();
+  assert.equal(app.get("library-count").textContent,"0 topics, 1 sub-topic, 0 saved versions");
+  app.get("library-search").value="";app.get("library-search").listeners.input();
+  app.click({removeReport:parent.id});
+  assert.equal(app.get("library-count").textContent,"0 topics, 2 sub-topics, 2 saved versions");
+  assert.equal(JSON.parse(app.stored.get("topic-momentum:my-library")).length,4);
+});
+
+test("saving bounded reports stores only their complete-year spark and its year bounds", async () => {
+  let data;
+  const app=setup(async()=>({ok:true,json:async()=>data}));
+  data={...report(app),id:"fixture topic|range:2024-2025",from:2024,to:2025};
+  app.submit();await settle();
+  const [saved]=JSON.parse(app.stored.get("topic-momentum:my-library"));
+  assert.deepEqual(saved.spark,[570,760]);
+  assert.equal(saved.sparkStartYear,2024);
+  assert.equal(saved.from,2024);assert.equal(saved.to,2025);
+  assert.equal(saved.growthLabel,"5-year growth");
+});
+
+test("tooltips use the approved exact copy and natural period phrases", async () => {
+  const html=source('index.html');
+  for(const text of [
+    'Type a field or technology, like “epigenetics”. We search titles and abstracts.',
+    'Other words for the same topic. Papers that use any of them are counted too.',
+    'Papers must also mention one of these words. Use it to narrow a topic, for example to children.',
+    'Leave empty to include papers up to today.',
+    'Accelerating means 20% or more a year. Growing is 8 to 20%, Stable is 0 to 8%, Cooling means fewer papers each year.',
+    'Find a saved topic by name or synonym.'
+  ]) assert(html.includes(text),text);
+  let data;
+  const app=setup(async()=>({ok:true,json:async()=>data}));
+  for(const [from,to,phrase,expertPhrase]of [[2020,null,'since 2020','since 2020'],[2015,2020,'between 2015 and 2020','between 2015 and 2020'],[2010,null,'since 2010','since 2020']]) {
+    data={...report(app),from,to};app.submit();await settle();
+    const kpis=app.get('kpis').innerHTML;
+    assert(kpis.includes(`Papers on this topic ${phrase}.`));
+    assert(kpis.includes(`Average yearly increase in papers ${phrase}. With fewer than three full years, we use the last five complete years instead.`));
+    assert(kpis.includes('Papers published in the last complete year.'));
+    assert.equal(app.get('experts-note').textContent,`Authors with the most papers on this topic ${expertPhrase}. A starting point for speakers, not a ranking of quality.`);
+    assert.equal(app.get('papers-period').textContent,`The papers other researchers cite most, published ${phrase}.`);
+    assert.equal(app.get('countries-note').textContent,'Where the authors work. A paper with authors in two countries counts for both.');
+    assert.equal(app.get('journals-note').textContent,'Journals that published the most papers on this topic. Preprint servers are excluded.');
+    assert(!kpis.includes('in since'));
+  }
+  const currentYear=new Date().getFullYear();
+  data={...report(app),from:currentYear,to:null,subtopicWindow:{countsOnly:true}};
+  app.submit();await settle();
+  assert(app.get('kpis').innerHTML.includes('Papers published this year to date.'));
+  assert.equal(app.get('subtopics-note').textContent,'Research areas inside this topic, ranked by number of papers. Click a row to open it.');
+});
+
+test("New topic uses the actual range or five-year baseline, persists in summaries and suppresses headline rates", async () => {
+  let data;
+  const app=setup(async(url)=>({ok:true,json:async()=>new URL(url).pathname==='/api/library'?[]:data}));
+  for(const [from,to,baseline,count,newTopic]of [[2020,null,2020,19,true],[2020,null,2020,20,false],[2025,null,2020,19,true],[2025,null,2020,20,false],[2015,2020,2015,0,true]]) {
+    data={...report(app),id:`fixture topic|range:${from}-${to||2026}`,from,to,kpis:{...report(app).kpis,growth:.5,growthLabel:from===2025?'5-year growth':`Growth ${from}–${to||2025}`},headline:'Since 2020, research on fixture topic has been accelerating (+50.0% a year).'};
+    data.years=data.years.map(item=>item.year===baseline?{...item,count}:item);
+    app.submit();await settle();
+    const kpis=app.get('kpis').innerHTML;
+    assert.equal(kpis.includes('>New topic<span class="help"'),newTopic);
+    assert.equal(app.get('headline').textContent.includes('+50%'),!newTopic);
+    const entry=JSON.parse(app.stored.get('topic-momentum:my-library')).find(e=>e.id===data.id);
+    assert.equal(entry.growthStartCount,count);
+    app.navigate('#library');await settle();
+    const row=app.get('library-cards').innerHTML.split('data-report-id="'+data.id+'"')[1].split('</div></article>')[0];
+    assert.equal(row.includes('New topic'),newTopic);
+    app.navigate('#search');await settle();
+  }
+});
+
+test("help opens on mouse hover, keyboard focus and touch tap, closes on exit and Escape", () => {
+  const app=setup(()=>assert.fail('Tooltips stay offline'));
+  const doc=app.context.document,tip=app.get('experts-note');
+  const button={dataset:{help:'experts-note'},setAttribute(){}};
+  const target={closest:()=>button};
+  tip.hidden=true;
+  doc.listeners.pointerover({pointerType:'mouse',target});assert.equal(tip.hidden,false);
+  doc.listeners.keydown({key:'Escape'});assert.equal(tip.hidden,true);
+  doc.listeners.focusin({target});assert.equal(tip.hidden,false);
+  doc.listeners.focusin({target:{closest:()=>null}});assert.equal(tip.hidden,true);
+  doc.listeners.pointerover({pointerType:'touch',target});assert.equal(tip.hidden,true);
+  app.click({help:'experts-note'});assert.equal(tip.hidden,false);
+  doc.listeners.pointerout({target:{closest:()=>({contains:()=>false})},relatedTarget:null});assert.equal(tip.hidden,true);
+});
+
+test("tiny-base thresholds are strict and retain the real endpoint counts", async () => {
+  let data;
+  const app=setup(async(url)=>({ok:true,json:async()=>new URL(url).pathname==='/api/library'?[]:data}));
+  app.get('topic-input').value='fixture topic';
+  for(const [start,end,expected]of [[19,100,true],[20,100,false],[20,1001,true],[20,1000,false],[100,10000,true],[200,10000,false]]) {
+    data={...report(app),id:'fixture topic|since:2020',from:2020,to:null,kpis:{...report(app).kpis,growth:1,momentum:'Accelerating',growthLabel:'Growth 2020–2025'},years:[{year:2020,count:start},{year:2025,count:end}],headline:'Since 2020, research on fixture topic has been accelerating (+100.0% a year).'};
+    app.submit();await settle();
+    const kpis=app.get('kpis').innerHTML;
+    assert.equal(kpis.includes('>New topic<span class="help"'),expected);
+    if(expected){assert(kpis.includes(`${start} papers in 2020 → ${new Intl.NumberFormat('en-US').format(end)} in 2025`));assert.equal(app.get('headline').textContent,`Fixture topic is a new research topic: from ${start} papers in 2020 to ${new Intl.NumberFormat('en-US').format(end)} in 2025. Only 12 papers published since 2020 come from the GCC (0 from the UAE).`);}
+    assert(app.get('momentum-segments').innerHTML.includes('aria-current="true">Accelerating'));
+    app.navigate('#library');await settle();assert.equal(app.get('library-cards').innerHTML.includes('New topic'),expected);app.navigate('#search');await settle();
+  }
+});
+
+test("sub-topic tiny earlier halves show counts, retain percentages at twenty, and suppress both in count-only ranges", async()=>{
+ let data;const app=setup(async()=>({ok:true,json:async()=>data}));
+ data={...report(app),subtopics:[{id:'T1',name:'Nineteen',early:19,late:190,growth:9},{id:'T2',name:'Twenty',early:20,late:200,growth:9},{id:'T3',name:'Cached without early',late:100,growth:99}]};app.submit();await settle();
+ const rows=app.get('subtopics').innerHTML;
+ assert.equal((rows.match(/Earlier half:/g)||[]).length,2);assert(rows.includes('19 → 190'));assert(rows.includes('1 → 100'));assert.equal((rows.match(/Growth: \+900%/g)||[]).length,1);
+ data.subtopicWindow={countsOnly:true};app.submit();await settle();assert(!app.get('subtopics').innerHTML.includes('Growth: New'));assert(!app.get('subtopics').innerHTML.includes('%'));
+});
+
+test("core and fallback notes and tooltips describe each list independently",async()=>{
+ let data;const app=setup(async()=>({ok:true,json:async()=>data}));
+ for(const quality of [{experts:'core',journals:'core'},{experts:'all',journals:'core'},{experts:'core',journals:'all'},{experts:'all',journals:'all'}]){
+  data={...report(app),sourceQuality:quality};app.submit();await settle();
+  for(const id of ['experts','journals']){assert.equal(app.get(id+'-source-note').hidden,quality[id]==='core');assert.equal(app.get(id+'-source-note').textContent,'Includes non-core sources');}
+  assert.equal(app.get('experts-note').textContent,'Authors with the most papers on this topic since 2020. A starting point for speakers, not a ranking of quality.'+(quality.experts==='core'?' Only papers in journals on the Leiden Ranking core list are counted.':''));
+  assert.equal(app.get('journals-note').textContent,quality.journals==='core'?'Journals that published the most papers on this topic. Only journals on the Leiden Ranking core list are counted.':'Journals that published the most papers on this topic. Preprint servers are excluded.');
+ }
+});
+
+test("dynamic proofreading examples match rendered counts, tooltips, metadata and validation",async()=>{
+ const examples=JSON.parse(readFileSync(__dirname+'/../worker/fixtures/copy-catalogue.json','utf8')).dynamic;
+ let data;const app=setup(async()=>({ok:true,json:async()=>data}));
+ app.get('topic-input').value='epigenetics';
+ for(const bounded of [false,true])for(const core of [false,true]){
+  data={...report(app),name:'epigenetics',id:'epigenetics',from:bounded?2015:2020,to:bounded?2020:null,sourceQuality:{experts:core?'core':'all',journals:core?'core':'all'},years:[{year:2015,count:100},{year:2020,count:200},{year:2025,count:2571}],kpis:{...report(app).kpis,growthLabel:bounded?'Growth 2015–2020':'Growth 2020–2025'}};
+  app.submit();await settle();
+  const phrase=bounded?'between 2015 and 2020':'since 2020';
+  assert(app.get('kpis').innerHTML.includes(`Papers on this topic ${phrase}.`));
+  assert(app.get('kpis').innerHTML.includes(`Average yearly increase in papers ${phrase}. With fewer than three full years, we use the last five complete years instead.`));
+  assert.equal(app.get('experts-note').textContent,`Authors with the most papers on this topic ${phrase}. A starting point for speakers, not a ranking of quality.${core?' Only papers in journals on the Leiden Ranking core list are counted.':''}`);
+  assert.equal(app.get('papers-period').textContent,`The papers other researchers cite most, published ${phrase}.`);
+ }
+ const expectedFrom=examples.find(e=>e.label==='From error').example.replace('2026',new Date().getFullYear());
+ app.get('from-input').value='1999';app.submit();await settle();assert.equal(app.get('status').textContent,expectedFrom);
+ app.get('from-input').value='2020';app.get('to-input').value='1999';app.submit();await settle();assert.equal(app.get('status').textContent,examples.find(e=>e.label==='To error').example.replace('2026',new Date().getFullYear()));
+});
+
+test("published connection errors differ from local development errors",async()=>{
+ for(const [protocol,hostname,message]of [['https:','research.example','Can’t reach the data service. Check your connection and try again.'],['http:','localhost','Can’t reach the data service. Start the Worker and try again.'],['http:','127.0.0.1','Can’t reach the data service. Start the Worker and try again.']]){
+  const app=setup(async()=>{throw new TypeError('Failed to fetch')});app.context.location.protocol=protocol;app.context.location.hostname=hostname;
+  app.submit();await settle();assert.equal(app.get('status').textContent,message);
+  app.navigate('#library');await settle();assert.equal(app.get('library-error').textContent,message);
+ }
+});
+
+test("display dates, stale child copy, titles and library metadata use the approved formats",async()=>{
+ let data;const app=setup(async url=>({ok:true,json:async()=>new URL(url).pathname==='/api/library'?[]:data}));
+ app.get('topic-input').value='epigenetics';
+ data={...report(app),id:'epigenetics|since:2020',name:'epigenetics · since 2020',from:2020,to:null,updated:'2026-11-01',kpis:{...report(app).kpis,total:2571,momentum:'Growing'},sourceQuality:{experts:'core',journals:'core'}};
+ app.submit();await settle();assert.equal(app.get('topic-name').textContent,'Epigenetics');assert.equal(app.get('topic-meta').textContent,'Computer Science, since 2020');assert.equal(app.get('report-freshness').textContent,'Updated 1 Nov 2026.');assert.equal(app.get('data-notice').textContent,'Data from OpenAlex. Searches are cached anonymously to keep the tool free.');
+ app.navigate('#library');await settle();assert(app.get('library-cards').innerHTML.includes('Growing, 2,571 papers since 2020. Updated 1 Nov 2026.'));assert.equal(app.get('library-count').textContent,'0 topics, 0 sub-topics, 1 saved version');
+ const saved={...data,name:'Child',subtopicId:'T1',stale:true,updated:'2026-10-01',searchTerms:{name:'epigenetics',synonyms:[]}};
+ const restored=setup(()=>assert.fail('No network on restore'),JSON.stringify(saved));assert.equal(restored.get('report-freshness').textContent,'Saved on 1 Oct 2026, may be out of date. Part of epigenetics.');
+ const empty=setup(async()=>({ok:true,json:async()=>[]}),null,'#library');await settle();empty.get('all-topics-tab').listeners.click();assert.equal(empty.get('library-empty').textContent,'No shared topics yet.');
+});
+
+test("New topic and chart help use exact approved text and remain independently accessible",async()=>{
+ let data;const app=setup(async()=>({ok:true,json:async()=>data}));
+ data={...report(app),from:2020,to:null,kpis:{...report(app).kpis,growth:.3,growthLabel:'Growth 2020–2025'},years:[{year:2020,count:12},{year:2025,count:2571}]};app.submit();await settle();
+ const kpis=app.get('kpis').innerHTML;
+ assert(kpis.includes('aria-label="About New topic"'));assert(kpis.includes('This topic started from very few papers, so a yearly percentage would be misleading. We show the real counts instead.'));assert(kpis.includes('With fewer than three full years, we use the last five complete years instead.'));
+ assert(source('index.html').includes('Papers published each year. The current year isn’t over, so its line is dashed.'));
+});
+
+test("restored bounded reports repair the fallback, headline and existing personal summary",async()=>{
+ const init=setup(()=>assert.fail('Initial sample stays offline'));
+ const data={...report(init),id:'epigenetics|range:2018-2019',name:'epigenetics',from:2018,to:2019,kpis:{...report(init).kpis,growth:9,growth5y:9,momentum:'Accelerating',growthLabel:'5-year growth'},years:[{year:2014,count:100},{year:2018,count:150},{year:2019,count:200},{year:2025,count:10000}],sourceQuality:{experts:'core',journals:'core'}};
+ const oldSummary={id:data.id,name:data.name,from:2018,to:2019,field:data.field,updated:data.updated,growth:9,growthStartYear:2020,growthEndYear:2025};
+ const app=setup(()=>assert.fail('Saved endpoints allow offline repair'),JSON.stringify(data),'#search',[oldSummary]);
+ assert(app.get('kpis').innerHTML.includes('+15%'));assert(app.get('headline').textContent.includes('+15% a year over 2014–2019'));assert(!app.get('headline').textContent.includes('2025'));
+ const [summary]=JSON.parse(app.stored.get('topic-momentum:my-library'));assert.equal(summary.growth,2**.2-1);assert.equal(summary.growthStartYear,2014);assert.equal(summary.growthEndYear,2019);
+});
+
+test("parent navigation capitalises only the initial letter and preserves typed acronyms",async()=>{
+ for(const [name,expected]of [['epigenetics','Back to Epigenetics'],['DNA sequencing','Back to DNA sequencing'],['CRISPR','Back to CRISPR']]){
+  const init=setup(()=>assert.fail('Sample stays offline'));const saved={...report(init),subtopicId:'T1',parentName:name,searchTerms:{name,synonyms:[]}};
+  const app=setup(()=>assert.fail('Restore stays offline'),JSON.stringify(saved));assert.equal(app.get('back-parent').textContent,expected);
+ }
+});
+
+test("restored reports missing the anchored baseline request one automatic rebuild",async()=>{
+ const init=setup(()=>assert.fail('Initial sample stays offline'));
+ const complete={...report(init),id:'epigenetics|range:2012-2013',name:'epigenetics',from:2012,to:2013,searchTerms:{name:'epigenetics',synonyms:[]},kpis:{...report(init).kpis,growth:9,growth5y:9,momentum:'Accelerating',growthLabel:'5-year growth'},years:[{year:2008,count:100},{year:2012,count:150},{year:2013,count:200},{year:2025,count:10000}]};
+ const old={...complete,years:complete.years.filter(item=>item.year>=2010),_cacheOnlyView:true};const calls=[];
+ const app=setup(async url=>{calls.push(new URL(url));return {ok:true,json:async()=>complete}},JSON.stringify(old));
+ await settle();assert.equal(calls.length,1);assert.equal(calls[0].searchParams.get('cache'),'only');assert.equal(calls[0].searchParams.get('from'),'2012');assert.equal(calls[0].searchParams.get('to'),'2013');assert(app.get('headline').textContent.includes('over 2008–2013'));assert(!app.get('headline').textContent.includes('900%'));
+});
+
+test("sub-topic navigation retains the parent acronym casing in its request and back label",async()=>{
+ let data;const calls=[];const app=setup(async url=>{calls.push(new URL(url));return {ok:true,json:async()=>data}});
+ data={...report(app),id:'dna sequencing',name:'dna sequencing',headlineName:'DNA sequencing',searchTerms:{name:'dna sequencing',synonyms:[]}};
+ app.get('topic-input').value='DNA sequencing';app.submit();await settle();
+ data={...report(app),id:'dna sequencing|primary_topic:T1',subtopicId:'T1',name:'Child',parentName:'DNA sequencing',searchTerms:{name:'dna sequencing',synonyms:[]}};
+ app.click({subtopic:'T1',title:'Child'});await settle();assert.equal(calls.at(-1).searchParams.get('parentName'),'DNA sequencing');assert.equal(app.get('back-parent').textContent,'Back to DNA sequencing');
+});
+
+test("sub-topic arrow counts explain tiny bases only in the card tooltip",async()=>{
+ const base='Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it.';
+ const explanation='Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.';
+ let data;const app=setup(async()=>({ok:true,json:async()=>data}));
+ data={...report(app),subtopics:[{id:'T1',name:'Small base',early:2,late:320,growth:159},{id:'T2',name:'Zero base',early:0,late:1000,growth:null},{id:'T3',name:'Established',early:20,late:400,growth:19}]};
+ app.submit();await settle();let rows=app.get('subtopics').innerHTML;
+ assert(rows.includes('2 → 320'));assert(rows.includes('0 → 1,000'));assert(rows.includes('+1900%'));
+ assert(rows.includes('aria-label="Earlier half: 2 papers. Later half: 320 papers."'));
+ assert(!rows.includes('data-help'));assert(!rows.includes('>New<'));assert.equal(app.get('subtopics-note').textContent,base+' '+explanation);
+ assert.equal(data.subtopics[0].growth,159);
+ data.subtopics=[data.subtopics[2],{id:'T4',name:'No current count',early:2,growth:159}];app.submit();await settle();
+ assert(!app.get('subtopics').innerHTML.includes('→'));assert.equal(app.get('subtopics-note').textContent,base);
+ data.subtopics=[{id:'T5',name:'One earlier paper',early:1,late:12,growth:11}];app.submit();await settle();
+ assert(app.get('subtopics').innerHTML.includes('1 → 12'));assert(app.get('subtopics').innerHTML.includes('Earlier half: 1 paper. Later half: 12 papers.'));
+ data.subtopicWindow={countsOnly:true};app.submit();await settle();
+ assert(!app.get('subtopics').innerHTML.includes('→'));assert.equal(app.get('subtopics-note').textContent,'Research areas inside this topic, ranked by number of papers. Click a row to open it.');
 });

@@ -153,3 +153,7 @@ vite.config.ts.timestamp-*
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
+
+# Impeccable local files
+.impeccable/config.local.json
+.impeccable/hook.cache.json

@@ -17,7 +17,7 @@ window.SAMPLE_TOPIC = {
     { year: 2026, count: 640 }
   ],
   kpis: { total: 3645, lastYear: 760, growth5y: 0.33385376024181124, momentum: "Accelerating" },
-  headline: "Research on lunar moss computing is accelerating (+33.4% a year). The fictional field reached 760 papers in 2025, up from 180 in 2020.",
+  headline: "Research on lunar moss computing is accelerating (+33% a year). The fictional field reached 760 papers in 2025, up from 180 in 2020.",
   experts: [
     { name: "Researcher A", openalexUrl: "", count: 142 },
     { name: "Researcher B", openalexUrl: "", count: 118 },

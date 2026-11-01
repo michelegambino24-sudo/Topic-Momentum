@@ -1,4 +1,4 @@
-import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
+import { normaliseQuery, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date()) {
@@ -66,9 +66,10 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       if (subtopicName.length > 300 || parent.length > 2000 || parentName.length > 300) return error("invalid_query", "The sub-topic details are too long. Shorten them and try again.", 400);
       try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId, rawInclude, range.from, range.to, currentYear); }
       catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
+      query.headlineName = rawQuery.trim();
       const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear);
       if (subtopicId && parent && parent !== parentQuery.id) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
-      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentQuery.name });
+      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentName.trim() || rawQuery.trim() });
       else if (query.includeTerms?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
       else if (parent) query.parent = parent;
       if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
@@ -80,12 +81,12 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
         return await locked(env.TMM, key, async () => {
           const date = now();
           const record = await env.TMM.get(key, "json");
-          const cached = record?.topic?.id === query.id ? record : null;
+          const cached = record?.topic?.id === query.id ? { ...record, topic: presentReport(record.topic) } : null;
           // Saved links rebuild automatically when the current-version record is missing.
-          if (cacheMode === "only" && cached) {
+          if (cacheMode === "only" && cached && !cached.topic.growthNeedsRebuild) {
             return respond({ ...cached.topic, cached: true, ...(!cacheIsFresh(cached, date.getTime()) ? { stale: true } : {}) });
           }
-          if (cached && cacheIsFresh(cached, date.getTime())) {
+          if (cached && !cached.topic.growthNeedsRebuild && cacheIsFresh(cached, date.getTime())) {
             await indexTopic(env.TMM, { ...cached.topic, ...(query.parent ? { parent: query.parent } : {}) });
             return respond({ ...cached.topic, cached: true });
           }
@@ -104,11 +105,13 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           });
           if (!admitted) {
             if (cached) {
-              await indexTopic(env.TMM, cached.topic);
+              if (!cached.topic.growthNeedsRebuild) await indexTopic(env.TMM, cached.topic);
               return respond({ ...cached.topic, cached: true, stale: true });
             }
-            const legacy = await env.TMM.get("topic:" + query.id, "json");
-            if (legacy?.topic?.id === query.id) return respond({ ...legacy.topic, cached: true, stale: true });
+            for (const prefix of ["v2:topic:", "topic:"]) {
+              const legacy = await env.TMM.get(prefix + query.id, "json");
+              if (legacy?.topic?.id === query.id) return respond({ ...legacy.topic, cached: true, stale: true });
+            }
             return error("daily_limit", "Daily limit reached. Try again tomorrow or browse the Library.", 429);
           }
           if (admitted === "missing_key") return error("missing_key", "OPENALEX_KEY is not set. Add it to worker/.dev.vars.", 503);
@@ -116,7 +119,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           const timeout = setTimeout(() => controller.abort(), 20000);
           try {
             const dev = env.ENVIRONMENT === "dev";
-            const pending = buildQueries(query, date.getUTCFullYear()).map(async ({ id, params }) => {
+            const requestSource = async ({ id, params }) => {
               let status = null;
               let stage = "url_setup";
               let sourceMessage;
@@ -149,7 +152,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                 });
                 throw new Error("Source unavailable");
               }
-            });
+            };
+            const pending = buildQueries(query, date.getUTCFullYear()).map(requestSource);
             let results;
             if (dev) {
               // Let every query finish so one failure cannot hide other error messages.
@@ -159,6 +163,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
             } else {
               results = await Promise.all(pending);
             }
+            results.push(...await Promise.all(fallbackQueries(query, date.getUTCFullYear(), Object.fromEntries(results)).map(requestSource)));
             const topic = { ...shapeTopic(query, Object.fromEntries(results), date), ...(query.parent ? { parent: query.parent } : {}) };
             try {
               // Fresh for seven days; retain stale fallback reports for at most sixty days.

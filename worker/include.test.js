@@ -51,7 +51,8 @@ test("variant titles and headlines preserve the combination and child-first inde
   const responses = Object.fromEntries(buildQueries(query, 2026).map(({ id }) => [id, fixture(id)]));
   const topic = shapeTopic(query, responses, date);
   assert.equal(topic.name, "neurotechnology + child / children · since 2010");
-  assert(topic.headline.includes(topic.name));
+  assert.match(topic.headline, /^Neurotechnology .* is a new research topic:/);
+  assert(topic.headline.includes("Neurotechnology + child / children"));
   let index = updateLibrary([], topic);
   assert.equal(index[0].variant, true);
   assert.deepEqual(index[0].searchTerms.includeTerms, ["child", "children"]);
@@ -68,7 +69,7 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   let query = normaliseQuery("neurotechnology", "neural implant", "", "children,child");
   const worker = createWorker(async (url) => {
     calls++;
-    const descriptor = buildQueries(query, 2026).find(({ params }) => Object.entries(params).every(([key, value]) => String(value) === url.searchParams.get(key)));
+    const descriptor = [...buildQueries(query, 2026), ...buildQueries(query, 2026, false)].find(({ params }) => Object.entries(params).every(([key, value]) => String(value) === url.searchParams.get(key)));
     assert(descriptor, "All requests must use the exact combined search");
     return Response.json(fixture(descriptor.id));
   }, () => date);
@@ -77,14 +78,14 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   assert.equal(first.status, 200);
   const topic = await first.json();
   assert.equal(kv.writes.length, 3);
-  assert.equal(calls, 11);
+  assert.equal(calls, 13);
   const second = await fetch({ include: " CHILD, children,child " });
   assert.deepEqual(await second.json(), { ...topic, cached: true });
   assert.equal(kv.writes.length, 3);
   const saved = await fetch({ include: "child,children", cache: "only" });
   assert.equal(saved.status, 200);
   assert.equal(kv.writes.length, 3);
-  assert.equal(calls, 11);
+  assert.equal(calls, 13);
   query = normaliseQuery("neurotechnology", "neural implant", "T123", "children,child");
   const child = await fetch({ include: "child,children", subtopic: "T123", subtopicName: "Orbital processors", parent: topic.id });
   assert.equal(child.status, 200);
@@ -94,7 +95,7 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   assert.equal(kv.writes.length, 6);
   assert.equal((await fetch({ include: "child,children", subtopic: "T123", parent: "wrong" })).status, 400);
   assert.equal((await fetch({ include: "x".repeat(1201) })).status, 400);
-  assert.equal(calls, 22);
+  assert.equal(calls, 26);
 });
 
  test("public library removes variants, filtered descendants and all references without cache writes", async () => {

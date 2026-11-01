@@ -79,10 +79,10 @@ test("eleven query descriptors use the specified filters, date windows and limit
   assert(byId.early.filter.endsWith("from_publication_date:2010-01-01,to_publication_date:2017-12-31"));
   assert(byId.late.filter.endsWith("from_publication_date:2018-01-01,to_publication_date:2025-12-31"));
   assert.equal(byId.experts.group_by, "authorships.author.id");
-  assert(byId.experts.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:!repository,type:article|review"));
+  assert(byId.experts.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:!repository,type:article|review,primary_location.source.is_core:true"));
   assert.equal(byId.countries.group_by, "authorships.countries");
   assert.equal(byId.journals.group_by, "primary_location.source.id");
-  assert(byId.journals.filter.endsWith("from_publication_date:2010-01-01,primary_location.source.type:journal,type:article|review"));
+  assert(byId.journals.filter.endsWith("from_publication_date:2010-01-01,primary_location.source.type:journal,type:article|review,primary_location.source.is_core:true"));
   for (const { id, params } of all) {
     if (!["experts", "journals"].includes(id)) assert(!params.filter.includes("primary_location.source.type:"));
   }
@@ -112,8 +112,8 @@ test("years fill missing years; KPIs exclude current year from growth and last-y
   assert.equal(topic.cached, false);
   assert.equal(topic.updated, "2026-10-31");
   assert.equal(topic.field, "Computer Science");
-  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "from", "to", "subtopicWindow", "searchTerms", "field", "updated", "years", "kpis", "headline", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
-  assert(topic.headline.includes("249 papers were published in 2025"));
+  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "from", "to", "subtopicWindow", "searchTerms", "field", "updated", "years", "kpis", "headline", "sourceQuality", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
+  assert(topic.headline.includes("to 249 in 2025."));
 });
 
 test("response shapers preserve names and counts; zero-early sub-topics have null growth", () => {
@@ -214,11 +214,11 @@ test("empty responses produce complete zero-valued topic; malformed responses th
   assert.deepEqual(topic.kpis, { total: 0, lastYear: 0, growth5y: null, growth: null, growthLabel: "Growth 2010–2025", momentum: "Not enough data" });
   assert.equal(topic.field, "Unclassified");
   for (const field of ["experts", "subtopics", "countries", "journals", "papers", "suggestedSynonyms", "exploreNext"]) assert.deepEqual(topic[field], []);
-  assert(topic.headline.includes("not enough data"));
+  assert(topic.headline.includes("is a new research topic:"));
   assert.throws(() => shapeYears({}, 2026));
   assert.throws(() => shapePapers({ results: [{}] }));
   assert.throws(() => shapeYears({ group_by: [{ key: "2020", key_display_name: "2020", count: -1 }] }, 2026));
-  assert(headline("moss", { growth5y: -.1, momentum: "Cooling", lastYear: 20 }, 2025).includes("-10.0%"));
+  assert(headline("moss", { growth5y: -.1, momentum: "Cooling", lastYear: 20 }, 2025).includes("−10%"));
 });
 
 test("top lists obey their caps and unknown groups are ignored", () => {
@@ -290,14 +290,14 @@ test("headline GCC share uses only years since 2020, including the current year"
   data.gcc = { meta: { count: 5 } };
   assert(!shapeTopic({ ...query, from: 2020 }, data, date).headline.includes("Only")); // Exactly 5%.
   data.gcc.meta.count = 4;
-  assert(shapeTopic({ ...query, from: 2020 }, data, date).headline.endsWith("Only 4 papers since 2020 come from the GCC (2 from the UAE)."));
+  assert(shapeTopic({ ...query, from: 2020 }, data, date).headline.endsWith("Only 4 papers published since 2020 come from the GCC (2 from the UAE)."));
   data.gcc.meta.count = 6;
   assert(!shapeTopic({ ...query, from: 2020 }, data, date).headline.includes("Only"));
   data.years = { group_by: [] };
   data.gcc.meta.count = 0;
   assert(!shapeTopic({ ...query, from: 2020 }, data, date).headline.includes("Only"));
   const kpis = { growth5y: .1, lastYear: 100, momentum: "Growing" };
-  assert(headline("moss", kpis, 2025, { gcc: 25, uae: 11 }, 1000).endsWith("Only 25 papers since 2020 come from the GCC (11 from the UAE)."));
+  assert(headline("moss", kpis, 2025, { gcc: 25, uae: 11 }, 1000).endsWith("Only 25 papers published since 2020 come from the GCC (11 from the UAE)."));
 });
 
 
@@ -312,8 +312,8 @@ test("only experts, journals and papers queries restrict work types to articles 
 test("headlines use singular paper and verb for one paper", () => {
   for (const rate of [null, .1]) {
     const text = headline("moss", { growth5y: rate, lastYear: 1, momentum: "Growing" }, 2025, { gcc: 1, uae: 1 }, 100);
-    assert(text.includes("1 paper was published in 2025."));
-    assert(text.includes("Only 1 paper since 2020 comes from the GCC (1 from the UAE)."));
+    assert(text.includes("In 2025, 1 paper was published."));
+    assert(text.includes("Only 1 paper published since 2020 comes from the GCC (1 from the UAE)."));
     assert(!text.includes("1 papers"));
   }
 });
@@ -347,15 +347,73 @@ test("library handles child-first searches, preserves links on refresh, and reje
   assert.throws(() => updateLibrary(linked, { ...parent, parent: parent.id }));
 });
 
-test("library spark contains exactly the last ten complete years of the saved report", () => {
+test("library spark stores all complete years in the selected range with explicit bounds", () => {
   const topic = shapeTopic(query, responses(), date);
   topic.years = [
     { year: 2015, count: 500 }, { year: 2016, count: 1 },
     { year: 2020, count: 7 }, { year: 2025, count: 10 }, { year: 2026, count: 999 }
   ];
   const entry = updateLibrary([], topic)[0];
-  assert.deepEqual(entry.spark, [1, 0, 0, 0, 7, 0, 0, 0, 0, 10]);
-  assert.equal(entry.spark.length, 10);
+  assert.deepEqual(entry.spark, [500, 1, 0, 0, 0, 7, 0, 0, 0, 0, 10]);
+  assert.equal(entry.spark.length, 11);
+  assert.equal(entry.sparkStartYear, 2015);
+  assert.equal(entry.from, 2010);
+  assert.equal(entry.to, null);
   const nextYear = updateLibrary([entry], { ...topic, updated: "2027-01-01" })[0];
-  assert.deepEqual(nextYear.spark, [0, 0, 0, 7, 0, 0, 0, 0, 10, 999]);
+  assert.deepEqual(nextYear.spark, [500, 1, 0, 0, 0, 7, 0, 0, 0, 0, 10, 999]);
+});
+
+test("headlines read naturally, preserve proper names and use range-specific numbers", async () => {
+  const {headline, headlineTopicName, reportSummary, presentReport}=await import('./lib.js');
+  const kpis={growth:.089,growth5y:.1,growthLabel:"Growth 2020–2025",momentum:"Growing",lastYear:23382,total:50000};
+  assert.equal(headline("Epigenetics · since 2020",kpis,2025,{gcc:2043,uae:447},50000,{from:2020,to:null}),"Since 2020, research on epigenetics has been growing (+8.9% a year). In 2025, 23,382 papers were published. Only 2,043 papers published since 2020 come from the GCC (447 from the UAE).");
+  assert.equal(headlineTopicName("CRISPR and Alzheimer's Disease"),"CRISPR and Alzheimer's disease");
+  assert.match(headline("Epigenetics",kpis,2020,null,1,{from:2015,to:2020}),/^From 2015 to 2020, research on epigenetics was growing/);
+  const topic=shapeTopic(query,responses(),date);
+  const refreshed=presentReport({...topic,headline:"Obsolete presentation."});
+  assert.match(refreshed.headline,/^Lunar moss computing is a new research topic:/);
+  assert.deepEqual(refreshed.years,topic.years);
+  const summary=reportSummary({...topic,from:2024,to:2025,kpis:{...topic.kpis,growthLabel:"5-year growth"}});
+  assert.equal(summary.sparkStartYear,2024);assert.equal(summary.spark.length,2);
+  assert.equal(summary.growthLabel,"5-year growth");
+  const childQuery={...query,subtopicId:"T123",subtopicName:"DNA Sequencing",headlineName:"Parent CRISPR"};
+  const child=shapeTopic(childQuery,responses(),date);
+  assert(presentReport(child).headline.includes("DNA sequencing"));
+  assert(!presentReport(child).headline.includes("Parent CRISPR"));
+});
+
+test("growth baselines mark tiny starting counts without changing CAGR or momentum", async () => {
+  const {growthStartCount,reportSummary,presentReport}=await import('./lib.js');
+  for(const [from,to,baseline]of [[2020,null,2020],[2025,null,2020],[2015,2020,2015]]) {
+    for(const count of [0,19,20]) {
+      const data=responses();data.years={group_by:[{key:String(baseline),key_display_name:String(baseline),count},{key:'2025',key_display_name:'2025',count:200}]};
+      const q=normaliseQuery('moss','','','',from,to??'',2026);
+      const report=shapeTopic(q,data,date);
+      assert.equal(growthStartCount(report),count);
+      assert.equal(reportSummary(report).growthStartCount,count);
+      assert.equal(report.headline.includes('is a new research topic:'),count<20);
+      assert.equal(presentReport(report).headline,report.headline);
+      assert.equal(report.kpis.momentum,momentum(report.kpis.growth));
+    }
+  }
+});
+
+test("core filters and independent fallbacks preserve every unrelated query",async()=>{
+ const {fallbackQueries,journalName,isNewTopic}=await import('./lib.js');
+ const core=buildQueries(query,2026),all=buildQueries(query,2026,false);
+ for(let i=0;i<core.length;i++)if(['experts','journals'].includes(core[i].id))assert.equal(core[i].params.filter,all[i].params.filter+',primary_location.source.is_core:true');else assert.deepEqual(core[i],all[i]);
+ const response=(size,type)=>({group_by:Array.from({length:size},(_,i)=>({key:`https://openalex.org/${type}${i+1}`,key_display_name:'Name '+i,count:10}))});
+ for(const [experts,journals,expected]of [[5,5,[]],[4,5,['expertsAll']],[5,4,['journalsAll']],[4,4,['expertsAll','journalsAll']]]){
+  const qs=fallbackQueries(query,2026,{experts:response(experts,'A'),journals:response(journals,'S')});assert.deepEqual(qs.map(q=>q.id),expected);assert(qs.every(q=>!q.params.filter.includes('is_core')));
+ }
+ assert.equal(journalName('JOURNAL OF NEURAL ENGINEERING'),'Journal of Neural Engineering');
+ assert.equal(journalName('IEEE TRANSACTIONS ON BIOMEDICAL ENGINEERING'),'IEEE Transactions on Biomedical Engineering');
+ assert.equal(journalName('eLife'),'eLife');assert.equal(journalName('Nature'),'Nature');
+ for(const [start,end,expected]of [[19,100,true],[20,1000,false],[20,1001,true],[100,10000,true],[200,10000,false]])assert.equal(isNewTopic({growthStartCount:start,growthEndCount:end}),expected);
+});
+
+test("headline percentages use the approved precision and actual fallback years",async()=>{
+ const {formatPercent}=await import('./lib.js');
+ for(const [value,text]of [[.3,'+30%'],[.1,'+10%'],[.089,'+8.9%'],[-.1,'−10%'],[-.089,'−8.9%'],[0,'+0.0%']])assert.equal(formatPercent(value),text);
+ assert.equal(headline('moss',{growth:.3,growthLabel:'5-year growth',growthStartYear:2020,growthEndYear:2025,momentum:'Accelerating',lastYear:1},2024,null,10,{from:2024,to:2024}),'From 2024 to 2024, research on moss was accelerating (+30% a year over 2020–2025). In 2024, 1 paper was published.');
 });

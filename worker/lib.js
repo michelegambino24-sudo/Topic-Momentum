@@ -58,9 +58,9 @@ export function normaliseSubtopicId(value) {
 
 export function validateRange(from = 2010, to = "", currentYear = new Date().getUTCFullYear()) {
   if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) throw new Error(`Enter a From year between 2000 and ${currentYear}.`);
-  if (to !== "" && to !== null && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) throw new Error(`Enter a To year between 2000 and ${currentYear}, or leave it empty for until today.`);
+  if (to !== "" && to !== null && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) throw new Error(`Enter a To year between 2000 and ${currentYear}, or leave it empty to include papers up to today.`);
   const range = { from: Number(from), to: to === "" || to === null ? null : Number(to) };
-  if (range.to !== null && range.from > range.to) throw new Error("From must be earlier than or equal to To. Change the years and try again.");
+  if (range.to !== null && range.from > range.to) throw new Error("The From year must be the same as or earlier than the To year.");
   return range;
 }
 
@@ -89,7 +89,7 @@ export function normaliseQuery(query, synonyms = "", subtopicId = "", include = 
     ...(includeTerms.length ? { includeTerms } : {}), ...(filterId ? { subtopicId: filterId } : {}) };
 }
 
-export const REPORT_CACHE_PREFIX = "v2:topic:";
+export const REPORT_CACHE_PREFIX = "v3:topic:";
 export const REPORT_RETENTION_SECONDS = 60 * 24 * 60 * 60;
 
 export const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -104,18 +104,56 @@ export function dailyCap(value = 90) {
   return Number(value);
 }
 
+export function growthWindow(report) {
+  const range = rangeDetails(report, Number(report.updated.slice(0, 4)));
+  const useRange = report.kpis.growthLabel !== "5-year growth" && report.from !== undefined && range.completeYears >= 3;
+  const growthStartYear = useRange ? range.from : range.lastComplete - 5;
+  const growthEndYear = range.lastComplete;
+  return { growthStartYear, growthEndYear,
+    growthStartCount: report.years.find((item) => item.year === growthStartYear)?.count,
+    growthEndCount: report.years.find((item) => item.year === growthEndYear)?.count };
+}
+export function repairBoundedGrowth(report) {
+  if (report.to == null || !report.kpis || !Array.isArray(report.years)) return report;
+  const range = rangeDetails(report, Number(report.updated.slice(0, 4)));
+  const first = report.years.find((item) => item.year === range.lastComplete - 5)?.count;
+  const last = report.years.find((item) => item.year === range.lastComplete)?.count;
+  const available = Number.isFinite(first) && Number.isFinite(last);
+  const growth5y = available ? growth(first, last, 5) : null;
+  const {growthNeedsRebuild, ...saved} = report;
+  return { ...saved, kpis: { ...report.kpis, growth5y, ...(range.completeYears < 3 ? {growth:growth5y, growthLabel:"5-year growth", momentum:momentum(growth5y)} : {}) },
+    ...(!available && range.completeYears < 3 ? {growthNeedsRebuild:true} : {}) };
+}
+export function growthStartCount(report) { return growthWindow(report).growthStartCount; }
+export function isNewTopic(window) {
+  return Number.isFinite(window.growthStartCount) && (window.growthStartCount < 20 || window.growthStartCount < .02 * window.growthEndCount);
+}
+export function newTopicHeadline(name, window) {
+  const title = headlineTopicName(name);
+  const topic = title.charAt(0).toUpperCase() + title.slice(1);
+  const count = (n) => new Intl.NumberFormat("en-US").format(n);
+  return `${topic} is a new research topic: from ${count(window.growthStartCount)} ${window.growthStartCount === 1 ? "paper" : "papers"} in ${window.growthStartYear} to ${count(window.growthEndCount)} in ${window.growthEndYear}.`;
+}
+
+// Store the actual complete-year series and its range; no implicit ten-year window.
+export function reportSummary(topic) {
+  const range = rangeDetails(topic, Number(topic.updated.slice(0, 4)));
+  const firstAvailable = Math.min(...topic.years.map((item) => item.year));
+  const sparkStartYear = Math.max(range.from, firstAvailable);
+  const counts = new Map(topic.years.map((item) => [item.year, item.count]));
+  const spark = Array.from({ length: Math.max(0, range.lastComplete - sparkStartYear + 1) }, (_, i) => counts.get(sparkStartYear + i) ?? 0);
+  return { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field,
+    momentum: topic.kpis.momentum, growth: Object.hasOwn(topic.kpis, "growth") ? topic.kpis.growth : topic.kpis.growth5y,
+    total: topic.kpis.total, spark, updated: topic.updated, from: range.from, to: range.to, sparkStartYear,
+    growthLabel: topic.kpis.growthLabel || "5-year growth", ...growthWindow(topic) };
+}
+
 // Whitelist topic fields; request headers and visitor details never enter the index.
 export function updateLibrary(index, topic) {
   if (!Array.isArray(index)) throw new Error("Invalid library index");
   const previous = index.find((entry) => entry.id === topic.id);
   const parent = topic.parent || previous?.parent || null;
-  const lastYear = Number(topic.updated.slice(0, 4)) - 1;
-  const counts = new Map(topic.years.map((item) => [item.year, item.count]));
-  const spark = Array.from({ length: 10 }, (_, i) => counts.get(lastYear - 9 + i) ?? 0);
-  const entry = {
-    id: topic.id, name: topic.name, synonyms: topic.synonyms,
-    field: topic.field, momentum: topic.kpis.momentum, growth: Object.hasOwn(topic.kpis, "growth") ? topic.kpis.growth : topic.kpis.growth5y,
-    total: topic.kpis.total, updated: topic.updated, parent, children: [], spark,
+  const entry = { ...reportSummary(topic), synonyms: topic.synonyms, parent, children: [],
     ...(topic.includeTerms?.length ? { includeTerms: topic.includeTerms, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
     ...(topic.from !== undefined ? { from: topic.from, to: topic.to, ...(topic.from !== 2010 || topic.to !== null ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}) } : {}),
     ...(topic.period ? { period: topic.period, ...(topic.period !== 2010 ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}) } : {}),
@@ -140,7 +178,7 @@ export function buildSearchExpression(query) {
 }
 
 // Descriptors contain only public parameters; the Worker adds authentication.
-export function buildQueries(query, currentYear) {
+export function buildQueries(query, currentYear, coreOnly = true) {
   const search = `title_and_abstract.search:${buildSearchExpression(query)}${query.subtopicId ? `,primary_topic.id:${normaliseSubtopicId(query.subtopicId)}` : ""}`;
   const grouped = (id, group, filter, limit) => ({ id, params: {
     filter: `${search},${filter}`, group_by: group, per_page: String(limit)
@@ -149,11 +187,12 @@ export function buildQueries(query, currentYear) {
   const range = rangeDetails(query, currentYear);
   const window = (from, to) => `from_publication_date:${from}-01-01${to == null ? "" : `,to_publication_date:${to}-12-31`}`;
   const selected = window(range.from, range.to);
+  const core = coreOnly ? ",primary_location.source.is_core:true" : "";
   const early = range.completeYears < 2 ? selected : window(range.from, range.split - 1);
   const late = range.completeYears < 2 ? selected : window(range.split, range.lastComplete);
   return [
-    grouped("years", "publication_year", `publication_year:${Math.min(2010, range.from)}-${currentYear}`, 200),
-    grouped("experts", "authorships.author.id", `${window(range.expertsFrom, range.to)},primary_location.source.type:!repository,type:article|review`, 10),
+    grouped("years", "publication_year", `publication_year:${Math.min(2010, range.from, range.lastComplete - 5)}-${currentYear}`, 200),
+    grouped("experts", "authorships.author.id", `${window(range.expertsFrom, range.to)},primary_location.source.type:!repository,type:article|review${core}`, 10),
     grouped("early", "primary_topic.id", early, 200),
     grouped("late", "primary_topic.id", late, 200),
     grouped("countries", "authorships.countries", selected, 15),
@@ -163,11 +202,18 @@ export function buildQueries(query, currentYear) {
     ].map(([id, countries]) => ({ id, params: {
       filter: search + "," + selected + ",authorships.countries:" + countries, per_page: "1", select: "id"
     } })),
-    grouped("journals", "primary_location.source.id", `${selected},primary_location.source.type:journal,type:article|review`, 10),
+    grouped("journals", "primary_location.source.id", `${selected},primary_location.source.type:journal,type:article|review${core}`, 10),
     { id: "papers", params: { filter: `${search},${selected},type:article|review`, sort: "cited_by_count:desc", per_page: "6", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } },
     grouped("keywords", "keywords.id", since2020, 15),
     grouped("field", "primary_topic.field.id", since2020, 1)
   ];
+}
+
+export function fallbackQueries(query, currentYear, responses) {
+  const needed = new Set();
+  if (shapeExperts(responses.experts).length < 5) needed.add("experts");
+  if (shapeJournals(responses.journals).length < 5) needed.add("journals");
+  return buildQueries(query, currentYear, false).filter(({id}) => needed.has(id)).map(({id, params}) => ({id: id + "All", params}));
 }
 
 export function growth(start, end, years = 1) {
@@ -220,7 +266,7 @@ export function shapeExperts(response) {
 
 export function shapeSubtopics(earlyResponse, lateResponse) {
   const early = new Map(groups(earlyResponse).map((item) => [normaliseSubtopicId(item.key), item.count]));
-  return ranked(lateResponse).map((item) => ({ id: normaliseSubtopicId(item.key), name: displayName(item), late: item.count, growth: growth(early.get(normaliseSubtopicId(item.key)) ?? 0, item.count) }));
+  return ranked(lateResponse).map((item) => ({ id: normaliseSubtopicId(item.key), name: displayName(item), late: item.count, early: early.get(normaliseSubtopicId(item.key)) ?? 0, growth: growth(early.get(normaliseSubtopicId(item.key)) ?? 0, item.count) }));
 }
 
 export function shapeCountries(response) {
@@ -232,8 +278,15 @@ export function shapeCountries(response) {
   }).slice(0, 15);
 }
 
+export function journalName(name) {
+  if (name !== name.toUpperCase() || !/[A-Z]/.test(name)) return name;
+  const acronyms = new Set(["IEEE", "ACM", "DNA", "RNA", "AI", "BMJ", "JAMA", "PNAS", "PLOS", "ACS", "IET"]);
+  const minor = new Set(["a", "an", "the", "and", "or", "but", "of", "in", "on", "for", "to", "at", "by", "with"]);
+  const words = name.toLowerCase().split(/(\s+)/);
+  return words.map((word, i) => acronyms.has(word.toUpperCase()) ? word.toUpperCase() : i > 0 && i < words.length - 1 && minor.has(word) ? word : word.replace(/(^|[-/])\p{L}/gu, (c) => c.toUpperCase())).join("");
+}
 export function shapeJournals(response) {
-  return ranked(response).slice(0, 10).map((item) => ({ name: displayName(item), count: item.count }));
+  return ranked(response).slice(0, 10).map((item) => ({ name: journalName(displayName(item)), count: item.count }));
 }
 
 export function shapePapers(response) {
@@ -247,7 +300,7 @@ export function shapePapers(response) {
       title: item.display_name,
       authors: authors.length ? `${authors.slice(0, 3).join(", ")}${authors.length > 3 ? ", et al." : ""}` : "Unknown authors",
       year: item.publication_year,
-      journal: item.primary_location?.source?.display_name || "Unknown journal",
+      journal: journalName(item.primary_location?.source?.display_name || "Unknown journal"),
       citations: item.cited_by_count,
       url: /^https:\/\/doi\.org\/\S+$/i.test(item.doi || "") ? item.doi : entityUrl(item.id, "W")
     };
@@ -281,6 +334,7 @@ export function reportLabel(baseName, includeTerms = [], period) {
 // Update presentation of older saved reports without refreshing data or writing KV.
 export function presentReport(report) {
   if (!report || typeof report.name !== "string") return report;
+  report = repairBoundedGrowth(report);
   const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
   const reportRange = report.from !== undefined ? report : report.period;
   const periodSuffix = reportRange ? ` · ${typeof reportRange === "object" ? rangeLabel(reportRange) : `since ${reportRange}`}` : "";
@@ -294,7 +348,9 @@ export function presentReport(report) {
   }
   const name = reportLabel(baseName, terms, reportRange);
   return { ...report, name,
-    ...(typeof report.headline === "string" ? { headline: report.headline.replace(report.name, name) } : {}),
+    ...(typeof report.headline === "string" ? { headline: report.kpis && report.from !== undefined && Array.isArray(report.years)
+      ? headline(reportLabel(report.headlineName || baseName, terms), { ...report.kpis, ...growthWindow(report) }, Math.max(report.from, Math.min(report.to ?? Number(report.updated.slice(0, 4)) - 1, Number(report.updated.slice(0, 4)) - 1)), report.regionalCounts, report.kpis.total, report)
+      : report.headline.replace(report.name, name) } : {}),
     ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, includeTerms: terms }) } : {}) };
 }
 
@@ -305,15 +361,36 @@ export function exploreNext(subtopics, topicName) {
   return [...new Map([...fastest, ...largest].map((item) => [item.id || item.name, { id: item.id, name: item.name }])).values()].slice(0, 6);
 }
 
+export function headlineTopicName(value) {
+  // Keep supplied acronyms and mixed-case names; canonicalise common scientific proper nouns.
+  const proper = new Map(["Alzheimer", "Parkinson", "Huntington", "Bayesian", "Fourier", "Gaussian", "Darwin", "Einstein", "Newton", "Japan", "China", "Europe", "European", "Africa", "African", "Asia", "Asian", "Arab", "Emirates", "Dubai", "Abu", "Dhabi"].map((word) => [word.toLowerCase(), word]));
+  return String(value).replace(/ · (?:since \d{4}|\d{4}–\d{4})$/, "").replace(/[A-Za-z]+(?:[’'][A-Za-z]+)?/g, (word) => {
+    const stem = word.replace(/[’']s$/i, "");
+    if (proper.has(stem.toLowerCase())) return proper.get(stem.toLowerCase()) + word.slice(stem.length);
+    if (/^[A-Z]{2,6}$/.test(word) || /[a-z][A-Z]/.test(word)) return word;
+    return word.toLowerCase();
+  });
+}
+
+export function formatPercent(value) {
+  return `${value < 0 ? "−" : "+"}${Math.abs(value * 100).toFixed(Math.abs(value * 100) >= 10 ? 0 : 1)}%`;
+}
+
 export function headline(name, kpis, lastYear, regionalCounts, periodTotal = 0, period = 2020) {
+  const range = typeof period === "object" ? period : { from: period, to: null };
+  const prefix = range.to == null ? `Since ${range.from}, ` : `From ${range.from} to ${range.to}, `;
+  const topicName = headlineTopicName(name);
   const count = new Intl.NumberFormat("en-US").format(kpis.lastYear);
-  const published = `${count} ${kpis.lastYear === 1 ? "paper was" : "papers were"}`;
+  const published = `In ${lastYear}, ${count} ${kpis.lastYear === 1 ? "paper was" : "papers were"} published.`;
+  const regionalPeriod = range.to == null ? `since ${range.from}` : `between ${range.from} and ${range.to}`;
   const regional = regionalCounts && periodTotal > 0 && regionalCounts.gcc / periodTotal < .05
-    ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} ${typeof period === "object" ? rangeLabel(period) : `since ${period}`} ${regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).` : "";
+    ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} published ${regionalPeriod} ${range.to != null ? "came" : regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).` : "";
   const rateValue = Object.hasOwn(kpis, "growth") ? kpis.growth : kpis.growth5y;
-  if (rateValue === null) return `There is not enough data to calculate ${kpis.growthLabel || "five-year growth"} for ${name}. ${published} published in ${lastYear}.${regional}`;
-  const rate = `${rateValue >= 0 ? "+" : ""}${(rateValue * 100).toFixed(1)}%`;
-  return `Research on ${name} is ${kpis.momentum.toLowerCase()} (${rate} a year). ${published} published in ${lastYear}.${regional}`;
+  if (isNewTopic(kpis)) return newTopicHeadline(name, kpis) + regional;
+  if (rateValue === null) return `${prefix}there is not enough data to calculate annual growth for ${topicName}. ${published}${regional}`;
+  const rate = formatPercent(rateValue);
+  const fallback = kpis.growthLabel === "5-year growth" ? ` over ${kpis.growthStartYear ?? lastYear - 5}–${kpis.growthEndYear ?? lastYear}` : "";
+  return `${prefix}research on ${topicName} ${range.to == null ? "has been" : "was"} ${kpis.momentum.toLowerCase()} (${rate} a year${fallback}). ${published}${regional}`;
 }
 
 export function shapeRegionalCounts(uae, gcc) {
@@ -324,9 +401,9 @@ export function shapeRegionalCounts(uae, gcc) {
 export function shapeTopic(query, responses, date) {
   const currentYear = date.getUTCFullYear();
   const range = rangeDetails(query, currentYear);
-  const years = shapeYears(responses.years, currentYear, Math.min(2010, range.from));
+  const years = shapeYears(responses.years, currentYear, Math.min(2010, range.from, range.lastComplete - 5));
   const countFor = (year) => years.find((item) => item.year === year)?.count ?? 0;
-  const growth5y = growth(countFor(currentYear - 6), countFor(currentYear - 1), 5);
+  const growth5y = growth(countFor(range.lastComplete - 5), countFor(range.lastComplete), 5);
   const rangeGrowth = range.completeYears >= 3;
   const selectedGrowth = rangeGrowth ? growth(countFor(range.from), countFor(range.lastComplete), range.lastComplete - range.from) : growth5y;
   const growthLabel = rangeGrowth ? `Growth ${range.from}–${range.lastComplete}` : "5-year growth";
@@ -338,17 +415,20 @@ export function shapeTopic(query, responses, date) {
   const periodTotal = kpis.total;
   const baseName = query.subtopicId ? query.subtopicName || query.subtopicId : query.name;
   const name = reportLabel(baseName, query.includeTerms, range);
+  const window = growthWindow({ ...range, updated: date.toISOString().slice(0, 10), years, kpis });
+  const headlineName = query.subtopicId ? baseName : query.headlineName || query.name;
   return {
-    id: query.id, name, synonyms: query.synonyms, from: range.from, to: range.to,
+    id: query.id, name, synonyms: query.synonyms, ...(headlineName !== baseName ? { headlineName } : {}), from: range.from, to: range.to,
     subtopicWindow: { countsOnly: subtopicCountsOnly, from: range.from, split: range.split, end: range.lastComplete },
     searchTerms: { name: query.name, synonyms: query.synonyms, ...(query.includeTerms?.length ? { includeTerms: query.includeTerms } : {}) },
     ...(query.includeTerms?.length ? { includeTerms: query.includeTerms, parent: query.parent || null } : {}),
     ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name } : {}),
     field: ranked(responses.field).map(displayName)[0] || "Unclassified",
     updated: date.toISOString().slice(0, 10), years, kpis,
-    headline: headline(name, kpis, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, range),
-    experts: shapeExperts(responses.experts), subtopics: subtopics.slice(0, 9),
-    countries: shapeCountries(responses.countries), regionalCounts, journals: shapeJournals(responses.journals),
+    headline: headline(reportLabel(headlineName, query.includeTerms), { ...kpis, ...window }, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, range),
+    sourceQuality: { experts: responses.expertsAll ? "all" : "core", journals: responses.journalsAll ? "all" : "core" },
+    experts: shapeExperts(responses.expertsAll || responses.experts), subtopics: subtopics.slice(0, 9),
+    countries: shapeCountries(responses.countries), regionalCounts, journals: shapeJournals(responses.journalsAll || responses.journals),
     papers: shapePapers(responses.papers), suggestedSynonyms: suggestedSynonyms(responses.keywords, query),
     exploreNext: exploreNext(subtopics, name), cached: false
   };

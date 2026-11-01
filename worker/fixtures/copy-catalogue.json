@@ -1,0 +1,1073 @@
+{
+  "headlines": [
+    {
+      "label": "Accelerating, open",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Accelerating",
+          "growth": 0.3,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2020–2025"
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been accelerating (+30% a year). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Accelerating, open, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Accelerating",
+          "growth": 0.3,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2020,
+          "growthEndYear": 2025
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2025,
+          "to": null
+        }
+      ],
+      "expected": "Since 2025, research on epigenetics has been accelerating (+30% a year over 2020–2025). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Growing, open",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Growing",
+          "growth": 0.1,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2020–2025"
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been growing (+10% a year). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Growing, open, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Growing",
+          "growth": 0.1,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2020,
+          "growthEndYear": 2025
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2025,
+          "to": null
+        }
+      ],
+      "expected": "Since 2025, research on epigenetics has been growing (+10% a year over 2020–2025). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Stable, open",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Stable",
+          "growth": 0.03,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2020–2025"
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been stable (+3.0% a year). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Stable, open, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Stable",
+          "growth": 0.03,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2020,
+          "growthEndYear": 2025
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2025,
+          "to": null
+        }
+      ],
+      "expected": "Since 2025, research on epigenetics has been stable (+3.0% a year over 2020–2025). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Cooling, open",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Cooling",
+          "growth": -0.1,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2020–2025"
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been cooling (−10% a year). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Cooling, open, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Cooling",
+          "growth": -0.1,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2020,
+          "growthEndYear": 2025
+        },
+        2025,
+        null,
+        50000,
+        {
+          "from": 2025,
+          "to": null
+        }
+      ],
+      "expected": "Since 2025, research on epigenetics has been cooling (−10% a year over 2020–2025). In 2025, 2,571 papers were published."
+    },
+    {
+      "label": "Accelerating, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Accelerating",
+          "growth": 0.3,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2015–2020"
+        },
+        2020,
+        null,
+        50000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was accelerating (+30% a year). In 2020, 2,571 papers were published."
+    },
+    {
+      "label": "Accelerating, bounded, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Accelerating",
+          "growth": 0.3,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2014,
+          "growthEndYear": 2019
+        },
+        2019,
+        null,
+        50000,
+        {
+          "from": 2018,
+          "to": 2019
+        }
+      ],
+      "expected": "From 2018 to 2019, research on epigenetics was accelerating (+30% a year over 2014–2019). In 2019, 2,571 papers were published."
+    },
+    {
+      "label": "Growing, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Growing",
+          "growth": 0.1,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2015–2020"
+        },
+        2020,
+        null,
+        50000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was growing (+10% a year). In 2020, 2,571 papers were published."
+    },
+    {
+      "label": "Growing, bounded, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Growing",
+          "growth": 0.1,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2014,
+          "growthEndYear": 2019
+        },
+        2019,
+        null,
+        50000,
+        {
+          "from": 2018,
+          "to": 2019
+        }
+      ],
+      "expected": "From 2018 to 2019, research on epigenetics was growing (+10% a year over 2014–2019). In 2019, 2,571 papers were published."
+    },
+    {
+      "label": "Stable, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Stable",
+          "growth": 0.03,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2015–2020"
+        },
+        2020,
+        null,
+        50000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was stable (+3.0% a year). In 2020, 2,571 papers were published."
+    },
+    {
+      "label": "Stable, bounded, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Stable",
+          "growth": 0.03,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2014,
+          "growthEndYear": 2019
+        },
+        2019,
+        null,
+        50000,
+        {
+          "from": 2018,
+          "to": 2019
+        }
+      ],
+      "expected": "From 2018 to 2019, research on epigenetics was stable (+3.0% a year over 2014–2019). In 2019, 2,571 papers were published."
+    },
+    {
+      "label": "Cooling, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Cooling",
+          "growth": -0.1,
+          "lastYear": 2571,
+          "growthLabel": "Growth 2015–2020"
+        },
+        2020,
+        null,
+        50000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was cooling (−10% a year). In 2020, 2,571 papers were published."
+    },
+    {
+      "label": "Cooling, bounded, five-year fallback",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Cooling",
+          "growth": -0.1,
+          "lastYear": 2571,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2014,
+          "growthEndYear": 2019
+        },
+        2019,
+        null,
+        50000,
+        {
+          "from": 2018,
+          "to": 2019
+        }
+      ],
+      "expected": "From 2018 to 2019, research on epigenetics was cooling (−10% a year over 2014–2019). In 2019, 2,571 papers were published."
+    },
+    {
+      "label": "Growth unavailable, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": null,
+          "lastYear": 1
+        },
+        2025,
+        null,
+        100,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, there is not enough data to calculate annual growth for epigenetics. In 2025, 1 paper was published."
+    },
+    {
+      "label": "New topic, singular, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.9,
+          "momentum": "Accelerating",
+          "lastYear": 2571,
+          "growthStartYear": 2020,
+          "growthEndYear": 2025,
+          "growthStartCount": 1,
+          "growthEndCount": 2571
+        },
+        2025,
+        {
+          "gcc": 23,
+          "uae": 4
+        },
+        10000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Epigenetics is a new research topic: from 1 paper in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
+    },
+    {
+      "label": "New topic, absolute threshold, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.9,
+          "momentum": "Accelerating",
+          "lastYear": 2571,
+          "growthStartYear": 2020,
+          "growthEndYear": 2025,
+          "growthStartCount": 12,
+          "growthEndCount": 2571
+        },
+        2025,
+        {
+          "gcc": 23,
+          "uae": 4
+        },
+        10000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Epigenetics is a new research topic: from 12 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
+    },
+    {
+      "label": "New topic, relative threshold, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.9,
+          "momentum": "Accelerating",
+          "lastYear": 2571,
+          "growthStartYear": 2020,
+          "growthEndYear": 2025,
+          "growthStartCount": 20,
+          "growthEndCount": 2571
+        },
+        2025,
+        {
+          "gcc": 23,
+          "uae": 4
+        },
+        10000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Epigenetics is a new research topic: from 20 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
+    },
+    {
+      "label": "GCC singular, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 1
+        },
+        2025,
+        {
+          "gcc": 1,
+          "uae": 1
+        },
+        10000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been growing (+10% a year). In 2025, 1 paper was published. Only 1 paper published since 2020 comes from the GCC (1 from the UAE)."
+    },
+    {
+      "label": "GCC plural, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 1
+        },
+        2025,
+        {
+          "gcc": 23,
+          "uae": 1
+        },
+        10000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been growing (+10% a year). In 2025, 1 paper was published. Only 23 papers published since 2020 come from the GCC (1 from the UAE)."
+    },
+    {
+      "label": "GCC omitted at 5%, open",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 1
+        },
+        2025,
+        {
+          "gcc": 500,
+          "uae": 1
+        },
+        10000,
+        {
+          "from": 2020,
+          "to": null
+        }
+      ],
+      "expected": "Since 2020, research on epigenetics has been growing (+10% a year). In 2025, 1 paper was published."
+    },
+    {
+      "label": "Growth unavailable, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": null,
+          "lastYear": 1
+        },
+        2020,
+        null,
+        100,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, there is not enough data to calculate annual growth for epigenetics. In 2020, 1 paper was published."
+    },
+    {
+      "label": "New topic, singular, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.9,
+          "momentum": "Accelerating",
+          "lastYear": 2571,
+          "growthStartYear": 2015,
+          "growthEndYear": 2020,
+          "growthStartCount": 1,
+          "growthEndCount": 2571
+        },
+        2020,
+        {
+          "gcc": 23,
+          "uae": 4
+        },
+        10000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "Epigenetics is a new research topic: from 1 paper in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
+    },
+    {
+      "label": "New topic, absolute threshold, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.9,
+          "momentum": "Accelerating",
+          "lastYear": 2571,
+          "growthStartYear": 2015,
+          "growthEndYear": 2020,
+          "growthStartCount": 12,
+          "growthEndCount": 2571
+        },
+        2020,
+        {
+          "gcc": 23,
+          "uae": 4
+        },
+        10000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "Epigenetics is a new research topic: from 12 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
+    },
+    {
+      "label": "New topic, relative threshold, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.9,
+          "momentum": "Accelerating",
+          "lastYear": 2571,
+          "growthStartYear": 2015,
+          "growthEndYear": 2020,
+          "growthStartCount": 20,
+          "growthEndCount": 2571
+        },
+        2020,
+        {
+          "gcc": 23,
+          "uae": 4
+        },
+        10000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "Epigenetics is a new research topic: from 20 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
+    },
+    {
+      "label": "GCC singular, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 1
+        },
+        2020,
+        {
+          "gcc": 1,
+          "uae": 1
+        },
+        10000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was growing (+10% a year). In 2020, 1 paper was published. Only 1 paper published between 2015 and 2020 came from the GCC (1 from the UAE)."
+    },
+    {
+      "label": "GCC plural, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 1
+        },
+        2020,
+        {
+          "gcc": 23,
+          "uae": 1
+        },
+        10000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was growing (+10% a year). In 2020, 1 paper was published. Only 23 papers published between 2015 and 2020 came from the GCC (1 from the UAE)."
+    },
+    {
+      "label": "GCC omitted at 5%, bounded",
+      "args": [
+        "epigenetics",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 1
+        },
+        2020,
+        {
+          "gcc": 500,
+          "uae": 1
+        },
+        10000,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on epigenetics was growing (+10% a year). In 2020, 1 paper was published."
+    },
+    {
+      "label": "Bounded fallback before 2010",
+      "args": [
+        "epigenetics",
+        {
+          "momentum": "Growing",
+          "growth": 0.1486983549970351,
+          "growthLabel": "5-year growth",
+          "growthStartYear": 2008,
+          "growthEndYear": 2013,
+          "lastYear": 200
+        },
+        2013,
+        null,
+        1000,
+        {
+          "from": 2012,
+          "to": 2013
+        }
+      ],
+      "expected": "From 2012 to 2013, research on epigenetics was growing (+15% a year over 2008–2013). In 2013, 200 papers were published."
+    }
+  ],
+  "messages": [
+    {
+      "file": "site/app.js",
+      "text": "Papers published each year. The current year isn’t over, so its line is dashed."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Fictional research and illustrative numbers."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Data from OpenAlex. Searches are cached anonymously to keep the tool free."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Where the authors work. A paper with authors in two countries counts for both."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Journals that published the most papers on this topic. Only journals on the Leiden Ranking core list are counted."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Journals that published the most papers on this topic. Preprint servers are excluded."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Research areas inside this topic, ranked by number of papers. Click a row to open it."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Papers published this year to date."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Papers published in the last complete year."
+    },
+    {
+      "file": "site/app.js",
+      "text": "UAE and GCC totals are unavailable in this sample."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Loading library…"
+    },
+    {
+      "file": "site/app.js",
+      "text": "No topics match. Try a different search or choose All fields."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Your library is empty. Search for a topic and it will appear here."
+    },
+    {
+      "file": "site/app.js",
+      "text": "No shared topics yet."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Can’t reach the data service. Start the Worker and try again."
+    },
+    {
+      "file": "site/app.js",
+      "text": "The data service returned an unreadable library. Try again later."
+    },
+    {
+      "file": "site/app.js",
+      "text": "The Library could not be loaded. Try again later."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Your library could not be saved in this browser. Allow browser storage and try again."
+    },
+    {
+      "file": "site/app.js",
+      "text": "The sub-topic ID is invalid. Run the parent search again."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Enter a research topic and try again."
+    },
+    {
+      "file": "site/app.js",
+      "text": "The From year must be the same as or earlier than the To year."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Loading research data…"
+    },
+    {
+      "file": "site/app.js",
+      "text": "The data service returned an unreadable report. Try again later."
+    },
+    {
+      "file": "site/app.js",
+      "text": "The data service could not complete the search. Try again later."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Research data loaded."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Saved to My library."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Headline copied."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Couldn’t copy automatically. The text is selected, so press Ctrl+C (Cmd+C on Mac)."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "This origin is not allowed. Open the configured site or use local development mode."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "This endpoint does not exist. Use /api/topic?q=your-topic."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "This endpoint accepts GET requests. Send a GET request."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The topic storage is unavailable. Try again later."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The additional terms are too long. Use fewer than 1,200 characters and try again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The cache option is invalid. Use cache=only to open a saved report."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The sub-topic details are too long. Shorten them and try again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The sub-topic ID is invalid. Choose a sub-topic from the report and try again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "A topic cannot be its own parent. Choose a different parent and try again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "A research topic is required. Add a topic with the q parameter."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The search has too many terms. Shorten the topic or synonyms and try again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The daily search limit is invalid. Set NEW_TOPICS_PER_DAY to a non-negative whole number and try again."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "Daily limit reached. Try again tomorrow or browse the Library."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "OPENALEX_KEY is not set. Add it to worker/.dev.vars."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "The research data source is unavailable. Try again later."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Type a field or technology, like “epigenetics”. We search titles and abstracts."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Other words for the same topic. Papers that use any of them are counted too."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Papers must also mention one of these words. Use it to narrow a topic, for example to children."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Leave empty to include papers up to today."
+    },
+    {
+      "file": "site/index.html",
+      "text": "No papers found for this topic. Check the spelling or add synonyms."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Accelerating means 20% or more a year. Growing is 8 to 20%, Stable is 0 to 8%, Cooling means fewer papers each year."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Find a saved topic by name or synonym."
+    },
+    {
+      "file": "site/sample-topic.js",
+      "text": "Research on lunar moss computing is accelerating (+33% a year). The fictional field reached 760 papers in 2025, up from 180 in 2020."
+    },
+    {
+      "file": "site/app.js",
+      "text": "This topic started from very few papers, so a yearly percentage would be misleading. We show the real counts instead."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Can’t reach the data service. Check your connection and try again."
+    },
+    {
+      "file": "site/app.js",
+      "text": "Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage."
+    }
+  ],
+  "dynamic": [
+    {
+      "label": "Papers tooltip",
+      "template": "Papers on this topic <period>.",
+      "example": "Papers on this topic since 2020."
+    },
+    {
+      "label": "Papers tooltip, bounded",
+      "template": "Papers on this topic <period>.",
+      "example": "Papers on this topic between 2015 and 2020."
+    },
+    {
+      "label": "Growth tooltip",
+      "template": "Average yearly increase in papers <period>. With fewer than three full years, we use the last five complete years instead.",
+      "example": "Average yearly increase in papers since 2020. With fewer than three full years, we use the last five complete years instead."
+    },
+    {
+      "label": "Leading experts, core",
+      "template": "Authors with the most papers on this topic <expert period>. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted.",
+      "example": "Authors with the most papers on this topic since 2020. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted."
+    },
+    {
+      "label": "Leading experts, fallback",
+      "template": "Authors with the most papers on this topic <expert period>. A starting point for speakers, not a ranking of quality.",
+      "example": "Authors with the most papers on this topic between 2015 and 2020. A starting point for speakers, not a ranking of quality."
+    },
+    {
+      "label": "Cited papers tooltip",
+      "template": "The papers other researchers cite most, published <period>.",
+      "example": "The papers other researchers cite most, published between 2015 and 2020."
+    },
+    {
+      "label": "Growth endpoint line",
+      "template": "<N> papers in <first year> → <M> in <last year>",
+      "example": "12 papers in 2020 → 2,571 in 2025"
+    },
+    {
+      "label": "Growth endpoint line, singular",
+      "template": "<N> paper in <first year> → <M> in <last year>",
+      "example": "1 paper in 2020 → 2,571 in 2025"
+    },
+    {
+      "label": "From error",
+      "template": "Enter a From year between 2000 and <current year>.",
+      "example": "Enter a From year between 2000 and 2026."
+    },
+    {
+      "label": "To error",
+      "template": "Enter a To year between 2000 and <current year>, or leave it empty to include papers up to today.",
+      "example": "Enter a To year between 2000 and 2026, or leave it empty to include papers up to today."
+    },
+    {
+      "label": "Report date",
+      "template": "Updated <date>.",
+      "example": "Updated 1 Nov 2026."
+    },
+    {
+      "label": "Stale child date",
+      "template": "Saved on <date>, may be out of date. Part of <parent>.",
+      "example": "Saved on 1 Oct 2026, may be out of date. Part of epigenetics."
+    },
+    {
+      "label": "UAE/GCC line",
+      "template": "UAE: <N papers>. GCC: <M papers>.",
+      "example": "UAE: 1 paper. GCC: 23 papers."
+    },
+    {
+      "label": "Library row metadata",
+      "template": "<momentum>, <N papers> <period>. Updated <date>.",
+      "example": "Growing, 2,571 papers since 2020. Updated 1 Nov 2026."
+    },
+    {
+      "label": "Chart point",
+      "template": "<year>: <N papers>",
+      "example": "2025: 2,571 papers"
+    },
+    {
+      "label": "Partial chart point",
+      "template": "<year>: <N papers> (year to date)",
+      "example": "2026: 12 papers (year to date)"
+    },
+    {
+      "label": "Library counter",
+      "template": "<N topics>, <N sub-topics>, <N saved versions>",
+      "example": "1 topic, 1 sub-topic, 2 saved versions"
+    },
+    {
+      "label": "Sample copy prefix",
+      "template": "Sample data: <headline>",
+      "example": "Sample data: Research on lunar moss computing is accelerating (+33% a year). The fictional field reached 760 papers in 2025, up from 180 in 2020."
+    },
+    {
+      "label": "Growth tooltip, bounded",
+      "template": "Average yearly increase in papers <period>. With fewer than three full years, we use the last five complete years instead.",
+      "example": "Average yearly increase in papers between 2015 and 2020. With fewer than three full years, we use the last five complete years instead."
+    },
+    {
+      "label": "Cited papers tooltip, open",
+      "template": "The papers other researchers cite most, published <period>.",
+      "example": "The papers other researchers cite most, published since 2020."
+    },
+    {
+      "label": "Cited papers tooltip, legacy",
+      "template": "The papers other researchers cite most, published <period>.",
+      "example": "The papers other researchers cite most, published since 2022."
+    },
+    {
+      "label": "Leading experts, core bounded",
+      "template": "Authors with the most papers on this topic <expert period>. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted.",
+      "example": "Authors with the most papers on this topic between 2015 and 2020. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted."
+    },
+    {
+      "label": "Leading experts, fallback open",
+      "template": "Authors with the most papers on this topic <expert period>. A starting point for speakers, not a ranking of quality.",
+      "example": "Authors with the most papers on this topic since 2020. A starting point for speakers, not a ranking of quality."
+    },
+    {
+      "label": "Report title, open",
+      "template": "<Topic> (period appears only in subtitle)",
+      "example": "Epigenetics"
+    },
+    {
+      "label": "Report title, bounded",
+      "template": "<Topic> (period appears only in subtitle)",
+      "example": "Epigenetics"
+    },
+    {
+      "label": "Filtered title",
+      "template": "<Topic> (period appears only in subtitle)",
+      "example": "Epigenetics + child / infant"
+    },
+    {
+      "label": "Children preset title",
+      "template": "<Topic> (period appears only in subtitle)",
+      "example": "Epigenetics + Children 0–9"
+    },
+    {
+      "label": "Parent navigation",
+      "template": "Back to <Topic>",
+      "example": "Back to Epigenetics"
+    },
+    {
+      "label": "Sub-topic counts from a tiny base",
+      "template": "<earlier half> → <later half>",
+      "example": "2 → 320"
+    },
+    {
+      "label": "Sub-topics tooltip when at least one row shows counts",
+      "template": "<normal Sub-topics tooltip> Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.",
+      "example": "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage."
+    },
+    {
+      "label": "Sub-topic counts, accessible wording",
+      "template": "Earlier half: <N papers>. Later half: <M papers>.",
+      "example": "Earlier half: 1 paper. Later half: 320 papers."
+    }
+  ]
+}

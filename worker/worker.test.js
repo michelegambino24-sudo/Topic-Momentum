@@ -13,7 +13,7 @@ const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.js
 const request = (path = "/api/topic?q=lunar%20moss%20computing", origin, method = "GET", extra = {}) => new Request(`http://localhost:8787${path}`, { method, headers: { ...(origin === undefined ? {} : { Origin: origin }), ...extra } });
 function fixtureFor(url) {
   const params = new URL(url).searchParams;
-  const descriptor = buildQueries(normaliseQuery("lunar moss computing"), 2026).find(({ params: expected }) => Object.entries(expected).every(([key, value]) => params.get(key) === value));
+  const descriptor = [...buildQueries(normaliseQuery("lunar moss computing"), 2026), ...buildQueries(normaliseQuery("lunar moss computing"), 2026, false)].find(({ params: expected }) => Object.entries(expected).every(([key, value]) => params.get(key) === value));
   assert(descriptor, "Unexpected query descriptor");
   return fixture(descriptor.id);
 }
@@ -111,7 +111,7 @@ for (const failure of ["http", "network", "json", "shape"]) {
       return Response.json(fixtureFor(url));
     }, () => date);
     const response = await worker.fetch(request(undefined, "null"), env);
-    assert.equal(calls, 11);
+    assert.equal(calls, failure === "shape" ? 13 : 11);
     assert.equal(response.status, 502);
     const text = await response.text();
     assert(!text.includes(env.OPENALEX_KEY));
@@ -299,11 +299,23 @@ test("sub-topic endpoint filters parent terms and retains title, ID and parent",
   }, () => date);
   const response = await worker.fetch(request("/api/topic?q=lunar%20moss%20computing&subtopic=https%3A%2F%2Fopenalex.org%2FT123&subtopicName=Orbital%20logic&parent=lunar%20moss%20computing"), env);
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 11);
+  assert.equal(calls.length, 13);
   const data = await response.json();
   assert.equal(data.name, "Orbital logic · since 2010");
   assert.equal(data.subtopicId, "T123");
   assert.equal(data.parent, "lunar moss computing");
   assert.equal(data.searchTerms.name, "lunar moss computing");
   assert(data.id.endsWith("|primary_topic:T123"));
+});
+
+test("worker fetches fallback lists only when needed and caches their independent source flags",async()=>{
+ const group=(size,type)=>({group_by:Array.from({length:size},(_,i)=>({key:`https://openalex.org/${type}${i+1}`,key_display_name:'Fictional '+i,count:30-i}))});
+ for(const [expertCount,journalCount,expectedCalls]of [[5,5,11],[4,5,12],[5,4,12],[4,4,13]]){
+  const calls=[];const kv=new MemoryKV();const testEnv={...env,TMM:kv};
+  const worker=createWorker(async url=>{calls.push(url);const g=url.searchParams.get('group_by'),core=url.searchParams.get('filter').includes('primary_location.source.is_core:true');if(g==='authorships.author.id')return Response.json(group(core?expertCount:7,'A'));if(g==='primary_location.source.id')return Response.json(group(core?journalCount:7,'S'));return Response.json(fixtureFor(url));},()=>date);
+  const response=await worker.fetch(request(),testEnv);assert.equal(response.status,200);const data=await response.json();
+  assert.equal(calls.length,expectedCalls);assert.deepEqual(data.sourceQuality,{experts:expertCount<5?'all':'core',journals:journalCount<5?'all':'core'});
+  assert.equal(data.kpis.total,1992);assert.deepEqual(data.regionalCounts,{uae:7,gcc:11});assert.equal(kv.values.get('count:2026-10-31'),'1');
+  const cached=await(await worker.fetch(request(),testEnv)).json();assert.deepEqual(cached.sourceQuality,data.sourceQuality);assert.equal(calls.length,expectedCalls);
+ }
 });

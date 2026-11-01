@@ -20,7 +20,7 @@ function setup(overrides = {}) {
     assert(Number(kv.values.get("count:" + day)) > 0);
     if (state.fail) throw new Error("Fixture source failure");
     const filter = (value) => value.slice(value.indexOf("),") + 2).replace(/^primary_topic.id:T[0-9]+,/, "");
-    const descriptor = buildQueries(normaliseQuery("fixture"), new Date(state.time).getUTCFullYear()).find(({ params }) =>
+    const descriptor = [...buildQueries(normaliseQuery("fixture"), new Date(state.time).getUTCFullYear()), ...buildQueries(normaliseQuery("fixture"), new Date(state.time).getUTCFullYear(), false)].find(({ params }) =>
       Object.entries(params).every(([key, value]) => key === "filter" ? filter(value) === filter(url.searchParams.get(key)) : value === url.searchParams.get(key)));
     assert(descriptor, "Unrecognised source query");
     return Response.json(fixture(descriptor.id));
@@ -33,9 +33,9 @@ test("normalised second search is cached without source requests or KV writes, e
   const first = await app.search(req(" Lunar Moss Computing ", { syn: "moon circuits,orbital logic,moon circuits" }));
   const topic = await first.json();
   assert.equal(topic.cached, false);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
   assert.equal(app.kv.writes.length, 3);
-  assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v2:topic:" + topic.id, "library"]);
+  assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v3:topic:" + topic.id, "library"]);
   assert.equal(app.kv.writes[0].value, "1");
   assert.equal(app.kv.writes[0].options.expirationTtl, 172800);
   assert.deepEqual(app.kv.writes[1].options, { expirationTtl: 60 * 24 * 60 * 60 });
@@ -43,7 +43,7 @@ test("normalised second search is cached without source requests or KV writes, e
   const second = await app.search(req("lunar moss computing", { syn: "orbital logic,MOON CIRCUITS" }));
   assert.equal(second.status, 200);
   assert.deepEqual(await second.json(), { ...topic, cached: true });
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
   assert.equal(app.kv.writes.length, 3);
 });
 
@@ -53,12 +53,12 @@ test("freshness ends at exactly seven days and refreshing keeps existing childre
   await app.search(req(undefined, { subtopic: "T123", subtopicName: "Orbital logic", parent: parent.id }));
   app.state.time = start + CACHE_MAX_AGE_MS - 1;
   assert.equal((await (await app.search()).json()).cached, true);
-  assert.equal(app.state.calls, 22);
+  assert.equal(app.state.calls, 26);
   app.state.time++;
   const refreshed = await (await app.search()).json();
   assert.equal(refreshed.cached, false);
   assert.equal(refreshed.updated, "2026-11-07");
-  assert.equal(app.state.calls, 33);
+  assert.equal(app.state.calls, 39);
   const index = await app.kv.get("library", "json");
   assert.deepEqual(index.find((entry) => entry.id === parent.id).children, [parent.id + "|primary_topic:T123"]);
 });
@@ -73,7 +73,7 @@ test("default cap admits attempt 90, blocks attempt 91, and still serves fresh a
   assert.deepEqual(await blocked.json(), { error: "daily_limit", message: "Daily limit reached. Try again tomorrow or browse the Library." });
   assert.equal((await (await app.search()).json()).cached, true);
   const old = { ...topic, updated: "2026-10-24" };
-  app.kv.values.set("v2:topic:" + topic.id, JSON.stringify({ savedAt: start - CACHE_MAX_AGE_MS, topic: old }));
+  app.kv.values.set("v3:topic:" + topic.id, JSON.stringify({ savedAt: start - CACHE_MAX_AGE_MS, topic: old }));
   // Keep the index in sync with the seeded old report, so the read spends no writes.
   const index = await app.kv.get("library", "json");
   index[0].updated = old.updated;
@@ -84,8 +84,8 @@ test("default cap admits attempt 90, blocks attempt 91, and still serves fresh a
   assert.equal(stale.status, 200);
   assert.deepEqual(await stale.json(), { ...old, cached: true, stale: true });
   assert.equal(app.kv.writes.length, writes);
-  assert.equal(app.state.calls, 11);
-  assert.equal((await app.kv.get("v2:topic:" + topic.id, "json")).savedAt, start - CACHE_MAX_AGE_MS);
+  assert.equal(app.state.calls, 13);
+  assert.equal((await app.kv.get("v3:topic:" + topic.id, "json")).savedAt, start - CACHE_MAX_AGE_MS);
 });
 
 test("failed attempts count, leave no partial report or index, and do not overwrite an expired report", async () => {
@@ -93,17 +93,17 @@ test("failed attempts count, leave no partial report or index, and do not overwr
   const topic = await (await app.search()).json();
   app.state.time += CACHE_MAX_AGE_MS;
   app.state.fail = true;
-  const before = app.kv.values.get("v2:topic:" + topic.id);
+  const before = app.kv.values.get("v3:topic:" + topic.id);
   const failed = await app.search();
   assert.equal(failed.status, 502);
   assert.equal(app.kv.values.get("count:2026-11-07"), "1");
-  assert.equal(app.kv.values.get("v2:topic:" + topic.id), before);
+  assert.equal(app.kv.values.get("v3:topic:" + topic.id), before);
   assert.equal((await app.search(req("other topic"))).status, 502);
   assert.equal(app.kv.values.get("count:2026-11-07"), "2");
-  assert.equal(app.kv.values.has("v2:topic:other topic"), false);
+  assert.equal(app.kv.values.has("v3:topic:other topic"), false);
   assert.equal((await app.kv.get("library", "json")).length, 1);
   assert.equal((await app.search(req("third topic"))).status, 429);
-  assert.equal(app.state.calls, 33);
+  assert.equal(app.state.calls, 35);
 });
 
 test("daily counters roll over at midnight UTC and honour a configured cap", async () => {
@@ -115,7 +115,7 @@ test("daily counters roll over at midnight UTC and honour a configured cap", asy
   assert.equal((await app.search(req("second topic"))).status, 200);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
   assert.equal(app.kv.values.get("count:2026-11-01"), "1");
-  assert.equal(app.state.calls, 22);
+  assert.equal(app.state.calls, 26);
 });
 
 test("sub-topics use canonical parent terms plus ID and are indexed as children without duplicates", async () => {
@@ -142,7 +142,7 @@ test("sub-topics use canonical parent terms plus ID and are indexed as children 
   const invalid = await app.search(req(undefined, { subtopic: "T123", parent: "unrelated topic" }));
   assert.equal(invalid.status, 400);
   assert.equal(app.kv.reads.length, reads);
-  assert.equal(app.state.calls, 55);
+  assert.equal(app.state.calls, 65);
 });
 
 test("same-isolate simultaneous requests respect reservations and coalesce identical searches", async () => {
@@ -150,7 +150,7 @@ test("same-isolate simultaneous requests respect reservations and coalesce ident
   const results = await Promise.all([app.search(), app.search(), app.search(req("other topic"))]);
   assert.deepEqual(results.map((response) => response.status), [200, 200, 429]);
   assert.equal((await results[1].json()).cached, true);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
   assert.equal(app.kv.writes.length, 3);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
 });
@@ -185,7 +185,7 @@ test("stored data is topic-only and library responses use the required topic fie
   const app = setup();
   await app.search(req(undefined, { ignored: "visitor@example.test" }, { "CF-Connecting-IP": "192.0.2.42", "User-Agent": "Private visitor marker", Cookie: "identity=hidden" }));
   const index = await (await app.worker.fetch(new Request("http://localhost:8787/api/library"), app.env)).json();
-  assert.deepEqual(Object.keys(index[0]), ["id", "name", "synonyms", "field", "momentum", "growth", "total", "updated", "parent", "children", "spark", "from", "to"]);
+  assert.deepEqual(Object.keys(index[0]).sort(), ["id", "name", "synonyms", "field", "momentum", "growth", "total", "updated", "parent", "children", "spark", "from", "to", "sparkStartYear", "growthLabel", "growthStartCount", "growthEndCount", "growthStartYear", "growthEndYear"].sort());
   assert.equal(index[0].total, 1992);
   assert.equal(index[0].parent, null);
   const stored = JSON.stringify([...app.kv.values]);
@@ -202,14 +202,14 @@ test("KV failures prevent uncounted source work and a later cache hit can repair
   assert.equal(app.state.calls, 0);
   app.kv.put = async (key, ...args) => { if (key === "library") throw new Error("Storage failed"); return put(key, ...args); };
   assert.equal((await app.search()).status, 503);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
   app.kv.put = put;
   const repaired = await app.search();
   assert.equal(repaired.status, 200);
   assert.equal((await repaired.json()).cached, true);
   assert.equal((await app.kv.get("library", "json")).length, 1);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
 });
 
 test("missing bindings and invalid caps or counters fail closed without source calls", async () => {
@@ -239,9 +239,9 @@ test("cache-only reads serve both fresh and stale reports without counters, inde
   const stale = await app.search(req(undefined, { cache: "only" }));
   assert.equal(stale.status, 200);
   assert.deepEqual(await stale.json(), { ...topic, cached: true, stale: true });
-  assert.deepEqual(app.kv.reads, ["v2:topic:" + topic.id, "v2:topic:" + topic.id]);
+  assert.deepEqual(app.kv.reads, ["v3:topic:" + topic.id, "v3:topic:" + topic.id]);
   assert.equal(app.kv.writes.length, writes);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
 });
 
 test("missing current-version saved reports rebuild automatically and reject invalid requests", async () => {
@@ -249,11 +249,11 @@ test("missing current-version saved reports rebuild automatically and reject inv
   const response = await app.search(req(undefined, { cache: "only" }));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).cached, false);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
   assert.equal(app.kv.writes.length, 3);
   assert.equal((await app.search(req(undefined, { cache: "onyl" }))).status, 400);
   assert.equal((await app.search(req(undefined, { cache: "only", subtopic: "T123|T456" }))).status, 400);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
 });
 
 test("normal searches and saved links rebuild fresh v1 reports into v2 without changing v1", async () => {
@@ -269,15 +269,15 @@ test("normal searches and saved links rebuild fresh v1 reports into v2 without c
     assert.equal(topic.from, 2010);
     assert.equal(topic.to, null);
     assert.equal(topic.kpis.growthLabel, "Growth 2010–2025");
-    assert.equal(app.state.calls, 11);
+    assert.equal(app.state.calls, 13);
     assert.equal(app.kv.values.get("topic:lunar moss computing"), original);
-    assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v2:topic:lunar moss computing", "library"]);
+    assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v3:topic:lunar moss computing", "library"]);
     assert.deepEqual(app.kv.writes[1].options, { expirationTtl: 5184000 });
     const writes = app.kv.writes.length;
     delete app.env.OPENALEX_KEY;
     assert.equal((await app.search(req(undefined, { cache: "only" }))).status, 200);
     assert.equal(app.kv.writes.length, writes); // Hits do not extend retention.
-    assert.equal(app.state.calls, 11);
+    assert.equal(app.state.calls, 13);
   }
 });
 
@@ -293,7 +293,7 @@ test("at the cap, missing v2 records fall back to matching v1 records without wr
     assert.equal(app.kv.values.get("topic:" + topic.id), legacy);
     assert.equal(app.kv.writes.length, 0);
     assert.equal(app.state.calls, 0);
-    assert.deepEqual(app.kv.reads, ["v2:topic:" + topic.id, "count:2026-10-31", "topic:" + topic.id]);
+    assert.deepEqual(app.kv.reads, ["v3:topic:" + topic.id, "count:2026-10-31", "v2:topic:" + topic.id, "topic:" + topic.id]);
     assert.equal((await app.search(req("absent report", extra))).status, 429);
     app.kv.values.set("topic:wrong record", JSON.stringify({ savedAt: start, topic }));
     assert.equal((await app.search(req("wrong record", extra))).status, 429);
@@ -308,7 +308,7 @@ test("failed saved-link rebuilds consume the attempt and leave legacy reports un
   assert.equal((await app.search(req(undefined, { cache: "only" }))).status, 502);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
   assert.equal(app.kv.values.get("topic:lunar moss computing"), legacy);
-  assert.equal(app.kv.values.has("v2:topic:lunar moss computing"), false);
+  assert.equal(app.kv.values.has("v3:topic:lunar moss computing"), false);
   assert.equal(app.kv.values.has("library"), false);
 });
 
@@ -317,21 +317,21 @@ test("v2 refreshes renew the 60-day TTL and reports deleted by expiry rebuild on
   const topic = await (await app.search()).json();
   app.state.time += CACHE_MAX_AGE_MS;
   assert.equal((await app.search()).status, 200);
-  const reportWrites = app.kv.writes.filter((entry) => entry.key === "v2:topic:" + topic.id);
+  const reportWrites = app.kv.writes.filter((entry) => entry.key === "v3:topic:" + topic.id);
   assert.equal(reportWrites.length, 2);
   assert(reportWrites.every((entry) => entry.options.expirationTtl === 5184000));
   app.state.time += 60 * 24 * 60 * 60 * 1000;
-  app.kv.values.delete("v2:topic:" + topic.id); // Model the record's deletion by KV expiry.
+  app.kv.values.delete("v3:topic:" + topic.id); // Model the record's deletion by KV expiry.
   assert.equal((await app.search(req(undefined, { cache: "only" }))).status, 200);
-  assert.equal(app.state.calls, 33);
-  assert.equal(app.kv.writes.filter((entry) => entry.key === "v2:topic:" + topic.id).at(-1).options.expirationTtl, 5184000);
+  assert.equal(app.state.calls, 39);
+  assert.equal(app.kv.writes.filter((entry) => entry.key === "v3:topic:" + topic.id).at(-1).options.expirationTtl, 5184000);
 });
 
 test("library browsing reads only the index, returning new spark arrays and older entries unchanged", async () => {
   const app = setup();
   await app.search();
   const index = await app.kv.get("library", "json");
-  assert.equal(index[0].spark.length, 10);
+  assert.equal(index[0].spark.length, 16);
   const legacy = { ...index[0], id: "older topic", name: "older topic" };
   delete legacy.spark;
   delete legacy.period;
@@ -344,5 +344,31 @@ test("library browsing reads only the index, returning new spark arrays and olde
   assert.deepEqual(await response.json(), [...index, legacy]);
   assert.deepEqual(app.kv.reads, ["library"]);
   assert.equal(app.kv.writes.length, writes);
-  assert.equal(app.state.calls, 11);
+  assert.equal(app.state.calls, 13);
+});
+
+test("v3 migration rebuilds v2 reports without modifying either older cache generation", async()=>{
+ for(const extra of [{},{cache:'only'}]){
+  const app=setup();const id='lunar moss computing';
+  const v2=JSON.stringify({savedAt:start,topic:{id,name:'Second generation',updated:'2026-10-01'}});
+  const v1=JSON.stringify({savedAt:start,topic:{id,name:'First generation',updated:'2026-09-01'}});
+  app.kv.values.set('v2:topic:'+id,v2);app.kv.values.set('topic:'+id,v1);
+  const response=await app.search(req(undefined,extra));assert.equal(response.status,200);
+  assert.equal((await response.json()).cached,false);assert.equal(app.state.calls,13);
+  assert.equal(app.kv.values.get('v2:topic:'+id),v2);assert.equal(app.kv.values.get('topic:'+id),v1);
+  assert.equal(app.kv.writes.find(w=>w.key==='v3:topic:'+id).options.expirationTtl,5184000);
+ }
+});
+
+test("capped normal and saved searches prefer v2, then matching v1, without writes",async()=>{
+ for(const extra of [{},{cache:'only'}]){
+  const app=setup({NEW_TOPICS_PER_DAY:'0',OPENALEX_KEY:undefined}),id='lunar moss computing';
+  const v2={id,name:'Second generation',updated:'2026-10-01'},v1={id,name:'First generation',updated:'2026-09-01'};
+  app.kv.values.set('v2:topic:'+id,JSON.stringify({savedAt:start,topic:v2}));app.kv.values.set('topic:'+id,JSON.stringify({savedAt:start,topic:v1}));
+  assert.deepEqual(await(await app.search(req(undefined,extra))).json(),{...v2,cached:true,stale:true});
+  assert(!app.kv.reads.includes('topic:'+id));
+  app.kv.values.set('v2:topic:'+id,JSON.stringify({savedAt:start,topic:{...v2,id:'mismatched'}}));
+  assert.deepEqual(await(await app.search(req(undefined,extra))).json(),{...v1,cached:true,stale:true});
+  assert.equal(app.state.calls,0);assert.equal(app.kv.writes.length,0);
+ }
 });

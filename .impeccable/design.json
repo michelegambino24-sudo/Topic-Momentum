@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-01T13:53:14.907Z",
+  "title": "Design System: Topic Momentum Meter",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "help",
+        "value": "0 8px 24px #1f2a1c14",
+        "purpose": "Transient contextual help only."
+      },
+      {
+        "name": "status",
+        "value": "0 6px 20px #1f2a1c20",
+        "purpose": "Transient action status only."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "1550px"
+      },
+      {
+        "name": "intermediate",
+        "value": "1100px"
+      },
+      {
+        "name": "stacked",
+        "value": "760px"
+      },
+      {
+        "name": "phone",
+        "value": "480px"
+      }
+    ],
+    "motion": []
+  },
+  "components": [
+    {
+      "name": "Measure momentum",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The primary search action.",
+      "html": "<button class=\"primary\">Measure momentum</button>",
+      "css": ".primary{font:600 15px system-ui;color:#FFFFFF;background:#5F6B47;border:1px solid #5F6B47;border-radius:6px;min-height:44px;padding:10px 24px}.primary:hover{background:#4A5538}.primary:focus-visible{outline:2px solid #5F6B47;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Research evidence at a glance",
+    "overview": "A restrained analytics workspace using the user-approved green palette, system typography and aligned numeric rows. Progressive disclosure preserves depth without delaying the main report.",
+    "keyCharacteristics": [
+      "One system family and two weights",
+      "Flat evidence panels and thin dividers",
+      "Three metrics with a real-count line chart",
+      "Compact comparison rows",
+      "Source and freshness once in the footer"
+    ],
+    "rules": [
+      {
+        "name": "Chart-only color",
+        "body": "Use chart green for data geometry, never text.",
+        "section": "colors"
+      },
+      {
+        "name": "Single voice",
+        "body": "Use one system family with regular and semibold weights.",
+        "section": "typography"
+      },
+      {
+        "name": "Flat at rest",
+        "body": "Panels have a border; shadows belong to transient help and status.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Preserve exact counts and source links.",
+      "Distinguish the partial current year.",
+      "Keep additional records available in place."
+    ],
+    "donts": [
+      "Do not invent missing sparklines.",
+      "Do not add eyebrow labels or decorative symbols.",
+      "Do not change Worker calculations as part of presentation."
+    ]
+  }
+}

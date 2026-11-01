@@ -27,8 +27,31 @@
   const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   const number = (value) => new Intl.NumberFormat("en-US").format(value);
   const papers = (count) => `${number(count)} ${count === 1 ? "paper" : "papers"}`;
-  const percent = (value) => value === null ? "New" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}%`;
-  const badge = (value) => `<span class="badge">${escape(value)}</span>`;
+  const percent = (value) => value === null ? "New" : `${value < 0 ? "−" : "+"}${Math.abs(value * 100).toFixed(Math.abs(value * 100) >= 10 ? 0 : 1)}%`;
+  const titleCase = (value) => value.charAt(0).toUpperCase() + value.slice(1);
+  const dateText = (value) => {
+    const date = new Date(value + "T00:00:00Z");
+    return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-GB", {day:"numeric", month:"short", year:"numeric", timeZone:"UTC"}).format(date);
+  };
+  const connectionError = () => location.protocol === "file:" || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ? "Can’t reach the data service. Start the Worker and try again." : "Can’t reach the data service. Check your connection and try again.";
+  const displayText = (value) => String(value).replaceAll(" · ", ", ").replaceAll(" ↗", "");
+  const growthClass = (value) => value === null ? "" : value < 0 ? "negative" : "positive";
+  const help = (id, label, text) => `<span class="help"><button type="button" class="help-trigger" data-help="${id}" aria-label="About ${escape(label)}" aria-controls="${id}" aria-describedby="${id}" aria-expanded="false">?</button><span id="${id}" class="tooltip" role="tooltip" hidden>${escape(text)}</span></span>`;
+  let expertsExpanded = false;
+  let countriesExpanded = false;
+  let journalsExpanded = false;
+  let papersExpanded = false;
+  let renderedReportId;
+  function syncOptions(reset = false) {
+    const active = $("synonyms-input").value.trim() || $("include-input").value.trim() || $("from-input").value !== "2010" || $("to-input").value;
+    if (reset || active) $("search-options").open = Boolean(active);
+  }
+  function renderSaveState() {
+    const saved = !isSample && myLibrary.some((entry) => entry.id === topic.id);
+    $("save-report").textContent = saved ? "Saved" : "Save to My library";
+    $("save-report").disabled = isSample || busy;
+    $("save-report").setAttribute("aria-pressed", String(saved));
+  }
   let selectedField = "All fields";
   let noticeTimer;
   const childrenPreset = "children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood";
@@ -48,10 +71,74 @@
     const suffix = terms.length && [includeSuffix(terms), ` + (${terms.join(" OR ")})`].find((item) => report.name.endsWith(item));
     return suffix ? report.name.slice(0, -suffix.length) : report.name;
   }
+  const periodPhrase = (range) => range.to == null ? `since ${range.from}` : `between ${range.from} and ${range.to}`;
+  function growthStartCount(report) { return growthWindow(report).growthStartCount; }
+  function growthWindow(report) {
+    const range = Array.isArray(report.years) ? reportRange(report) : entryRange(report);
+    const year = Number(report.updated.slice(0, 4));
+    const end = Math.min(range.to ?? year - 1, year - 1);
+    const label = report.kpis?.growthLabel ?? report.growthLabel;
+    const useRange = label && label !== "5-year growth" && end - range.from + 1 >= 3;
+    const growthStartYear = useRange ? range.from : end - 5;
+    const growthEndYear = end;
+    const countFor = (target) => {
+      if (Array.isArray(report.years)) return report.years.find((item) => item.year === target)?.count;
+      if ((target === growthStartYear && report.growthStartYear === target) || (report.growthStartYear == null && range.to == null && target === growthStartYear)) return report.growthStartCount ?? report.spark?.[target - (report.sparkStartYear ?? year - 10)];
+      if (target === growthEndYear && report.growthEndYear === target) return report.growthEndCount;
+      return report.spark?.[target - (report.sparkStartYear ?? year - 10)];
+    };
+    return {growthStartYear, growthEndYear, growthStartCount:countFor(growthStartYear), growthEndCount:countFor(growthEndYear)};
+  }
+  function repairBoundedGrowth(report) {
+    if (report.to == null || !report.kpis || !Array.isArray(report.years)) return report;
+    const range = reportRange(report), year = Number(report.updated.slice(0,4));
+    const end = Math.min(range.to, year - 1);
+    const first = report.years.find((item) => item.year === end - 5)?.count;
+    const last = report.years.find((item) => item.year === end)?.count;
+    const available = Number.isFinite(first) && Number.isFinite(last);
+    const growth5y = available && first > 0 ? (last / first) ** .2 - 1 : null;
+    const {growthNeedsRebuild, ...saved} = report;
+    const fallback = end - range.from + 1 < 3;
+    const momentum = growth5y === null ? "Not enough data" : growth5y >= .2 ? "Accelerating" : growth5y >= .08 ? "Growing" : growth5y >= 0 ? "Stable" : "Cooling";
+    return {...saved, kpis:{...report.kpis,growth5y,...(fallback ? {growth:growth5y,growthLabel:"5-year growth",momentum} : {})}, ...(!available && fallback ? {growthNeedsRebuild:true} : {})};
+  }
+  function repairBoundedSummary(entry) {
+    const range = entryRange(entry), end = Math.min(range.to ?? Infinity, Number(entry.updated.slice(0,4)) - 1);
+    if (range.to == null || end - range.from + 1 >= 3) return entry;
+    const window = growthWindow(entry);
+    const available = Number.isFinite(window.growthStartCount) && Number.isFinite(window.growthEndCount);
+    const growth = available && window.growthStartCount > 0 ? (window.growthEndCount / window.growthStartCount) ** .2 - 1 : null;
+    const momentum = growth === null ? "Not enough data" : growth >= .2 ? "Accelerating" : growth >= .08 ? "Growing" : growth >= 0 ? "Stable" : "Cooling";
+    return {...entry,...window,growth,momentum,growthLabel:"5-year growth"};
+  }
+  const isNewTopic = (window) => Number.isFinite(window.growthStartCount) && (window.growthStartCount < 20 || window.growthStartCount < .02 * window.growthEndCount);
+  function normalJournalName(name) {
+    if (name !== name.toUpperCase() || !/[A-Z]/.test(name)) return name;
+    const keep = new Set(["IEEE", "ACM", "DNA", "RNA", "AI", "BMJ", "JAMA", "PNAS", "PLOS", "ACS", "IET"]);
+    const minor = new Set(["a", "an", "the", "and", "or", "but", "of", "in", "on", "for", "to", "at", "by", "with"]);
+    const words = name.toLowerCase().split(/(\s+)/);
+    return words.map((word, i) => keep.has(word.toUpperCase()) ? word.toUpperCase() : i > 0 && i < words.length - 1 && minor.has(word) ? word : word.replace(/(^|[-/])\p{L}/gu, (c) => c.toUpperCase())).join("");
+  }
   function presentReport(report) {
+    report = repairBoundedGrowth(report);
     const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
     const name = terms.length || report.period || report.from !== undefined ? baseTitle(report) + includeSuffix(terms) + (report.period || report.from !== undefined ? ` · ${rangeLabel(reportRange(report))}` : "") : report.name;
-    return { ...report, name, ...(report.headline ? { headline: report.headline.replace(report.name, name) } : {}) };
+    let sentence = report.headline?.replace(report.name, name);
+    if (report.kpis && report.from !== undefined && Array.isArray(report.years)) {
+      const range = reportRange(report), window = growthWindow(report);
+      const topicName = name.replace(/ · (?:since \d{4}|\d{4}–\d{4})$/, "");
+      const prefix = range.to == null ? `Since ${range.from}, ` : `From ${range.from} to ${range.to}, `;
+      const lastYear = Math.max(range.from, Math.min(range.to ?? Number(report.updated.slice(0,4)) - 1, Number(report.updated.slice(0,4)) - 1));
+      const published = `In ${lastYear}, ${papers(report.kpis.lastYear)} ${report.kpis.lastYear === 1 ? "was" : "were"} published.`;
+      const regional = report.regionalCounts && report.kpis.total > 0 && report.regionalCounts.gcc / report.kpis.total < .05 ? ` Only ${papers(report.regionalCounts.gcc)} published ${periodPhrase(range)} ${range.to != null ? "came" : report.regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${number(report.regionalCounts.uae)} from the UAE).` : "";
+      const growth = primaryGrowth(report);
+      if (isNewTopic(window) && Number.isFinite(window.growthEndCount)) sentence = `${titleCase(topicName)} is a new research topic: from ${papers(window.growthStartCount)} in ${window.growthStartYear} to ${number(window.growthEndCount)} in ${window.growthEndYear}.${regional}`;
+      else if (growth === null) sentence = `${prefix}there is not enough data to calculate annual growth for ${topicName}. ${published}${regional}`;
+      else sentence = `${prefix}research on ${topicName} ${range.to == null ? "has been" : "was"} ${report.kpis.momentum.toLowerCase()} (${percent(growth)} a year${report.kpis.growthLabel === "5-year growth" ? " over " + window.growthStartYear + "–" + window.growthEndYear : ""}). ${published}${regional}`;
+    } else if (sentence) {
+      sentence = sentence.replace(/([+−-]?)(\d+(?:\.\d+)?)%/g, (_, sign, value) => percent((sign === "-" || sign === "−" ? -1 : 1) * Number(value) / 100));
+    }
+    return { ...report, name, ...(sentence ? { headline: sentence } : {}), ...(report.journals ? { journals: report.journals.map((item) => ({...item, name: normalJournalName(item.name)})) } : {}), ...(report.papers ? { papers: report.papers.map((item) => ({...item, journal: normalJournalName(item.journal)})) } : {}) };
   }
 
   function notify(message, persistent = false) {
@@ -61,101 +148,149 @@
     if (!persistent) noticeTimer = setTimeout(() => { $("status").hidden = true; }, 8000);
   }
 
-  function chart(years, mini = false) {
-    const width = mini ? 650 : 1060;
-    const height = mini ? 64 : 260;
-    const left = mini ? 0 : 52;
-    const bottom = mini ? 0 : 30;
-    const top = mini ? 0 : 18;
-    const plotHeight = height - bottom - top;
-    const max = Math.max(...years.map((item) => item.count), 1);
-    const ceiling = mini ? max : Math.ceil(max / 200) * 200;
-    const step = (width - left - 12) / years.length;
-    const currentYear = new Date().getFullYear();
-    const patternId = mini ? "mini-hatch" : "year-hatch";
-    const grid = mini ? "" : Array.from({ length: 5 }, (_, i) => {
-      const value = ceiling * i / 4;
-      const y = height - bottom - value / ceiling * plotHeight;
-      return `<line x1="${left}" x2="${width}" y1="${y}" y2="${y}" stroke="#e8e8e0"/><text x="${left - 12}" y="${y + 4}" text-anchor="end" fill="#626963" font-size="11">${number(value)}</text>`;
+  function chart(years) {
+    if (!years.length) return "";
+    const width = Math.min(1060, Math.max(280, (window.innerWidth || 1156) - 96)), height = 260, left = 54, right = 18, top = 22, bottom = 34;
+    const baseline = height - bottom;
+    const max = Math.max(1, ...years.map((item) => item.count));
+    const roughStep = max / 3;
+    const unit = 10 ** Math.floor(Math.log10(roughStep));
+    const fraction = roughStep / unit;
+    const tickSize = Math.max(1, (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * unit);
+    const ceiling = Math.ceil(max / tickSize) * tickSize;
+    const ticks = Math.round(ceiling / tickSize);
+    const x = (i) => years.length === 1 ? (width + left - right) / 2 : left + i * (width - left - right) / (years.length - 1);
+    const y = (count) => baseline - count / ceiling * (baseline - top);
+    const points = years.map((item, i) => ({ ...item, x: x(i), y: y(item.count) }));
+    const partial = points.at(-1).year === new Date().getFullYear() ? points.at(-1) : null;
+    const complete = partial ? points.slice(0, -1) : points;
+    const path = (items) => items.map((point, i) => `${i ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const grid = Array.from({ length: ticks + 1 }, (_, i) => {
+      const value = tickSize * i;
+      const position = y(value);
+      return `<line class="chart-grid" x1="${left}" x2="${width - right}" y1="${position}" y2="${position}"/><text class="chart-label" x="${left - 12}" y="${position + 4}" text-anchor="end">${number(Math.round(value))}</text>`;
     }).join("");
-    const bars = years.map((item, i) => {
-      const barHeight = item.count / ceiling * plotHeight;
-      const x = left + i * step + step * .15;
-      const y = height - bottom - barHeight;
-      const fill = item.year === currentYear ? `url(#${patternId})` : "#C2410C";
-      const label = !mini && (i % 2 === 0 || i === years.length - 1) ? `<text x="${x + step * .35}" y="${height - 6}" text-anchor="middle" fill="#626963" font-size="11">${item.year}</text>` : "";
-      return `<rect x="${x}" y="${y}" width="${step * .7}" height="${barHeight}" rx="2" fill="${fill}"><title>${item.year}: ${papers(item.count)}${item.year === currentYear ? " (year to date)" : ""}</title></rect>${label}`;
+    const labels = [...new Set([0, Math.floor((years.length - 1) / 2), years.length - 1])].map((i) => `<text class="chart-label" x="${x(i)}" y="${height - 8}" text-anchor="middle">${years[i].year}</text>`).join("");
+    const area = complete.length > 1 ? `<path class="chart-area" d="${path(complete)} L${complete.at(-1).x},${baseline} L${complete[0].x},${baseline} Z"/>` : "";
+    const dashed = partial && complete.length ? `<path class="chart-line partial-year" d="${path([complete.at(-1), partial])}"/>` : "";
+    const dots = points.map((point) => {
+      const label = `${point.year}: ${papers(point.count)}${point === partial ? " (year to date)" : ""}`;
+      return `<circle class="chart-point${point === partial ? " partial-point" : ""}" cx="${point.x}" cy="${point.y}" r="3" tabindex="0" aria-label="${escape(label)}"><title>${escape(label)}</title></circle>`;
     }).join("");
-    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${mini ? "Growth trend" : "Papers per year; values also available through Export CSV"}" style="font-family:'IBM Plex Mono',monospace"><defs><pattern id="${patternId}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f5eadd"/><line x1="0" y1="0" x2="0" y2="6" stroke="#C2410C" stroke-width="2"/></pattern></defs>${grid}${bars}</svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Papers published each year. The current year isn’t over, so its line is dashed.">${grid}${area}<path class="chart-line" d="${path(complete)}"/>${dashed}${dots}${labels}</svg>`;
+  }
+
+  function renderRankings() {
+    $("experts").innerHTML = topic.experts.slice(0, expertsExpanded ? undefined : 5).map((item) => `<li><span class="rank-name">${item.openalexUrl ? `<a href="${escape(item.openalexUrl)}" target="_blank" rel="noopener noreferrer">${escape(item.name)}</a>` : escape(item.name)}</span><span class="number">${number(item.count)}</span></li>`).join("");
+    $("experts-toggle").hidden = topic.experts.length <= 5;
+    $("experts-toggle").textContent = expertsExpanded ? "Show less" : "Show all";
+    $("experts-toggle").setAttribute("aria-expanded", String(expertsExpanded));
+    const maxCountry = Math.max(1, ...topic.countries.map((item) => item.count));
+    $("countries").innerHTML = topic.countries.slice(0, countriesExpanded ? undefined : 5).map((item) => `<div class="country-row"><div class="row-heading"><span>${escape(item.name)}${item.gcc ? '<abbr class="gcc" title="Gulf Cooperation Council">GCC</abbr>' : ""}</span><span class="number">${number(item.count)}</span></div><div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:${item.count / maxCountry * 100}%"></div></div></div>`).join("");
+    $("countries-toggle").hidden = topic.countries.length <= 5;
+    $("countries-toggle").textContent = countriesExpanded ? "Show less" : "Show all";
+    $("countries-toggle").setAttribute("aria-expanded", String(countriesExpanded));
+    $("journals").innerHTML = topic.journals.slice(0, journalsExpanded ? undefined : 5).map((item) => `<li><span class="rank-name">${escape(item.name)}</span><span class="number">${number(item.count)}</span></li>`).join("");
+    $("papers").innerHTML = topic.papers.slice(0, papersExpanded ? undefined : 5).map((item) => `<article class="paper"><div class="paper-heading"><h3>${item.url ? `<a href="${escape(item.url)}" target="_blank" rel="noopener noreferrer">${escape(item.title)}</a>` : escape(item.title)}</h3><span class="number citations">${number(item.citations)} ${item.citations === 1 ? "citation" : "citations"}</span></div><p class="paper-meta">${escape(item.authors)}, ${escape(item.journal)}, ${item.year}</p></article>`).join("");
+    for (const [id, items, expanded] of [["journals-toggle", topic.journals, journalsExpanded], ["papers-toggle", topic.papers, papersExpanded]]) {
+      $(id).hidden = items.length <= 5;
+      $(id).textContent = expanded ? "Show less" : "Show all";
+      $(id).setAttribute("aria-expanded", String(expanded));
+    }
+  }
+
+  function parentDisplayName() {
+    const canonical = topic.searchTerms?.name || topic.parentName || topic.name;
+    const supplied = topic.subtopicId ? topic.parentName : topic.headlineName;
+    return supplied && supplied.trim().toLowerCase() === canonical.trim().toLowerCase() ? supplied : canonical;
   }
 
   function renderTopic() {
-    $("report-source").textContent = isSample ? "SAMPLE DATA" : "OPENALEX";
-    $("data-notice").textContent = location.hash === "#library" ? "Saved research reports. Missing reports are rebuilt automatically within the daily search limit." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
+    closeHelp();
+    $("report-source").textContent = isSample ? "Sample data" : "";
+    $("data-notice").textContent = isSample ? "Fictional research and illustrative numbers." : "Data from OpenAlex. Searches are cached anonymously to keep the tool free.";
+    $("report-freshness").textContent = isSample ? "" : `${topic.stale ? "Saved on " + dateText(topic.updated) + ", may be out of date." : "Updated " + dateText(topic.updated) + "."}${topic.subtopicId ? " Part of " + (topic.searchTerms?.name || topic.parentName || topic.name) + "." : ""}`;
     $("topic-input").value = topic.searchTerms?.name || topic.name;
-    $("synonyms-input").value = (topic.searchTerms?.synonyms || topic.synonyms).join(", ");
+    $("synonyms-input").value = isSample ? "" : (topic.searchTerms?.synonyms || topic.synonyms).join(", ");
     $("from-input").value = String(reportRange(topic).from);
     $("to-input").value = reportRange(topic).to === null ? "" : String(reportRange(topic).to);
     $("include-input").value = (topic.includeTerms || topic.searchTerms?.includeTerms || []).join(", ");
+    syncOptions(true);
     renderSynonyms();
-    $("topic-name").textContent = topic.name;
-    $("topic-meta").textContent = `${topic.field} · Updated ${topic.updated} ${isSample ? "· All values are fictional" : ""}`;
-    const parentName = topic.searchTerms?.name || topic.parentName || topic.name;
-    $("back-parent").hidden = !topic.subtopicId && !topic.includeTerms?.length;
-    $("back-parent").textContent = `← Back to ${parentName}`;
-    $("back-parent").href = reportHash({ ...topic, name: parentName, subtopicId: null,
-      ...(!topic.subtopicId ? { includeTerms: [], searchTerms: { name: parentName, synonyms: topic.synonyms } } : {}) }, cacheOnlyView);
-    $("subtopics-panel").hidden = Boolean(topic.subtopicId);
-    if (topic.subtopicId) $("topic-meta").textContent += ` · Under ${parentName}`;
-    if (topic.stale) $("topic-meta").textContent += " · Saved report, older than 7 days";
+    const include = topic.includeTerms || topic.searchTerms?.includeTerms || [];
+    const titleSuffix = topic.from !== undefined || topic.period ? " · " + rangeLabel(reportRange(topic)) : "";
+    $("topic-name").textContent = titleCase(titleSuffix && topic.name.endsWith(titleSuffix) ? topic.name.slice(0, -titleSuffix.length) : topic.name);
     const range = reportRange(topic);
     const rangeText = rangeLabel(range, true);
-    const legacy = topic.from === undefined;
-    const expertsFrom = range.from < 2020 && range.to === null ? 2020 : range.from;
-    const expertsRange = { from: expertsFrom, to: range.to };
-    const shownYears = topic.years.filter((item) => item.year >= range.from && (range.to === null || item.year <= range.to));
+    $("topic-meta").textContent = `${topic.field}, ${rangeText.toLowerCase()}`;
+    const parentName = parentDisplayName();
+    $("back-parent").hidden = !topic.subtopicId && !include.length;
+    $("back-parent").textContent = `Back to ${titleCase(parentName)}`;
+    $("back-parent").href = reportHash({ ...topic, name: parentName, subtopicId: null,
+      ...(!topic.subtopicId ? { includeTerms: [], searchTerms: { name: parentName, synonyms: topic.synonyms } } : {}) }, cacheOnlyView);
+    if (renderedReportId !== topic.id) { expertsExpanded = false; countriesExpanded = false; journalsExpanded = false; papersExpanded = false; renderedReportId = topic.id; }
+    renderSaveState();
+    const period = periodPhrase(range);
+    const expertsPeriod = range.from < 2020 && range.to === null ? "since 2020" : period;
+    $("experts-heading").textContent = "Leading experts";
+    $("experts-note").textContent = `Authors with the most papers on this topic ${expertsPeriod}. A starting point for speakers, not a ranking of quality.`;
+    $("countries-note").textContent = "Where the authors work. A paper with authors in two countries counts for both.";
+    for (const list of ["experts", "journals"]) {
+      const all = topic.sourceQuality?.[list] !== "core";
+      $(list + "-source-note").hidden = isSample || !all;
+      $(list + "-source-note").textContent = "Includes non-core sources";
+    }
+    if (topic.sourceQuality?.experts === "core") $("experts-note").textContent += " Only papers in journals on the Leiden Ranking core list are counted.";
+    $("journals-note").textContent = topic.sourceQuality?.journals === "core" ? "Journals that published the most papers on this topic. Only journals on the Leiden Ranking core list are counted." : "Journals that published the most papers on this topic. Preprint servers are excluded.";
+    const citedPeriod = topic.from === undefined && !topic.period ? "since 2022" : period;
+    $("papers-period").textContent = `The papers other researchers cite most, published ${citedPeriod}.`;
     const countsOnly = topic.subtopicWindow?.countsOnly ?? (topic.period === 2025);
-    $("experts-heading").textContent = range.from < 2020 && range.to === null ? "Active since 2020" : "Leading experts";
-    $("experts-note").textContent = rangeLabel(expertsRange, true);
-    const aggregateText = legacy && !topic.period ? "Since 2020" : rangeText;
-    $("countries-note").textContent = aggregateText + " · papers may span multiple countries";
-    $("journals-note").textContent = aggregateText;
-    $("papers-period").textContent = legacy && !topic.period ? "Since 2022" : rangeText;
-    $("subtopics-heading").textContent = countsOnly ? "Sub-topics by paper count" : "Rising sub-topics";
-    $("subtopics-metric").textContent = countsOnly ? "PAPERS" : "GROWTH";
-    const span = (from, to) => from === to ? String(from) : `${from}–${to}`;
-    const window = topic.subtopicWindow;
-    $("subtopics-note").textContent = countsOnly ? rangeText + " · ranked by paper count" : window ? `${span(window.split, window.end)} vs. ${span(window.from, window.split - 1)} · total change` : topic.period === 2023 ? "2025 vs. 2023 · total change" : "2023–2025 vs. 2020–2022 · total change";
+    const subtopics = topic.subtopics.filter((item) => Number.isFinite(item.late) && (Number.isFinite(item.growth) || item.growth === null));
+    // Older reports encode a zero earlier half as null growth.
+    const earlierCount = (item) => item.early ?? (item.growth === null ? 0 : Number.isFinite(item.growth) && item.growth > -1 ? Math.round(item.late / (1 + item.growth)) : undefined);
+    const showsCounts = (item) => !countsOnly && Number.isFinite(earlierCount(item)) && earlierCount(item) >= 0 && earlierCount(item) < 20;
+
+    $("subtopics-heading").textContent = "Sub-topics";
+    $("subtopics-metric").textContent = "Growth";
+    $("subtopics-note").textContent = countsOnly ? "Research areas inside this topic, ranked by number of papers. Click a row to open it." : "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it.";
+    if (subtopics.some(showsCounts)) $("subtopics-note").textContent += " Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.";
     const empty = topic.kpis.total === 0;
     $("no-results").hidden = !empty;
     $("report-content").hidden = empty;
+    $("export-csv").disabled = empty || busy;
     if (empty) return;
-    const fastest = topic.subtopics.filter((item) => item.growth !== null).sort((a, b) => b.growth - a.growth)[0];
-    const topCountry = topic.countries.slice().sort((a, b) => b.count - a.count)[0];
-    const lastCompleteYear = Math.max(range.from, Math.min(range.to ?? Number(topic.updated.slice(0, 4)) - 1, Number(topic.updated.slice(0, 4)) - 1));
+    const lastYear = Math.max(range.from, Math.min(range.to ?? Number(topic.updated.slice(0, 4)) - 1, Number(topic.updated.slice(0, 4)) - 1));
+    const growth = primaryGrowth(topic);
+    const window = growthWindow(topic);
+    const newTopic = isNewTopic(window);
     const cards = [
-      ["TOTAL PAPERS", number(topic.kpis.total), rangeText + (range.to === null || range.to === new Date().getFullYear() ? " · includes year to date" : "")],
-      [(topic.kpis.growthLabel || "5-year growth").toUpperCase(), percent(primaryGrowth(topic)), badge(topic.kpis.momentum)],
-      [`PAPERS IN ${lastCompleteYear}`, number(topic.kpis.lastYear), lastCompleteYear === Number(topic.updated.slice(0, 4)) ? "Year to date" : "Last complete year in range"],
-      topic.subtopicId ? ["TOP COUNTRY", topCountry ? escape(topCountry.name) : "Not enough data", topCountry ? `${papers(topCountry.count)} ${aggregateText.toLowerCase()}` : "No country data"] : countsOnly ? ["LARGEST SUB-TOPIC", topic.subtopics[0] ? escape(topic.subtopics[0].name) : "Not enough data", topic.subtopics[0] ? papers(topic.subtopics[0].late) + " " + rangeText.toLowerCase() : "No sub-topic data"] : ["FASTEST-GROWING SUB-TOPIC", fastest ? escape(fastest.name) : "Not enough data", fastest ? `${percent(fastest.growth)} between periods` : "No comparable sub-topics"]
+      ["Papers", number(topic.kpis.total), `Papers on this topic ${period}.`, ""],
+      ["Growth", newTopic ? "New topic" : growth === null ? "Not enough data" : percent(growth), `Average yearly increase in papers ${period}. With fewer than three full years, we use the last five complete years instead.`, newTopic ? "" : growthClass(growth)],
+      [`Papers in ${lastYear}`, number(topic.kpis.lastYear), lastYear === Number(topic.updated.slice(0, 4)) ? "Papers published this year to date." : "Papers published in the last complete year.", ""]
     ];
-    $("kpis").innerHTML = cards.map(([label, value, note], i) => `<article class="kpi"><span class="small-label">${label}</span><p class="kpi-value ${i === 3 ? "topic-value" : ""}">${value}</p><p class="kpi-note">${note}</p></article>`).join("");
-    $("headline").textContent = topic.headline;
-    $("year-chart").innerHTML = chart(shownYears);
-    $("current-year-label").textContent = new Date().getFullYear();
-    $("experts").innerHTML = topic.experts.map((item) => `<li><span class="rank-name">${item.openalexUrl ? `<a href="${escape(item.openalexUrl)}" target="_blank" rel="noopener noreferrer">${escape(item.name)}</a>` : escape(item.name)}</span><span class="number">${number(item.count)}</span></li>`).join("");
-    $("journals").innerHTML = topic.journals.map((item) => `<li><span class="rank-name">${escape(item.name)}</span><span class="number">${number(item.count)}</span></li>`).join("");
-    $("subtopics").innerHTML = topic.subtopics.map((item) => `<div class="data-row"><div class="row-heading">${item.id ? `<button type="button" class="chip" data-subtopic="${escape(item.id)}" data-title="${escape(item.name)}">${escape(item.name)} ↗</button>` : `<span>${escape(item.name)}</span>`}<span class="row-value">${countsOnly ? number(item.late) : percent(item.growth)}</span></div><p class="row-note">${papers(item.late)} ${countsOnly ? rangeText.toLowerCase() : "in late period"}</p></div>`).join("");
-    const maxCountry = Math.max(1, ...topic.countries.map((item) => item.count));
-    $("countries").innerHTML = topic.countries.map((item) => `<div class="data-row"><div class="row-heading"><span>${escape(item.name)} ${item.gcc ? '<abbr class="gcc" title="Gulf Cooperation Council">GCC</abbr>' : ""}</span><span class="number">${number(item.count)}</span></div><div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:${item.count / maxCountry * 100}%"></div></div></div>`).join("");
-    $("regional-counts").textContent = topic.regionalCounts ? `${aggregateText} · UAE: ${papers(topic.regionalCounts.uae)} · GCC: ${papers(topic.regionalCounts.gcc)} (each paper counted once)` : "UAE and GCC totals are unavailable in this sample.";
-    $("papers").innerHTML = topic.papers.map((item) => `<article class="paper"><div class="paper-meta"><span>${item.year}</span><span>${number(item.citations)} ${item.citations === 1 ? "CITATION" : "CITATIONS"}</span></div><h4>${item.url ? `<a href="${escape(item.url)}" target="_blank" rel="noopener noreferrer">${escape(item.title)}</a>` : escape(item.title)}</h4><p>${escape(item.authors)}</p><p>${escape(item.journal)}</p></article>`).join("");
+    $("kpis").innerHTML = cards.map(([label, value, note, tone], i) => `<div class="kpi"><div class="kpi-label">${label}${help("kpi-help-" + i, label, note)}</div><p class="kpi-value ${tone}${i === 1 && (growth === null || newTopic) ? " unavailable" : ""}">${value}${i === 1 && newTopic ? help("new-topic-help", "New topic", "This topic started from very few papers, so a yearly percentage would be misleading. We show the real counts instead.") : ""}</p>${i === 1 && newTopic ? `<p class="growth-counts">${number(window.growthStartCount)} ${window.growthStartCount === 1 ? "paper" : "papers"} in ${window.growthStartYear} → ${number(window.growthEndCount)} in ${window.growthEndYear}</p>` : ""}</div>`).join("");
+    $("year-chart").innerHTML = chart(topic.years.filter((item) => item.year >= range.from && (range.to === null || item.year <= range.to)));
+    $("momentum-segments").innerHTML = ["Accelerating", "Growing", "Stable", "Cooling"].map((label) => `<span aria-current="${topic.kpis.momentum === label}">${label}</span>`).join("");
+    $("momentum-unavailable").hidden = topic.kpis.momentum !== "Not enough data";
+    $("headline").textContent = displayText(topic.headline);
+    renderRankings();
+    $("regional-counts").textContent = topic.regionalCounts ? `UAE: ${papers(topic.regionalCounts.uae)}. GCC: ${papers(topic.regionalCounts.gcc)}.` : "UAE and GCC totals are unavailable in this sample.";
+    const row = (item, action = "") => {
+      const count = Number.isFinite(item.late) ? number(item.late) : "";
+      const early = earlierCount(item);
+      const rate = countsOnly ? "" : showsCounts(item) ? `${number(early)} → ${number(item.late)}` : Number.isFinite(item.growth) ? percent(item.growth) : "";
+      const content = `<span class="topic-name">${escape(item.name)}</span><span class="number" aria-label="${count ? "Paper count: " + count : "Paper count unavailable"}">${count}</span><span class="number ${showsCounts(item) ? "count-change" : countsOnly ? "" : growthClass(item.growth ?? null)}" aria-label="${showsCounts(item) ? `Earlier half: ${papers(early)}. Later half: ${papers(item.late)}.` : rate ? "Growth: " + rate : "Growth unavailable"}">${rate}</span>`;
+      return action ? `<button type="button" class="topic-row" ${action}>${content}</button>` : `<div class="topic-row">${content}</div>`;
+    };
+    $("subtopics-panel").hidden = Boolean(topic.subtopicId);
+    $("subtopics").innerHTML = subtopics.map((item) => row(item, item.id ? `data-subtopic="${escape(item.id)}" data-title="${escape(item.name)}"` : `data-next-term="${escape(item.name)}"`)).join("");
     const normalise = (value) => value.toLowerCase().trim().replace(/\s+/g, " ");
-    const excluded = [topic.searchTerms?.name || topic.name, ...topic.synonyms, ...(topic.includeTerms || [])].map(normalise);
+    const excluded = [topic.searchTerms?.name || topic.name, ...topic.synonyms, ...include].map(normalise);
     const suggestions = topic.suggestedSynonyms.filter((term) => !excluded.some((value) => ` ${value} `.includes(` ${normalise(term)} `)));
-    $("suggested-synonyms").innerHTML = suggestions.map((term) => `<button class="chip" type="button" data-suggest="${escape(term)}">+ ${escape(term)}</button>`).join("");
-    $("explore-next").innerHTML = topic.subtopicId ? suggestions.map((term) => `<button class="chip" type="button" data-next-term="${escape(term)}">${escape(term)} ↗</button>`).join("") : topic.exploreNext.map((item) => typeof item === "object" && item.id ? `<button class="chip" type="button" data-subtopic="${escape(item.id)}" data-title="${escape(item.name)}">${escape(item.name)} ↗</button>` : `<span class="chip">${escape(typeof item === "string" ? item : item.name)}</span>`).join("");
-    $("explore-section").hidden = !$("explore-next").innerHTML;
+    $("suggested-synonyms").innerHTML = suggestions.map((term) => `<button class="chip" type="button" data-suggest="${escape(term)}">${escape(term)}</button>`).join("");
+    $("suggestions").hidden = !suggestions.length;
+    $("topics-section").hidden = Boolean(topic.subtopicId) || !topic.subtopics.some((item) => Number.isFinite(item.late) && (Number.isFinite(item.growth) || item.growth === null));
+
   }
 
   function synonyms() {
@@ -166,15 +301,21 @@
     $("synonym-chips").innerHTML = synonyms().map((term) => `<button class="chip" type="button" data-remove="${escape(term)}" aria-label="Remove synonym ${escape(term)}">${escape(term)} ×</button>`).join("");
   }
 
+  function entryRange(entry) {
+    const bounded = entry.id.match(/\|range:(\d{4})-(\d{4})/);
+    return { from: entry.from ?? (bounded ? Number(bounded[1]) : Number(entry.id.match(/\|since:(\d{4})/)?.[1] || entry.period || 2010)), to: entry.to ?? (bounded ? Number(bounded[2]) : null) };
+  }
   function sparkChart(entry) {
-    if (!Array.isArray(entry.spark) || entry.spark.length !== 10 || !entry.spark.every((count) => Number.isSafeInteger(count) && count >= 0)) return "";
-    const lastYear = Number(entry.updated.slice(0, 4)) - 1;
-    const max = Math.max(1, ...entry.spark);
-    const bars = entry.spark.map((count, i) => {
-      const height = count / max * 64;
-      return `<rect x="${i * 65 + 8}" y="${64 - height}" width="45" height="${height}" rx="2" fill="#C2410C"><title>${lastYear - 9 + i}: ${papers(count)}</title></rect>`;
-    }).join("");
-    return `<svg class="mini-chart" viewBox="0 0 650 64" role="img" aria-label="Papers per year, ${lastYear - 9} to ${lastYear}">${bars}</svg>`;
+    if (!Array.isArray(entry.spark) || !entry.spark.every((count) => Number.isSafeInteger(count) && count >= 0)) return "";
+    const range = entryRange(entry);
+    const end = Math.min(range.to ?? Number(entry.updated.slice(0, 4)) - 1, Number(entry.updated.slice(0, 4)) - 1);
+    const start = entry.sparkStartYear ?? Number(entry.updated.slice(0, 4)) - 10;
+    const values = entry.spark.map((count, i) => ({ year: start + i, count })).filter((item) => item.year >= range.from && item.year <= end);
+    if (!values.length) return "";
+    const max = Math.max(1, ...values.map((item) => item.count));
+    const points = values.map((item, i) => `${i ? "L" : "M"}${values.length === 1 ? 70 : 2 + i * 135 / (values.length - 1)},${34 - item.count / max * 30}`).join(" ");
+    const dot = values.length === 1 ? `<circle class="chart-point" cx="70" cy="${34 - values[0].count / max * 30}" r="2"/>` : "";
+    return `<svg class="mini-chart" viewBox="0 0 140 38" role="img" aria-label="Papers per year, ${values[0].year} to ${values.at(-1).year}"><title>${values.map((item) => `${item.year}: ${papers(item.count)}`).join("; ")}</title><path class="chart-line" d="${points}"/>${dot}</svg>`;
   }
 
   function libraryLink(entry) {
@@ -192,40 +333,90 @@
   }
 
   function renderLibrary() {
+    closeHelp();
     $("library-page").toggleAttribute("aria-busy", libraryLoading);
     $("library-error").textContent = libraryError;
     $("library-error").hidden = !libraryError;
     $("library-retry").hidden = !libraryError;
     $("my-library-tab").setAttribute("aria-selected", String(libraryTab === "my"));
     $("all-topics-tab").setAttribute("aria-selected", String(libraryTab === "all"));
+    $("my-library-tab").tabIndex = libraryTab === "my" ? 0 : -1;
+    $("all-topics-tab").tabIndex = libraryTab === "all" ? 0 : -1;
+    $("library-results").setAttribute("aria-labelledby", libraryTab === "my" ? "my-library-tab" : "all-topics-tab");
     if (!libraryLoaded && libraryTab === "all") {
       $("fields").innerHTML = "";
       $("library-cards").innerHTML = "";
+      $("library-table").hidden = true;
       $("library-empty").hidden = true;
       $("library-count").textContent = libraryLoading ? "Loading library…" : "";
       return;
     }
     const visible = library.filter((item) => !(item.from !== undefined && (item.from !== 2010 || item.to != null)) && !item.id.includes("|range:") && !(item.period && item.period !== 2010) && !item.id.includes("|since:") && !item.variant && !item.includeTerms?.length && !item.id.includes("|include:"));
-    const roots = libraryTab === "my" ? myLibrary : visible.filter((item) => !item.parent);
-    const childrenFor = (item) => libraryTab === "my" ? [] : (item.children || []).map((id) => visible.find((child) => child.id === id)).filter(Boolean);
-    const query = $("library-search").value.trim().toLowerCase();
-    const fields = ["All fields", ...new Set(roots.map((item) => item.field))];
+    const source = [...new Map((libraryTab === "my" ? myLibrary : visible).map(repairBoundedSummary).map((item) => [item.id, item])).values()];
+    const lookup = new Map([...library, ...source].map((item) => [item.id, item]));
+    const baseId = (id) => id.split("|").filter((part) => !/^(include:|since:|range:|primary_topic:)/.test(part)).join("|");
+    const type = (item) => item.subtopicId || item.id.includes("|primary_topic:") ? "sub-topic" : item.variant || /\|(include:|since:|range:)/.test(item.id) || item.from !== undefined && (item.from !== 2010 || item.to != null) ? "variant" : item.parent ? "sub-topic" : "topic";
+    const groups = new Map();
+    for (const item of source) {
+      let parent = item;
+      const seen = new Set([item.id]);
+      while (parent?.parent && !seen.has(parent.parent)) { seen.add(parent.parent); parent = lookup.get(parent.parent) || { id: parent.parent }; }
+      const id = baseId(parent.id);
+      if (!groups.has(id)) groups.set(id, { id, name: lookup.get(id)?.searchTerms?.name || id.split("|")[0], entries: [] });
+      groups.get(id).entries.push(item);
+    }
+    const allGroups = [...groups.values()];
+    const fields = ["All fields", ...new Set(source.map((item) => item.field))];
     if (!fields.includes(selectedField)) selectedField = "All fields";
-    $("fields").innerHTML = fields.map((field) => `<button type="button" class="field-button" data-field="${escape(field)}" aria-pressed="${field === selectedField}"><span>${escape(field)}</span><span class="number">${roots.filter((item) => field === "All fields" || item.field === field).length}</span></button>`).join("");
-    const entries = roots.filter((item) => (selectedField === "All fields" || item.field === selectedField) &&
-      [item.name, ...(item.synonyms || []), ...childrenFor(item).flatMap((child) => [child.name, ...(child.synonyms || [])])].join(" ").toLowerCase().includes(query));
+    const matchesField = (group, field) => field === "All fields" || group.entries.some((item) => item.field === field);
+    $("fields").innerHTML = fields.map((field) => `<button type="button" class="field-button" data-field="${escape(field)}" aria-pressed="${field === selectedField}"><span>${escape(field)}</span><span class="number">${allGroups.filter((group) => matchesField(group, field)).reduce((sum, group) => sum + group.entries.length, 0)}</span></button>`).join("");
+    const query = $("library-search").value.trim().toLowerCase();
+    const entries = allGroups.filter((group) => matchesField(group, selectedField) && [group.name, ...group.entries.flatMap((item) => [item.name, item.id, ...(item.synonyms || [])])].join(" ").toLowerCase().includes(query));
     const sort = $("library-sort").value;
-    entries.sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "updated" ? (b.updated || "").localeCompare(a.updated || "") : (b.growth ?? -Infinity) - (a.growth ?? -Infinity) || a.name.localeCompare(b.name));
-    const childCount = entries.reduce((sum, item) => sum + childrenFor(item).length, 0);
-    const relatedLabel = `${childCount === 1 ? "SUB-TOPIC" : "SUB-TOPICS"} EXPLORED`;
-    $("library-count").textContent = libraryLoading ? "Loading library…" : `${entries.length} ${entries.length === 1 ? "TOPIC" : "TOPICS"} · ${childCount} ${relatedLabel}`;
-    $("library-empty").textContent = roots.length ? "No topics match. Try a different search or choose All fields." : libraryTab === "my" ? "Your library is empty. Search a topic and it will appear here." : "The Library is empty. Search for a topic to save its report.";
+    const compare = (a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "updated" ? (b.updated || "").localeCompare(a.updated || "") : (b.growth ?? -Infinity) - (a.growth ?? -Infinity) || a.name.localeCompare(b.name);
+    const sortItem = (group) => group.entries.find((item) => item.id === group.id) || group.entries.slice().sort(compare)[0];
+    entries.sort((a, b) => compare(sortItem(a), sortItem(b)));
+    const shown = entries.flatMap((group) => group.entries);
+    const count = (kind) => shown.filter((item) => type(item) === kind).length;
+    const plural = (value, noun) => `${value} ${noun}${value === 1 ? "" : "s"}`;
+    $("library-count").textContent = libraryLoading ? "Loading library…" : [plural(count("topic"), "topic"), plural(count("sub-topic"), "sub-topic"), plural(count("variant"), "saved version")].join(", ");
+    $("library-empty").textContent = source.length ? "No topics match. Try a different search or choose All fields." : libraryTab === "my" ? "Your library is empty. Search for a topic and it will appear here." : "No shared topics yet.";
     $("library-empty").hidden = entries.length !== 0;
-    $("library-cards").innerHTML = entries.map((item) => {
-      const children = childrenFor(item);
-      const links = (items) => items.map((child) => `<a class="chip" href="${escape(libraryLink(child))}">${escape(child.name)} ↗</a>`).join("");
-      const subtopics = children;
-      return `<article class="library-card"><div class="card-meta"><span class="small-label">${escape(item.field)}</span>${badge(item.momentum)}</div><h2><a href="${escape(libraryLink(item))}">${escape(item.name)} ↗</a></h2><p class="muted">${item.growth === null ? "Not enough data for annual growth" : `${percent(item.growth)} annual growth`}</p>${sparkChart(item)}${subtopics.length ? `<span class="small-label">SUB-TOPICS EXPLORED</span><div class="chips">${links(subtopics)}</div>` : ""}<p class="updated">Updated ${escape(item.updated)} · ${papers(item.total)}</p>${libraryTab === "my" ? `<button type="button" class="remove-report" data-remove-report="${escape(item.id)}">Remove from my library</button>` : ""}</article>`;
+    $("library-table").hidden = entries.length === 0;
+    $("library-table").setAttribute("class", libraryTab === "my" ? "library-table personal" : "library-table");
+    const row = (item, depth) => {
+      const range = entryRange(item);
+      const end = Math.min(range.to ?? Number(item.updated.slice(0, 4)) - 1, Number(item.updated.slice(0, 4)) - 1);
+      const fallback = item.growthLabel === "5-year growth" || end - range.from + 1 < 3;
+      const metadata = `${item.momentum}, ${papers(item.total)} ${periodPhrase(range)}. Updated ${dateText(item.updated)}.`;
+      let name = displayText(item.name.replace(/ · (?:since \d{4}|\d{4}–\d{4})$/, ""));
+      if (type(item) === "variant") {
+        const base = baseId(item.id).split("|")[0];
+        const extra = name.toLowerCase().startsWith(base.toLowerCase() + " + ") ? name.slice(base.length + 3) : "";
+        name = extra ? `Must also include: ${extra}` : rangeLabel(range, true);
+      }
+      const newTopic = isNewTopic(growthWindow(item));
+      const basis = fallback && !newTopic ? '<span class="growth-basis" title="Five-year growth" aria-label="5-year growth">5y</span>' : "";
+      return `<div class="library-row" style="--depth:${depth}" data-report-id="${escape(item.id)}"><div class="library-entry"><a class="library-name" href="${escape(libraryLink(item))}" title="${escape(metadata)}">${escape(name)}</a><div class="library-field">${escape(item.field)}${type(item) === "variant" && extraRange(item, name) ? ", " + escape(rangeLabel(range, true).toLowerCase()) : ""}</div></div><div>${sparkChart(item)}</div><span class="library-growth ${newTopic ? "" : growthClass(item.growth)}${item.growth === null ? " unavailable" : ""}">${newTopic ? "New topic" : item.growth === null ? "Not enough data" : percent(item.growth)}${basis}</span>${libraryTab === "my" ? `<button type="button" class="remove-report" aria-label="Remove ${escape(item.name)} from my library" data-remove-report="${escape(item.id)}">Remove</button>` : ""}</div>`;
+    };
+    const extraRange = (item, name) => name.startsWith("Must also include:") && (entryRange(item).from !== 2010 || entryRange(item).to !== null);
+    $("library-cards").innerHTML = entries.map((group) => {
+      const actual = new Map(group.entries.map((item) => [item.id, item]));
+      const parentFor = (item) => {
+        const inferred = item.parent || (item.id.includes("|primary_topic:") ? item.id.replace(/\|primary_topic:T[0-9]+$/, "") : group.id);
+        return inferred !== item.id && actual.has(inferred) ? inferred : item.id !== group.id && actual.has(group.id) ? group.id : null;
+      };
+      const rendered = new Set();
+      const render = (item, depth) => {
+        if (rendered.has(item.id)) return "";
+        rendered.add(item.id);
+        return row(item, Math.min(depth, 3)) + group.entries.filter((child) => parentFor(child) === item.id).sort(compare).map((child) => render(child, depth + 1)).join("");
+      };
+      const root = actual.get(group.id);
+      let content = root ? render(root, 0) : `<div class="library-parent"><span>${escape(group.name)}</span><span class="unsaved-parent">Parent topic not saved</span></div>`;
+      content += group.entries.filter((item) => !rendered.has(item.id) && !parentFor(item)).sort(compare).map((item) => render(item, 1)).join("");
+      content += group.entries.filter((item) => !rendered.has(item.id)).sort(compare).map((item) => render(item, 1)).join("");
+      return `<article class="library-card" data-group-id="${escape(group.id)}">${content}</article>`;
     }).join("");
   }
 
@@ -241,7 +432,7 @@
     try {
       let response;
       try { response = await fetch(window.WORKER_URL.replace(/\/$/, "") + "/api/library", { signal: controller.signal }); }
-      catch { throw new Error("Can’t reach the data service. Start the Worker and try again."); }
+      catch { throw new Error(connectionError()); }
       let data;
       try { data = await response.json(); }
       catch { throw new Error("The data service returned an unreadable library. Try again later."); }
@@ -273,40 +464,52 @@
   }
 
   function persistMyLibrary() {
-    try { localStorage.setItem(myLibraryKey, JSON.stringify(myLibrary)); }
-    catch { notify("Your library could not be saved in this browser. Allow browser storage and try again.", true); }
+    try { localStorage.setItem(myLibraryKey, JSON.stringify(myLibrary)); return true; }
+    catch { notify("Your library could not be saved in this browser. Allow browser storage and try again.", true); return false; }
   }
 
   function rememberReport(saveSummary = true) {
+    let saved = true;
     if (saveSummary) {
-      const lastYear = Number(topic.updated.slice(0, 4)) - 1;
+      const range = reportRange(topic);
+      const lastYear = Math.min(range.to ?? Number(topic.updated.slice(0, 4)) - 1, Number(topic.updated.slice(0, 4)) - 1);
+      const sparkStartYear = Math.max(range.from, Math.min(...topic.years.map((item) => item.year)));
       const summary = { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field,
         momentum: topic.kpis.momentum, growth: primaryGrowth(topic), total: topic.kpis.total,
-        spark: Array.from({ length: 10 }, (_, i) => topic.years.find((year) => year.year === lastYear - 9 + i)?.count || 0), updated: topic.updated };
+        spark: Array.from({ length: Math.max(0, lastYear - sparkStartYear + 1) }, (_, i) => topic.years.find((year) => year.year === sparkStartYear + i)?.count || 0),
+        updated: topic.updated, from: range.from, to: range.to, sparkStartYear, growthLabel: topic.kpis.growthLabel || "5-year growth", ...growthWindow(topic) };
+      const previous = myLibrary;
       myLibrary = myLibrary.filter((item) => item.id !== summary.id).concat(summary);
-      persistMyLibrary();
+      saved = persistMyLibrary();
+      if (!saved) myLibrary = previous;
     }
     reports.set(reportHash(topic, cacheOnlyView), topic);
     try { localStorage.setItem(storageKey, JSON.stringify({ ...topic, _cacheOnlyView: cacheOnlyView })); } catch { /* Storage may be unavailable. */ }
+    renderSaveState();
+    return saved;
   }
 
   function setLoading(loading) {
     busy = loading;
+    renderSaveState();
+    $("export-csv").disabled = loading || topic.kpis.total === 0;
     $("search-form").toggleAttribute("aria-busy", loading);
-    document.querySelectorAll('#search-form input, #search-form select, #search-form button, #suggested-synonyms button, #explore-next button, #subtopics button').forEach((control) => { control.disabled = loading; });
+    document.querySelectorAll('#search-form input, #search-form select, #search-form button, #suggested-synonyms button, #subtopics button').forEach((control) => { control.disabled = loading; });
   }
 
   function route(loadReport = true) {
     const reopeningFromLibrary = previousRouteHash === "#library";
     previousRouteHash = location.hash;
     const isLibrary = location.hash === "#library";
+    $("report-source").textContent = isLibrary || !isSample ? "" : "Sample data";
+    $("report-freshness").hidden = isLibrary;
     $("library-page").hidden = !isLibrary;
     $("topic-page").hidden = isLibrary;
     $("search-nav").toggleAttribute("aria-current", !isLibrary);
     $("library-nav").toggleAttribute("aria-current", isLibrary);
     $(isLibrary ? "library-nav" : "search-nav").setAttribute("aria-current", "page");
-    document.title = `${isLibrary ? "Library" : "Search"} · Topic Momentum Meter`;
-    $("data-notice").textContent = isLibrary ? "Saved research reports. Missing reports are rebuilt automatically within the daily search limit." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
+    document.title = `${isLibrary ? "Library" : "Search"} - Topic Momentum Meter`;
+    $("data-notice").textContent = !isLibrary && isSample ? "Fictional research and illustrative numbers." : "Data from OpenAlex. Searches are cached anonymously to keep the tool free.";
     if (isLibrary) { if (loadReport) loadLibrary(); else renderLibrary(); }
     if (!loadReport) return;
     const params = new URLSearchParams(location.hash.slice(1));
@@ -314,7 +517,7 @@
       if (busy) { requestController?.abort(); requestVersion++; setLoading(false); $("status").hidden = true; }
       return;
     }
-    if (!isSample && reportHash(topic, cacheOnlyView) === location.hash) {
+    if (!isSample && !topic.growthNeedsRebuild && reportHash(topic, cacheOnlyView) === location.hash) {
       if (reopeningFromLibrary) rememberReport();
       if (busy) { requestController?.abort(); requestVersion++; setLoading(false); renderTopic(); $("status").hidden = true; }
       return;
@@ -322,7 +525,7 @@
     requestController?.abort();
     requestVersion++;
     setLoading(false);
-    if (reports.has(location.hash)) {
+    if (reports.has(location.hash) && !reports.get(location.hash).growthNeedsRebuild) {
       topic = reports.get(location.hash);
       cacheOnlyView = new URLSearchParams(location.hash.slice(1)).get("cache") === "only";
       isSample = false;
@@ -344,9 +547,9 @@
     if (busy) return;
     if (!name.trim()) { notify("Enter a research topic and try again.", true); return; }
     const currentYear = new Date().getFullYear();
-    if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) { notify(`Enter a From year between 2000 and ${currentYear}.`, true); return; }
-    if (to != null && to !== "" && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) { notify(`Enter a To year between 2000 and ${currentYear}, or leave it empty for until today.`, true); return; }
-    if (to != null && to !== "" && Number(from) > Number(to)) { notify("From must be earlier than or equal to To. Change the years and try again.", true); return; }
+    if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) { $("search-options").open = true; notify(`Enter a From year between 2000 and ${currentYear}.`, true); return; }
+    if (to != null && to !== "" && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) { $("search-options").open = true; notify(`Enter a To year between 2000 and ${currentYear}, or leave it empty to include papers up to today.`, true); return; }
+    if (to != null && to !== "" && Number(from) > Number(to)) { $("search-options").open = true; notify("The From year must be the same as or earlier than the To year.", true); return; }
     setLoading(true);
     const version = ++requestVersion;
     notify("Loading research data…", true);
@@ -369,7 +572,7 @@
       }
       let response;
       try { response = await fetch(url, { signal: controller.signal }); }
-      catch { throw new Error("Can’t reach the data service. Start the Worker and try again."); }
+      catch { throw new Error(connectionError()); }
       let data;
       try { data = await response.json(); }
       catch { throw new Error("The data service returned an unreadable report. Try again later."); }
@@ -382,11 +585,11 @@
       cacheOnlyView = cacheOnly;
       if (!cacheOnly || data.cached === false) { libraryDirty = true; libraryRevision++; }
       renderTopic();
-      rememberReport();
+      const saved = rememberReport();
       if (!fromRoute) location.hash = reportHash(topic, cacheOnlyView);
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
-      else notify("Research data loaded.");
+      else if (saved) notify("Research data loaded.");
     } catch (error) { if (version === requestVersion) notify(error.message || "The data service returned an unreadable report. Try again later.", true); }
     finally {
       clearTimeout(timeout);
@@ -403,9 +606,11 @@
     $("synonyms-input").value = "";
     renderSynonyms();
   });
-  $("synonyms-input").addEventListener("input", renderSynonyms);
+  $("synonyms-input").addEventListener("input", () => { renderSynonyms(); syncOptions(); });
+  for (const id of ["include-input", "from-input", "to-input"]) $(id).addEventListener("input", () => syncOptions());
   $("children-preset").addEventListener("click", () => {
     $("include-input").value = childrenPreset;
+    syncOptions();
     $("include-input").focus();
   });
   for (const [id, tab] of [["my-library-tab", "my"], ["all-topics-tab", "all"]]) {
@@ -421,17 +626,60 @@
   $("library-search").addEventListener("input", renderLibrary);
   $("library-sort").addEventListener("change", renderLibrary);
   $("library-retry").addEventListener("click", () => loadLibrary(true));
+  let activeHelp;
+  function closeHelp() {
+    if (!activeHelp) return;
+    const tip = $(activeHelp.dataset.help);
+    if (tip) tip.hidden = true;
+    activeHelp.setAttribute("aria-expanded", "false");
+    activeHelp = null;
+  }
+  function openHelp(button) {
+    closeHelp();
+    const tip = $(button.dataset.help);
+    tip.style && (tip.style.top = "", tip.style.bottom = "");
+    tip.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    activeHelp = button;
+    if (tip.getBoundingClientRect) {
+      tip.style.transform = "";
+      const bounds = tip.getBoundingClientRect();
+      const shift = bounds.right > window.innerWidth - 16 ? window.innerWidth - 16 - bounds.right : bounds.left < 16 ? 16 - bounds.left : 0;
+      tip.style.transform = `translateX(${shift}px)`;
+      if (bounds.bottom > window.innerHeight - 16 && button.getBoundingClientRect().top > bounds.height + 16) { tip.style.top = "auto"; tip.style.bottom = "calc(100% + 12px)"; }
+    }
+  }
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeHelp(); });
+  document.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "touch") return;
+    const button = event.target.closest?.("[data-help]");
+    if (button && button !== activeHelp) openHelp(button);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const wrapper = event.target.closest?.(".help");
+    if (wrapper && !wrapper.contains?.(event.relatedTarget) && !wrapper.contains?.(document.activeElement)) closeHelp();
+  });
+  document.addEventListener("focusin", (event) => { const button = event.target.closest?.("[data-help]"); if (button) openHelp(button); else closeHelp(); });
+  $("experts-toggle").addEventListener("click", () => { expertsExpanded = !expertsExpanded; renderRankings(); });
+  $("countries-toggle").addEventListener("click", () => { countriesExpanded = !countriesExpanded; renderRankings(); });
+  $("journals-toggle").addEventListener("click", () => { journalsExpanded = !journalsExpanded; renderRankings(); });
+  $("papers-toggle").addEventListener("click", () => { papersExpanded = !papersExpanded; renderRankings(); });
+  $("save-report").addEventListener("click", () => { if (!isSample && !busy && rememberReport()) notify("Saved to My library."); });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button");
-    if (!button) return;
+    if (!button) { closeHelp(); return; }
+    if (button.dataset.help !== undefined) { openHelp(button); return; }
+    closeHelp();
     if (button.dataset.rangePreset !== undefined) {
       $("from-input").value = button.dataset.rangePreset;
       $("to-input").value = "";
+      syncOptions();
       $("from-input").focus();
     }
     if (button.dataset.removeReport !== undefined) {
       myLibrary = myLibrary.filter((item) => item.id !== button.dataset.removeReport);
       persistMyLibrary();
+      renderSaveState();
       renderLibrary();
     }
     if (button.dataset.remove !== undefined) {
@@ -448,7 +696,7 @@
       const match = button.dataset.subtopic.match(/^(?:https:\/\/openalex\.org\/)?(T[0-9]+)$/);
       if (!match) { notify("The sub-topic ID is invalid. Run the parent search again.", true); return; }
       const terms = topic.searchTerms || { name: topic.name, synonyms: topic.synonyms };
-      search(terms.name, terms.synonyms, { id: match[1], name: button.dataset.title, parent: topic.subtopicId ? topic.parent : topic.id, parentName: terms.name }, false, false, topic.includeTerms || [], reportRange(topic).from, reportRange(topic).to);
+      search(terms.name, terms.synonyms, { id: match[1], name: button.dataset.title, parent: topic.subtopicId ? topic.parent : topic.id, parentName: parentDisplayName() }, false, false, topic.includeTerms || [], reportRange(topic).from, reportRange(topic).to);
     }
     if (button.dataset.nextTerm !== undefined) {
       const terms = topic.searchTerms || { name: topic.name, synonyms: topic.synonyms };
@@ -467,7 +715,7 @@
       range.selectNodeContents($("headline"));
       selection.removeAllRanges();
       selection.addRange(range);
-      notify("Automatic copying is unavailable. The headline is selected; press Ctrl+C or copy it manually.");
+      notify("Couldn’t copy automatically. The text is selected, so press Ctrl+C (Cmd+C on Mac).");
     }
   });
   $("export-csv").addEventListener("click", () => {
@@ -483,6 +731,11 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   for (const id of ["from-input", "to-input"]) $(id).setAttribute("max", String(new Date().getFullYear()));
+  window.addEventListener("resize", () => {
+    closeHelp();
+    const range = reportRange(topic);
+    $("year-chart").innerHTML = chart(topic.years.filter((item) => item.year >= range.from && (range.to === null || item.year <= range.to)));
+  });
   window.addEventListener("hashchange", route);
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
@@ -496,7 +749,7 @@
   } catch { topic = window.SAMPLE_TOPIC; isSample = true; }
   renderTopic();
   if (!isSample) {
-    rememberReport(false);
+    rememberReport(myLibrary.some((entry) => entry.id === topic.id));
     if (!location.hash || location.hash === "#search") history.replaceState(null, "", reportHash(topic, cacheOnlyView));
   }
   route();
