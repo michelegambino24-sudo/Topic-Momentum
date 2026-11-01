@@ -1,4 +1,4 @@
-import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary } from "./lib.js";
+import { normaliseQuery, buildQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date()) {
@@ -54,22 +54,26 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       const cacheMode = url.searchParams.get("cache");
       if (cacheMode !== null && cacheMode !== "only") return error("invalid_query", "The cache option is invalid. Use cache=only to open a saved report.", 400);
       if (rawQuery.length > 200 || rawSynonyms.length > 1200) return error("invalid_query", "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters.", 400);
+      let range;
+      const currentYear = now().getUTCFullYear();
+      try { range = validateRange(url.searchParams.get("from") ?? url.searchParams.get("period") ?? "2010", url.searchParams.get("to") ?? "", currentYear); }
+      catch (caught) { return error("invalid_query", caught.message, 400); }
       let query;
       const subtopicId = url.searchParams.get("subtopic") || "";
       const subtopicName = url.searchParams.get("subtopicName") || "";
       const parent = url.searchParams.get("parent") || "";
       const parentName = url.searchParams.get("parentName") || "";
       if (subtopicName.length > 300 || parent.length > 2000 || parentName.length > 300) return error("invalid_query", "The sub-topic details are too long. Shorten them and try again.", 400);
-      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId, rawInclude); }
+      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId, rawInclude, range.from, range.to, currentYear); }
       catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
-      const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude);
+      const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear);
       if (subtopicId && parent && parent !== parentQuery.id) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
       if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentQuery.name });
-      else if (query.includeTerms?.length) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
+      else if (query.includeTerms?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
       else if (parent) query.parent = parent;
       if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
       if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);
-      const key = "topic:" + query.id;
+      const key = REPORT_CACHE_PREFIX + query.id;
       if (new TextEncoder().encode(key).length > 512) return error("invalid_query", "The search has too many terms. Shorten the topic or synonyms and try again.", 400);
       if (!env.TMM) return storageError();
       try {
@@ -77,8 +81,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           const date = now();
           const record = await env.TMM.get(key, "json");
           const cached = record?.topic?.id === query.id ? record : null;
-          if (cacheMode === "only") {
-            if (!cached) return error("cache_miss", "This saved report is unavailable. Enter the topic and select Measure momentum to search again.", 404);
+          // Saved links rebuild automatically when the current-version record is missing.
+          if (cacheMode === "only" && cached) {
             return respond({ ...cached.topic, cached: true, ...(!cacheIsFresh(cached, date.getTime()) ? { stale: true } : {}) });
           }
           if (cached && cacheIsFresh(cached, date.getTime())) {
@@ -103,6 +107,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
               await indexTopic(env.TMM, cached.topic);
               return respond({ ...cached.topic, cached: true, stale: true });
             }
+            const legacy = await env.TMM.get("topic:" + query.id, "json");
+            if (legacy?.topic?.id === query.id) return respond({ ...legacy.topic, cached: true, stale: true });
             return error("daily_limit", "Daily limit reached. Try again tomorrow or browse the Library.", 429);
           }
           if (admitted === "missing_key") return error("missing_key", "OPENALEX_KEY is not set. Add it to worker/.dev.vars.", 503);
@@ -155,8 +161,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
             }
             const topic = { ...shapeTopic(query, Object.fromEntries(results), date), ...(query.parent ? { parent: query.parent } : {}) };
             try {
-              // No KV expiry: old reports remain available after the seven-day freshness window.
-              await env.TMM.put(key, JSON.stringify({ savedAt: date.getTime(), topic }));
+              // Fresh for seven days; retain stale fallback reports for at most sixty days.
+              await env.TMM.put(key, JSON.stringify({ savedAt: date.getTime(), topic }), { expirationTtl: REPORT_RETENTION_SECONDS });
               await indexTopic(env.TMM, topic);
             } catch { return storageError(); }
             return respond(topic);

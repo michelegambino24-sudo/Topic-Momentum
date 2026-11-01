@@ -58,7 +58,7 @@ test("caught error details redact every field and safely describe nested network
 });
 
 test("normalisation trims, folds case, removes duplicates and sorts synonyms", () => {
-  assert.deepEqual(normaliseQuery("  MOON   MOSS  ", "beta, Alpha, moon moss, BETA,,"), { name: "moon moss", synonyms: ["alpha", "beta"], id: "moon moss|alpha|beta" });
+  assert.deepEqual(normaliseQuery("  MOON   MOSS  ", "beta, Alpha, moon moss, BETA,,"), { name: "moon moss", synonyms: ["alpha", "beta"], from: 2010, to: null, id: "moon moss|alpha|beta" });
   assert.equal(cleanTerm(' [moss]|(logic),"test":\\ '), "mosslogictest");
   assert.equal(normaliseQuery("[]|'\"").name, "");
   assert.equal(normaliseQuery("MOSS", "b,a").id, normaliseQuery(" moss ", "a,b,b").id);
@@ -76,13 +76,13 @@ test("eleven query descriptors use the specified filters, date windows and limit
   const byId = Object.fromEntries(all.map((item) => [item.id, item.params]));
   assert.equal(byId.years.group_by, "publication_year");
   assert(byId.years.filter.endsWith("publication_year:2010-2026"));
-  assert(byId.early.filter.endsWith("from_publication_date:2020-01-01,to_publication_date:2022-12-31"));
-  assert(byId.late.filter.endsWith("from_publication_date:2023-01-01,to_publication_date:2025-12-31"));
+  assert(byId.early.filter.endsWith("from_publication_date:2010-01-01,to_publication_date:2017-12-31"));
+  assert(byId.late.filter.endsWith("from_publication_date:2018-01-01,to_publication_date:2025-12-31"));
   assert.equal(byId.experts.group_by, "authorships.author.id");
   assert(byId.experts.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:!repository,type:article|review"));
   assert.equal(byId.countries.group_by, "authorships.countries");
   assert.equal(byId.journals.group_by, "primary_location.source.id");
-  assert(byId.journals.filter.endsWith("from_publication_date:2020-01-01,primary_location.source.type:journal,type:article|review"));
+  assert(byId.journals.filter.endsWith("from_publication_date:2010-01-01,primary_location.source.type:journal,type:article|review"));
   for (const { id, params } of all) {
     if (!["experts", "journals"].includes(id)) assert(!params.filter.includes("primary_location.source.type:"));
   }
@@ -112,7 +112,7 @@ test("years fill missing years; KPIs exclude current year from growth and last-y
   assert.equal(topic.cached, false);
   assert.equal(topic.updated, "2026-10-31");
   assert.equal(topic.field, "Computer Science");
-  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "field", "updated", "years", "kpis", "headline", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
+  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "from", "to", "subtopicWindow", "searchTerms", "field", "updated", "years", "kpis", "headline", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
   assert(topic.headline.includes("249 papers were published in 2025"));
 });
 
@@ -211,7 +211,7 @@ test("empty responses produce complete zero-valued topic; malformed responses th
   const empty = Object.fromEntries(Object.keys(responses()).map((name) => [name, fixture(name === "papers" ? "empty-papers" : "empty-groups")]));
   empty.uae = empty.gcc = { meta: { count: 0 }, results: [] };
   const topic = shapeTopic(query, empty, date);
-  assert.deepEqual(topic.kpis, { total: 0, lastYear: 0, growth5y: null, momentum: "Not enough data" });
+  assert.deepEqual(topic.kpis, { total: 0, lastYear: 0, growth5y: null, growth: null, growthLabel: "Growth 2010–2025", momentum: "Not enough data" });
   assert.equal(topic.field, "Unclassified");
   for (const field of ["experts", "subtopics", "countries", "journals", "papers", "suggestedSynonyms", "exploreNext"]) assert.deepEqual(topic[field], []);
   assert(topic.headline.includes("not enough data"));
@@ -273,7 +273,7 @@ test("sub-topic IDs are canonical, validated, and separate query identities", ()
   const suggested = exploreNext(shaped, "moss");
   assert(suggested.every((item) => shaped.some((topic) => topic.id === item.id && topic.name === item.name)));
   const topic = shapeTopic({ ...child, subtopicName: "Named sub-topic", parent: "moss|circuits", parentName: "moss" }, responses(), date);
-  assert.equal(topic.name, "Named sub-topic");
+  assert.equal(topic.name, "Named sub-topic · since 2010");
   assert.equal(topic.parent, "moss|circuits");
   assert.deepEqual(topic.searchTerms, { name: "moss", synonyms: ["circuits"] });
 });
@@ -288,14 +288,14 @@ test("headline GCC share uses only years since 2020, including the current year"
   ] };
   data.uae = { meta: { count: 2 } };
   data.gcc = { meta: { count: 5 } };
-  assert(!shapeTopic(query, data, date).headline.includes("Only")); // Exactly 5%.
+  assert(!shapeTopic({ ...query, from: 2020 }, data, date).headline.includes("Only")); // Exactly 5%.
   data.gcc.meta.count = 4;
-  assert(shapeTopic(query, data, date).headline.endsWith("Only 4 papers since 2020 come from the GCC (2 from the UAE)."));
+  assert(shapeTopic({ ...query, from: 2020 }, data, date).headline.endsWith("Only 4 papers since 2020 come from the GCC (2 from the UAE)."));
   data.gcc.meta.count = 6;
-  assert(!shapeTopic(query, data, date).headline.includes("Only"));
+  assert(!shapeTopic({ ...query, from: 2020 }, data, date).headline.includes("Only"));
   data.years = { group_by: [] };
   data.gcc.meta.count = 0;
-  assert(!shapeTopic(query, data, date).headline.includes("Only"));
+  assert(!shapeTopic({ ...query, from: 2020 }, data, date).headline.includes("Only"));
   const kpis = { growth5y: .1, lastYear: 100, momentum: "Growing" };
   assert(headline("moss", kpis, 2025, { gcc: 25, uae: 11 }, 1000).endsWith("Only 25 papers since 2020 come from the GCC (11 from the UAE)."));
 });

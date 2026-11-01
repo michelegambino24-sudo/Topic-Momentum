@@ -10,3 +10,6 @@
 .search-intro{margin:20px 0 16px}.search-intro h1{font:600 20px/1.25 var(--heading);color:var(--ink);margin:0 0 6px}.search-intro p{font-size:14px;line-height:1.5;color:var(--muted);margin:0;overflow-wrap:anywhere}
 
 .library-tabs{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}.library-tabs [aria-selected="true"]{background:var(--accent);color:white}.library-card .remove-report{position:relative;z-index:1;margin-top:12px}
+
+
+.range-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}.range-fields label,.range-fields input{min-width:0}.range-presets{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.search-fields{grid-template-columns:repeat(3,minmax(0,1fr)) auto}@media(max-width:1000px){.search-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.search-fields .primary{grid-column:auto}}@media(max-width:650px){.search-fields{grid-template-columns:1fr}}

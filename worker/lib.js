@@ -56,14 +56,41 @@ export function normaliseSubtopicId(value) {
   return match[1];
 }
 
-export function normaliseQuery(query, synonyms = "", subtopicId = "", include = "") {
+export function validateRange(from = 2010, to = "", currentYear = new Date().getUTCFullYear()) {
+  if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) throw new Error(`Enter a From year between 2000 and ${currentYear}.`);
+  if (to !== "" && to !== null && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) throw new Error(`Enter a To year between 2000 and ${currentYear}, or leave it empty for until today.`);
+  const range = { from: Number(from), to: to === "" || to === null ? null : Number(to) };
+  if (range.to !== null && range.from > range.to) throw new Error("From must be earlier than or equal to To. Change the years and try again.");
+  return range;
+}
+
+export function rangeLabel(range, capital = false) {
+  return range.to != null ? `${range.from}–${range.to}` : `${capital ? "Since" : "since"} ${range.from}`;
+}
+
+export function rangeDetails(range, currentYear) {
+  const from = range.from ?? range.period ?? 2010;
+  const to = range.to ?? null;
+  const end = to ?? currentYear;
+  const lastComplete = Math.min(end, currentYear - 1);
+  const completeYears = Math.max(0, lastComplete - from + 1);
+  const split = from + Math.floor(completeYears / 2);
+  return { from, to, end, lastComplete, completeYears, split, expertsFrom: from < 2020 && to === null ? 2020 : from };
+}
+
+export function normaliseQuery(query, synonyms = "", subtopicId = "", include = "", from = 2010, to = "", currentYear = new Date().getUTCFullYear()) {
+  const range = validateRange(from, to, currentYear);
   const name = cleanTerm(query);
   const terms = [...new Set(String(synonyms).split(",").map(cleanTerm).filter((term) => term && term !== name))].sort();
   const filterId = subtopicId ? normaliseSubtopicId(subtopicId) : "";
   const includeTerms = [...new Set(String(include).split(",").map(cleanTerm).filter(Boolean))].sort();
-  return { name, synonyms: terms, id: [name, ...terms, ...(includeTerms.length ? ["include:" + JSON.stringify(includeTerms)] : []), ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"),
+  const rangeId = range.to !== null ? [`range:${range.from}-${range.to}`] : range.from !== 2010 ? ["since:" + range.from] : [];
+  return { name, synonyms: terms, ...range, id: [name, ...terms, ...(includeTerms.length ? ["include:" + JSON.stringify(includeTerms)] : []), ...rangeId, ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"),
     ...(includeTerms.length ? { includeTerms } : {}), ...(filterId ? { subtopicId: filterId } : {}) };
 }
+
+export const REPORT_CACHE_PREFIX = "v2:topic:";
+export const REPORT_RETENTION_SECONDS = 60 * 24 * 60 * 60;
 
 export const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -87,9 +114,11 @@ export function updateLibrary(index, topic) {
   const spark = Array.from({ length: 10 }, (_, i) => counts.get(lastYear - 9 + i) ?? 0);
   const entry = {
     id: topic.id, name: topic.name, synonyms: topic.synonyms,
-    field: topic.field, momentum: topic.kpis.momentum, growth: topic.kpis.growth5y,
+    field: topic.field, momentum: topic.kpis.momentum, growth: Object.hasOwn(topic.kpis, "growth") ? topic.kpis.growth : topic.kpis.growth5y,
     total: topic.kpis.total, updated: topic.updated, parent, children: [], spark,
     ...(topic.includeTerms?.length ? { includeTerms: topic.includeTerms, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
+    ...(topic.from !== undefined ? { from: topic.from, to: topic.to, ...(topic.from !== 2010 || topic.to !== null ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}) } : {}),
+    ...(topic.period ? { period: topic.period, ...(topic.period !== 2010 ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}) } : {}),
     ...(topic.subtopicId ? { subtopicId: topic.subtopicId, searchTerms: topic.searchTerms } : {})
   };
   const entries = previous ? index.map((item) => item.id === topic.id ? entry : item) : index.concat(entry);
@@ -117,20 +146,25 @@ export function buildQueries(query, currentYear) {
     filter: `${search},${filter}`, group_by: group, per_page: String(limit)
   } });
   const since2020 = "from_publication_date:2020-01-01";
+  const range = rangeDetails(query, currentYear);
+  const window = (from, to) => `from_publication_date:${from}-01-01${to == null ? "" : `,to_publication_date:${to}-12-31`}`;
+  const selected = window(range.from, range.to);
+  const early = range.completeYears < 2 ? selected : window(range.from, range.split - 1);
+  const late = range.completeYears < 2 ? selected : window(range.split, range.lastComplete);
   return [
-    grouped("years", "publication_year", `publication_year:2010-${currentYear}`, 200),
-    grouped("experts", "authorships.author.id", `${since2020},primary_location.source.type:!repository,type:article|review`, 10),
-    grouped("early", "primary_topic.id", "from_publication_date:2020-01-01,to_publication_date:2022-12-31", 200),
-    grouped("late", "primary_topic.id", `from_publication_date:2023-01-01,to_publication_date:${currentYear - 1}-12-31`, 200),
-    grouped("countries", "authorships.countries", since2020, 15),
+    grouped("years", "publication_year", `publication_year:${Math.min(2010, range.from)}-${currentYear}`, 200),
+    grouped("experts", "authorships.author.id", `${window(range.expertsFrom, range.to)},primary_location.source.type:!repository,type:article|review`, 10),
+    grouped("early", "primary_topic.id", early, 200),
+    grouped("late", "primary_topic.id", late, 200),
+    grouped("countries", "authorships.countries", selected, 15),
     ...[
       ["uae", "countries/ae"],
       ["gcc", "countries/ae|countries/sa|countries/qa|countries/kw|countries/bh|countries/om"]
     ].map(([id, countries]) => ({ id, params: {
-      filter: search + "," + since2020 + ",authorships.countries:" + countries, per_page: "1", select: "id"
+      filter: search + "," + selected + ",authorships.countries:" + countries, per_page: "1", select: "id"
     } })),
-    grouped("journals", "primary_location.source.id", `${since2020},primary_location.source.type:journal,type:article|review`, 10),
-    { id: "papers", params: { filter: `${search},from_publication_date:2022-01-01,type:article|review`, sort: "cited_by_count:desc", per_page: "6", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } },
+    grouped("journals", "primary_location.source.id", `${selected},primary_location.source.type:journal,type:article|review`, 10),
+    { id: "papers", params: { filter: `${search},${selected},type:article|review`, sort: "cited_by_count:desc", per_page: "6", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } },
     grouped("keywords", "keywords.id", since2020, 15),
     grouped("field", "primary_topic.field.id", since2020, 1)
   ];
@@ -165,9 +199,9 @@ function entityUrl(value, type) {
   return new RegExp(`^https://openalex\\.org/${type}\\d+$`).test(value || "") ? value : "";
 }
 
-export function shapeYears(response, currentYear) {
+export function shapeYears(response, currentYear, startYear = 2010) {
   const values = new Map(groups(response).map((item) => [Number(item.key), item.count]));
-  return Array.from({ length: currentYear - 2009 }, (_, i) => ({ year: 2010 + i, count: values.get(2010 + i) ?? 0 }));
+  return Array.from({ length: currentYear - startYear + 1 }, (_, i) => ({ year: startYear + i, count: values.get(startYear + i) ?? 0 }));
 }
 
 export function shapeExperts(response) {
@@ -237,24 +271,28 @@ export function filterSuggestedTerms(names, query) {
 
 const childrenTerms = "children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood".split(", ").sort();
 
-export function reportLabel(baseName, includeTerms = []) {
-  if (!includeTerms.length) return baseName;
+export function reportLabel(baseName, includeTerms = [], period) {
+  const suffix = period ? ` · ${typeof period === "object" ? rangeLabel(period) : `since ${period}`}` : "";
+  if (!includeTerms.length) return baseName + suffix;
   const preset = JSON.stringify([...includeTerms].sort()) === JSON.stringify(childrenTerms);
-  return `${baseName} + ${preset ? "Children 0–9" : includeTerms.join(" / ")}`;
+  return `${baseName} + ${preset ? "Children 0–9" : includeTerms.join(" / ")}${suffix}`;
 }
 
 // Update presentation of older saved reports without refreshing data or writing KV.
 export function presentReport(report) {
   if (!report || typeof report.name !== "string") return report;
   const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
-  let baseName = report.searchTerms?.name || report.name;
+  const reportRange = report.from !== undefined ? report : report.period;
+  const periodSuffix = reportRange ? ` · ${typeof reportRange === "object" ? rangeLabel(reportRange) : `since ${reportRange}`}` : "";
+  const bareName = periodSuffix && report.name.endsWith(periodSuffix) ? report.name.slice(0, -periodSuffix.length) : report.name;
+  let baseName = report.searchTerms?.name || bareName;
   if (report.subtopicId) {
-    baseName = report.name;
+    baseName = bareName;
     const suffixes = [` + (${terms.join(" OR ")})`, reportLabel("", terms)];
     const suffix = terms.length && suffixes.find((item) => baseName.endsWith(item));
     if (suffix) baseName = baseName.slice(0, -suffix.length);
   }
-  const name = terms.length ? reportLabel(baseName, terms) : report.name;
+  const name = reportLabel(baseName, terms, reportRange);
   return { ...report, name,
     ...(typeof report.headline === "string" ? { headline: report.headline.replace(report.name, name) } : {}),
     ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, includeTerms: terms }) } : {}) };
@@ -267,13 +305,14 @@ export function exploreNext(subtopics, topicName) {
   return [...new Map([...fastest, ...largest].map((item) => [item.id || item.name, { id: item.id, name: item.name }])).values()].slice(0, 6);
 }
 
-export function headline(name, kpis, lastYear, regionalCounts, since2020 = 0) {
+export function headline(name, kpis, lastYear, regionalCounts, periodTotal = 0, period = 2020) {
   const count = new Intl.NumberFormat("en-US").format(kpis.lastYear);
   const published = `${count} ${kpis.lastYear === 1 ? "paper was" : "papers were"}`;
-  const regional = regionalCounts && since2020 > 0 && regionalCounts.gcc / since2020 < .05
-    ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} since 2020 ${regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).` : "";
-  if (kpis.growth5y === null) return `There is not enough data to calculate five-year growth for ${name}. ${published} published in ${lastYear}.${regional}`;
-  const rate = `${kpis.growth5y >= 0 ? "+" : ""}${(kpis.growth5y * 100).toFixed(1)}%`;
+  const regional = regionalCounts && periodTotal > 0 && regionalCounts.gcc / periodTotal < .05
+    ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} ${typeof period === "object" ? rangeLabel(period) : `since ${period}`} ${regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).` : "";
+  const rateValue = Object.hasOwn(kpis, "growth") ? kpis.growth : kpis.growth5y;
+  if (rateValue === null) return `There is not enough data to calculate ${kpis.growthLabel || "five-year growth"} for ${name}. ${published} published in ${lastYear}.${regional}`;
+  const rate = `${rateValue >= 0 ? "+" : ""}${(rateValue * 100).toFixed(1)}%`;
   return `Research on ${name} is ${kpis.momentum.toLowerCase()} (${rate} a year). ${published} published in ${lastYear}.${regional}`;
 }
 
@@ -284,23 +323,30 @@ export function shapeRegionalCounts(uae, gcc) {
 
 export function shapeTopic(query, responses, date) {
   const currentYear = date.getUTCFullYear();
-  const years = shapeYears(responses.years, currentYear);
+  const range = rangeDetails(query, currentYear);
+  const years = shapeYears(responses.years, currentYear, Math.min(2010, range.from));
   const countFor = (year) => years.find((item) => item.year === year)?.count ?? 0;
   const growth5y = growth(countFor(currentYear - 6), countFor(currentYear - 1), 5);
-  const kpis = { total: years.reduce((sum, item) => sum + item.count, 0), lastYear: countFor(currentYear - 1), growth5y, momentum: momentum(growth5y) };
-  const subtopics = shapeSubtopics(responses.early, responses.late);
+  const rangeGrowth = range.completeYears >= 3;
+  const selectedGrowth = rangeGrowth ? growth(countFor(range.from), countFor(range.lastComplete), range.lastComplete - range.from) : growth5y;
+  const growthLabel = rangeGrowth ? `Growth ${range.from}–${range.lastComplete}` : "5-year growth";
+  const kpis = { total: years.filter((item) => item.year >= range.from && item.year <= range.end).reduce((sum, item) => sum + item.count, 0),
+    lastYear: countFor(range.completeYears ? range.lastComplete : range.end), growth5y, growth: selectedGrowth, growthLabel, momentum: momentum(selectedGrowth) };
+  const subtopicCountsOnly = range.completeYears < 2;
+  const subtopics = shapeSubtopics(responses.early, responses.late).map((item) => subtopicCountsOnly ? { ...item, growth: null } : item);
   const regionalCounts = shapeRegionalCounts(responses.uae, responses.gcc);
-  const since2020 = years.filter((item) => item.year >= 2020).reduce((sum, item) => sum + item.count, 0);
+  const periodTotal = kpis.total;
   const baseName = query.subtopicId ? query.subtopicName || query.subtopicId : query.name;
-  const name = reportLabel(baseName, query.includeTerms);
+  const name = reportLabel(baseName, query.includeTerms, range);
   return {
-    id: query.id, name, synonyms: query.synonyms,
-    ...(query.includeTerms?.length ? { includeTerms: query.includeTerms, parent: query.parent || null,
-      searchTerms: { name: query.name, synonyms: query.synonyms, includeTerms: query.includeTerms } } : {}),
-    ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name, searchTerms: { name: query.name, synonyms: query.synonyms, ...(query.includeTerms?.length ? { includeTerms: query.includeTerms } : {}) } } : {}),
+    id: query.id, name, synonyms: query.synonyms, from: range.from, to: range.to,
+    subtopicWindow: { countsOnly: subtopicCountsOnly, from: range.from, split: range.split, end: range.lastComplete },
+    searchTerms: { name: query.name, synonyms: query.synonyms, ...(query.includeTerms?.length ? { includeTerms: query.includeTerms } : {}) },
+    ...(query.includeTerms?.length ? { includeTerms: query.includeTerms, parent: query.parent || null } : {}),
+    ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name } : {}),
     field: ranked(responses.field).map(displayName)[0] || "Unclassified",
     updated: date.toISOString().slice(0, 10), years, kpis,
-    headline: headline(name, kpis, currentYear - 1, regionalCounts, since2020),
+    headline: headline(name, kpis, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, range),
     experts: shapeExperts(responses.experts), subtopics: subtopics.slice(0, 9),
     countries: shapeCountries(responses.countries), regionalCounts, journals: shapeJournals(responses.journals),
     papers: shapePapers(responses.papers), suggestedSynonyms: suggestedSynonyms(responses.keywords, query),
@@ -321,7 +367,7 @@ export function originAllowed(origin, env) {
 }
 // Remove filtered reports and their relationships from public browsing only.
 export function publicLibrary(index) {
-  const hidden = new Set(index.filter((item) => item.variant || item.includeTerms?.length || item.searchTerms?.includeTerms?.length || item.id.includes("|include:")).map((item) => item.id));
+  const hidden = new Set(index.filter((item) => (item.from !== undefined && (item.from !== 2010 || item.to != null)) || item.id.includes("|range:") || (item.period && item.period !== 2010) || item.id.includes("|since:") || item.variant || item.includeTerms?.length || item.searchTerms?.includeTerms?.length || item.id.includes("|include:")).map((item) => item.id));
   let changed;
   do {
     changed = false;

@@ -37,7 +37,12 @@
     const preset = JSON.stringify([...terms].sort()) === JSON.stringify(childrenPreset.split(", ").sort());
     return ` + ${preset ? "Children 0–9" : terms.join(" / ")}`;
   }
+  const reportRange = (report) => ({ from: report.from ?? report.period ?? 2010, to: report.to ?? null });
+  const rangeLabel = (range, capital = false) => range.to != null ? `${range.from}–${range.to}` : `${capital ? "Since" : "since"} ${range.from}`;
+  const primaryGrowth = (report) => Object.hasOwn(report.kpis, "growth") ? report.kpis.growth : report.kpis.growth5y;
   function baseTitle(report) {
+    const periodSuffix = report.from !== undefined || report.period ? ` · ${rangeLabel(reportRange(report))}` : "";
+    if (periodSuffix && report.name.endsWith(periodSuffix)) report = { ...report, name: report.name.slice(0, -periodSuffix.length) };
     if (!report.subtopicId) return report.searchTerms?.name || report.name;
     const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
     const suffix = terms.length && [includeSuffix(terms), ` + (${terms.join(" OR ")})`].find((item) => report.name.endsWith(item));
@@ -45,7 +50,7 @@
   }
   function presentReport(report) {
     const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
-    const name = terms.length ? baseTitle(report) + includeSuffix(terms) : report.name;
+    const name = terms.length || report.period || report.from !== undefined ? baseTitle(report) + includeSuffix(terms) + (report.period || report.from !== undefined ? ` · ${rangeLabel(reportRange(report))}` : "") : report.name;
     return { ...report, name, ...(report.headline ? { headline: report.headline.replace(report.name, name) } : {}) };
   }
 
@@ -86,9 +91,11 @@
 
   function renderTopic() {
     $("report-source").textContent = isSample ? "SAMPLE DATA" : "OPENALEX";
-    $("data-notice").textContent = location.hash === "#library" ? "Saved research reports. Opening a report uses the cache without running a new search." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
+    $("data-notice").textContent = location.hash === "#library" ? "Saved research reports. Missing reports are rebuilt automatically within the daily search limit." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
     $("topic-input").value = topic.searchTerms?.name || topic.name;
     $("synonyms-input").value = (topic.searchTerms?.synonyms || topic.synonyms).join(", ");
+    $("from-input").value = String(reportRange(topic).from);
+    $("to-input").value = reportRange(topic).to === null ? "" : String(reportRange(topic).to);
     $("include-input").value = (topic.includeTerms || topic.searchTerms?.includeTerms || []).join(", ");
     renderSynonyms();
     $("topic-name").textContent = topic.name;
@@ -101,29 +108,47 @@
     $("subtopics-panel").hidden = Boolean(topic.subtopicId);
     if (topic.subtopicId) $("topic-meta").textContent += ` · Under ${parentName}`;
     if (topic.stale) $("topic-meta").textContent += " · Saved report, older than 7 days";
+    const range = reportRange(topic);
+    const rangeText = rangeLabel(range, true);
+    const legacy = topic.from === undefined;
+    const expertsFrom = range.from < 2020 && range.to === null ? 2020 : range.from;
+    const expertsRange = { from: expertsFrom, to: range.to };
+    const shownYears = topic.years.filter((item) => item.year >= range.from && (range.to === null || item.year <= range.to));
+    const countsOnly = topic.subtopicWindow?.countsOnly ?? (topic.period === 2025);
+    $("experts-heading").textContent = range.from < 2020 && range.to === null ? "Active since 2020" : "Leading experts";
+    $("experts-note").textContent = rangeLabel(expertsRange, true);
+    const aggregateText = legacy && !topic.period ? "Since 2020" : rangeText;
+    $("countries-note").textContent = aggregateText + " · papers may span multiple countries";
+    $("journals-note").textContent = aggregateText;
+    $("papers-period").textContent = legacy && !topic.period ? "Since 2022" : rangeText;
+    $("subtopics-heading").textContent = countsOnly ? "Sub-topics by paper count" : "Rising sub-topics";
+    $("subtopics-metric").textContent = countsOnly ? "PAPERS" : "GROWTH";
+    const span = (from, to) => from === to ? String(from) : `${from}–${to}`;
+    const window = topic.subtopicWindow;
+    $("subtopics-note").textContent = countsOnly ? rangeText + " · ranked by paper count" : window ? `${span(window.split, window.end)} vs. ${span(window.from, window.split - 1)} · total change` : topic.period === 2023 ? "2025 vs. 2023 · total change" : "2023–2025 vs. 2020–2022 · total change";
     const empty = topic.kpis.total === 0;
     $("no-results").hidden = !empty;
     $("report-content").hidden = empty;
     if (empty) return;
     const fastest = topic.subtopics.filter((item) => item.growth !== null).sort((a, b) => b.growth - a.growth)[0];
     const topCountry = topic.countries.slice().sort((a, b) => b.count - a.count)[0];
-    const lastCompleteYear = Math.max(...topic.years.map((item) => item.year).filter((year) => year < new Date().getFullYear()));
+    const lastCompleteYear = Math.max(range.from, Math.min(range.to ?? Number(topic.updated.slice(0, 4)) - 1, Number(topic.updated.slice(0, 4)) - 1));
     const cards = [
-      ["TOTAL PAPERS", number(topic.kpis.total), `2010–${new Date().getFullYear()} · includes year to date`],
-      ["YEARLY GROWTH", percent(topic.kpis.growth5y), badge(topic.kpis.momentum)],
-      [`PAPERS IN ${lastCompleteYear}`, number(topic.kpis.lastYear), "Last complete year"],
-      topic.subtopicId ? ["TOP COUNTRY", topCountry ? escape(topCountry.name) : "Not enough data", topCountry ? `${papers(topCountry.count)} since 2020` : "No country data"] : ["FASTEST-GROWING SUB-TOPIC", fastest ? escape(fastest.name) : "Not enough data", fastest ? `${percent(fastest.growth)} between periods` : "No comparable sub-topics"]
+      ["TOTAL PAPERS", number(topic.kpis.total), rangeText + (range.to === null || range.to === new Date().getFullYear() ? " · includes year to date" : "")],
+      [(topic.kpis.growthLabel || "5-year growth").toUpperCase(), percent(primaryGrowth(topic)), badge(topic.kpis.momentum)],
+      [`PAPERS IN ${lastCompleteYear}`, number(topic.kpis.lastYear), lastCompleteYear === Number(topic.updated.slice(0, 4)) ? "Year to date" : "Last complete year in range"],
+      topic.subtopicId ? ["TOP COUNTRY", topCountry ? escape(topCountry.name) : "Not enough data", topCountry ? `${papers(topCountry.count)} ${aggregateText.toLowerCase()}` : "No country data"] : countsOnly ? ["LARGEST SUB-TOPIC", topic.subtopics[0] ? escape(topic.subtopics[0].name) : "Not enough data", topic.subtopics[0] ? papers(topic.subtopics[0].late) + " " + rangeText.toLowerCase() : "No sub-topic data"] : ["FASTEST-GROWING SUB-TOPIC", fastest ? escape(fastest.name) : "Not enough data", fastest ? `${percent(fastest.growth)} between periods` : "No comparable sub-topics"]
     ];
     $("kpis").innerHTML = cards.map(([label, value, note], i) => `<article class="kpi"><span class="small-label">${label}</span><p class="kpi-value ${i === 3 ? "topic-value" : ""}">${value}</p><p class="kpi-note">${note}</p></article>`).join("");
     $("headline").textContent = topic.headline;
-    $("year-chart").innerHTML = chart(topic.years);
+    $("year-chart").innerHTML = chart(shownYears);
     $("current-year-label").textContent = new Date().getFullYear();
     $("experts").innerHTML = topic.experts.map((item) => `<li><span class="rank-name">${item.openalexUrl ? `<a href="${escape(item.openalexUrl)}" target="_blank" rel="noopener noreferrer">${escape(item.name)}</a>` : escape(item.name)}</span><span class="number">${number(item.count)}</span></li>`).join("");
     $("journals").innerHTML = topic.journals.map((item) => `<li><span class="rank-name">${escape(item.name)}</span><span class="number">${number(item.count)}</span></li>`).join("");
-    $("subtopics").innerHTML = topic.subtopics.map((item) => `<div class="data-row"><div class="row-heading">${item.id ? `<button type="button" class="chip" data-subtopic="${escape(item.id)}" data-title="${escape(item.name)}">${escape(item.name)} ↗</button>` : `<span>${escape(item.name)}</span>`}<span class="row-value">${percent(item.growth)}</span></div><p class="row-note">${papers(item.late)} in late period</p></div>`).join("");
+    $("subtopics").innerHTML = topic.subtopics.map((item) => `<div class="data-row"><div class="row-heading">${item.id ? `<button type="button" class="chip" data-subtopic="${escape(item.id)}" data-title="${escape(item.name)}">${escape(item.name)} ↗</button>` : `<span>${escape(item.name)}</span>`}<span class="row-value">${countsOnly ? number(item.late) : percent(item.growth)}</span></div><p class="row-note">${papers(item.late)} ${countsOnly ? rangeText.toLowerCase() : "in late period"}</p></div>`).join("");
     const maxCountry = Math.max(1, ...topic.countries.map((item) => item.count));
     $("countries").innerHTML = topic.countries.map((item) => `<div class="data-row"><div class="row-heading"><span>${escape(item.name)} ${item.gcc ? '<abbr class="gcc" title="Gulf Cooperation Council">GCC</abbr>' : ""}</span><span class="number">${number(item.count)}</span></div><div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:${item.count / maxCountry * 100}%"></div></div></div>`).join("");
-    $("regional-counts").textContent = topic.regionalCounts ? `Since 2020 · UAE: ${papers(topic.regionalCounts.uae)} · GCC: ${papers(topic.regionalCounts.gcc)} (each paper counted once)` : "UAE and GCC totals are unavailable in this sample.";
+    $("regional-counts").textContent = topic.regionalCounts ? `${aggregateText} · UAE: ${papers(topic.regionalCounts.uae)} · GCC: ${papers(topic.regionalCounts.gcc)} (each paper counted once)` : "UAE and GCC totals are unavailable in this sample.";
     $("papers").innerHTML = topic.papers.map((item) => `<article class="paper"><div class="paper-meta"><span>${item.year}</span><span>${number(item.citations)} ${item.citations === 1 ? "CITATION" : "CITATIONS"}</span></div><h4>${item.url ? `<a href="${escape(item.url)}" target="_blank" rel="noopener noreferrer">${escape(item.title)}</a>` : escape(item.title)}</h4><p>${escape(item.authors)}</p><p>${escape(item.journal)}</p></article>`).join("");
     const normalise = (value) => value.toLowerCase().trim().replace(/\s+/g, " ");
     const excluded = [topic.searchTerms?.name || topic.name, ...topic.synonyms, ...(topic.includeTerms || [])].map(normalise);
@@ -153,20 +178,17 @@
   }
 
   function libraryLink(entry) {
-    if (libraryTab === "my") {
-      // Rebuild the cache-only request from the normalised report identity.
-      const [name, ...parts] = entry.id.split("|");
-      const includePart = parts.find((part) => part.startsWith("include:"));
-      const subtopicId = parts.find((part) => part.startsWith("primary_topic:"))?.slice(14);
-      const synonyms = parts.filter((part) => !part.startsWith("include:") && !part.startsWith("primary_topic:"));
-      let includeTerms = [];
-      try { if (includePart) includeTerms = JSON.parse(includePart.slice(8)); } catch { /* Older identities may lack include terms. */ }
-      return reportHash({ ...entry, subtopicId, includeTerms, searchTerms: { name, synonyms, includeTerms } }, true);
-    }
-    const parent = library.find((item) => item.id === entry.parent);
-    const subtopicId = entry.subtopicId || entry.id.match(/\|primary_topic:(T[0-9]+)$/)?.[1];
-    const searchTerms = entry.searchTerms || (subtopicId && parent ? { name: parent.name, synonyms: parent.synonyms } : undefined);
-    return reportHash({ ...entry, subtopicId, searchTerms }, true);
+    // Rebuild the cache-only request from the normalised report identity.
+    const [name, ...parts] = entry.id.split("|");
+    const includePart = parts.find((part) => part.startsWith("include:"));
+    const rangePart = parts.find((part) => part.startsWith("range:"))?.slice(6).split("-");
+    const from = Number(rangePart?.[0] || parts.find((part) => part.startsWith("since:"))?.slice(6) || 2010);
+    const to = rangePart ? Number(rangePart[1]) : null;
+    const subtopicId = parts.find((part) => part.startsWith("primary_topic:"))?.slice(14);
+    const synonyms = parts.filter((part) => !part.startsWith("include:") && !part.startsWith("primary_topic:") && !part.startsWith("since:") && !part.startsWith("range:"));
+    let includeTerms = [];
+    try { if (includePart) includeTerms = JSON.parse(includePart.slice(8)); } catch { /* Older identities may lack include terms. */ }
+    return reportHash({ ...entry, from, to, subtopicId, includeTerms, searchTerms: { name, synonyms, includeTerms } }, true);
   }
 
   function renderLibrary() {
@@ -183,7 +205,7 @@
       $("library-count").textContent = libraryLoading ? "Loading library…" : "";
       return;
     }
-    const visible = library.filter((item) => !item.variant && !item.includeTerms?.length && !item.id.includes("|include:"));
+    const visible = library.filter((item) => !(item.from !== undefined && (item.from !== 2010 || item.to != null)) && !item.id.includes("|range:") && !(item.period && item.period !== 2010) && !item.id.includes("|since:") && !item.variant && !item.includeTerms?.length && !item.id.includes("|include:"));
     const roots = libraryTab === "my" ? myLibrary : visible.filter((item) => !item.parent);
     const childrenFor = (item) => libraryTab === "my" ? [] : (item.children || []).map((id) => visible.find((child) => child.id === id)).filter(Boolean);
     const query = $("library-search").value.trim().toLowerCase();
@@ -235,6 +257,10 @@
   function reportHash(report, cacheOnly = false) {
     const terms = report.searchTerms || { name: report.name, synonyms: report.synonyms };
     const params = new URLSearchParams({ topic: terms.name });
+    if (report.from !== undefined) {
+      if (report.from !== 2010 || report.to != null) params.set("from", String(report.from));
+      if (report.to !== null) params.set("to", String(report.to));
+    } else if (report.period && report.period !== 2010) params.set("period", String(report.period));
     if (terms.synonyms.length) params.set("syn", terms.synonyms.join(","));
     const includeTerms = report.includeTerms || terms.includeTerms || [];
     if (includeTerms.length) params.set("include", includeTerms.join(","));
@@ -255,7 +281,7 @@
     if (saveSummary) {
       const lastYear = Number(topic.updated.slice(0, 4)) - 1;
       const summary = { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field,
-        momentum: topic.kpis.momentum, growth: topic.kpis.growth5y, total: topic.kpis.total,
+        momentum: topic.kpis.momentum, growth: primaryGrowth(topic), total: topic.kpis.total,
         spark: Array.from({ length: 10 }, (_, i) => topic.years.find((year) => year.year === lastYear - 9 + i)?.count || 0), updated: topic.updated };
       myLibrary = myLibrary.filter((item) => item.id !== summary.id).concat(summary);
       persistMyLibrary();
@@ -267,7 +293,7 @@
   function setLoading(loading) {
     busy = loading;
     $("search-form").toggleAttribute("aria-busy", loading);
-    document.querySelectorAll('#search-form input, #search-form button, #suggested-synonyms button, #explore-next button, #subtopics button').forEach((control) => { control.disabled = loading; });
+    document.querySelectorAll('#search-form input, #search-form select, #search-form button, #suggested-synonyms button, #explore-next button, #subtopics button').forEach((control) => { control.disabled = loading; });
   }
 
   function route(loadReport = true) {
@@ -280,7 +306,7 @@
     $("library-nav").toggleAttribute("aria-current", isLibrary);
     $(isLibrary ? "library-nav" : "search-nav").setAttribute("aria-current", "page");
     document.title = `${isLibrary ? "Library" : "Search"} · Topic Momentum Meter`;
-    $("data-notice").textContent = isLibrary ? "Saved research reports. Opening a report uses the cache without running a new search." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
+    $("data-notice").textContent = isLibrary ? "Saved research reports. Missing reports are rebuilt automatically within the daily search limit." : isSample ? "Sample data: fictional research and illustrative numbers. Search to load OpenAlex data." : "Data: OpenAlex. The last successful report is saved in this browser.";
     if (isLibrary) { if (loadReport) loadLibrary(); else renderLibrary(); }
     if (!loadReport) return;
     const params = new URLSearchParams(location.hash.slice(1));
@@ -311,12 +337,16 @@
     const id = params.get("sub");
     if (id && !/^T[0-9]+$/.test(id)) { notify("The sub-topic ID is invalid. Run the parent search again.", true); return; }
     const include = (params.get("include") || "").split(",").filter(Boolean);
-    search(name, terms, id ? { id, name: params.get("title") || id } : null, true, params.get("cache") === "only", include);
+    search(name, terms, id ? { id, name: params.get("title") || id } : null, true, params.get("cache") === "only", include, params.get("from") ?? params.get("period") ?? "2010", params.get("to") ?? "");
   }
 
-  async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false, cacheOnly = false, include = $("include-input").value.split(",").map((term) => term.trim()).filter(Boolean)) {
+  async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false, cacheOnly = false, include = $("include-input").value.split(",").map((term) => term.trim()).filter(Boolean), from = $("from-input").value, to = $("to-input").value) {
     if (busy) return;
     if (!name.trim()) { notify("Enter a research topic and try again.", true); return; }
+    const currentYear = new Date().getFullYear();
+    if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) { notify(`Enter a From year between 2000 and ${currentYear}.`, true); return; }
+    if (to != null && to !== "" && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) { notify(`Enter a To year between 2000 and ${currentYear}, or leave it empty for until today.`, true); return; }
+    if (to != null && to !== "" && Number(from) > Number(to)) { notify("From must be earlier than or equal to To. Change the years and try again.", true); return; }
     setLoading(true);
     const version = ++requestVersion;
     notify("Loading research data…", true);
@@ -327,6 +357,8 @@
       const url = new URL(window.WORKER_URL.replace(/\/$/, "") + "/api/topic");
       url.searchParams.set("q", name.trim());
       url.searchParams.set("syn", terms.join(","));
+      url.searchParams.set("from", String(from));
+      if (to != null && to !== "") url.searchParams.set("to", String(to));
       if (include.length) url.searchParams.set("include", include.join(","));
       if (cacheOnly) url.searchParams.set("cache", "only");
       if (selection) {
@@ -348,7 +380,7 @@
       topic = presentReport({ ...data, searchTerms: { name: name.trim(), synonyms: terms, ...(data.includeTerms?.length ? { includeTerms: data.includeTerms } : {}) } });
       isSample = false;
       cacheOnlyView = cacheOnly;
-      if (!cacheOnly) { libraryDirty = true; libraryRevision++; }
+      if (!cacheOnly || data.cached === false) { libraryDirty = true; libraryRevision++; }
       renderTopic();
       rememberReport();
       if (!fromRoute) location.hash = reportHash(topic, cacheOnlyView);
@@ -392,6 +424,11 @@
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
+    if (button.dataset.rangePreset !== undefined) {
+      $("from-input").value = button.dataset.rangePreset;
+      $("to-input").value = "";
+      $("from-input").focus();
+    }
     if (button.dataset.removeReport !== undefined) {
       myLibrary = myLibrary.filter((item) => item.id !== button.dataset.removeReport);
       persistMyLibrary();
@@ -411,11 +448,11 @@
       const match = button.dataset.subtopic.match(/^(?:https:\/\/openalex\.org\/)?(T[0-9]+)$/);
       if (!match) { notify("The sub-topic ID is invalid. Run the parent search again.", true); return; }
       const terms = topic.searchTerms || { name: topic.name, synonyms: topic.synonyms };
-      search(terms.name, terms.synonyms, { id: match[1], name: button.dataset.title, parent: topic.subtopicId ? topic.parent : topic.id, parentName: terms.name });
+      search(terms.name, terms.synonyms, { id: match[1], name: button.dataset.title, parent: topic.subtopicId ? topic.parent : topic.id, parentName: terms.name }, false, false, topic.includeTerms || [], reportRange(topic).from, reportRange(topic).to);
     }
     if (button.dataset.nextTerm !== undefined) {
       const terms = topic.searchTerms || { name: topic.name, synonyms: topic.synonyms };
-      search(`${terms.name} ${button.dataset.nextTerm}`, [], null);
+      search(`${terms.name} ${button.dataset.nextTerm}`, [], null, false, false, topic.includeTerms || [], reportRange(topic).from, reportRange(topic).to);
     }
     if (button.dataset.field !== undefined) { selectedField = button.dataset.field; renderLibrary(); }
   });
@@ -434,7 +471,8 @@
     }
   });
   $("export-csv").addEventListener("click", () => {
-    const csv = "sample_data,year,papers\r\n" + topic.years.map((item) => `${isSample},${item.year},${item.count}`).join("\r\n") + "\r\n";
+    const range = reportRange(topic);
+    const csv = "sample_data,range,year,papers\r\n" + topic.years.filter((item) => item.year >= range.from && (range.to === null || item.year <= range.to)).map((item) => `${isSample},${rangeLabel(range, true)},${item.year},${item.count}`).join("\r\n") + "\r\n";
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
@@ -444,6 +482,7 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
+  for (const id of ["from-input", "to-input"]) $(id).setAttribute("max", String(new Date().getFullYear()));
   window.addEventListener("hashchange", route);
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));

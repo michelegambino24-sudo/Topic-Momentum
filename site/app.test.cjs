@@ -67,6 +67,162 @@ function libraryFixture() {
 
 const libraryLinks = (app) => [...app.get("library-cards").innerHTML.matchAll(/href="([^"]+)"/g)].map((match) => match[1].replaceAll("&amp;", "&"));
 
+test("open ranges survive combined searches, sub-topics, exploration, cache-only cards, reload and history", async () => {
+  const { normaliseQuery, shapeTopic } = await import("../worker/lib.js");
+  const names = ["years", "experts", "early", "late", "countries", "uae", "gcc", "journals", "papers", "keywords", "field"];
+  const responses = Object.fromEntries(names.map((name) => [name, JSON.parse(readFileSync(__dirname + "/../worker/fixtures/" + name + ".json", "utf8"))]));
+  const calls = [];
+  const fetch = async (url) => {
+    const params = new URL(url).searchParams;
+    calls.push(params);
+    if (new URL(url).pathname === "/api/library") return { ok: true, json: async () => [] };
+    const query = normaliseQuery(params.get("q"), params.get("syn") || "", params.get("subtopic") || "", params.get("include") || "", params.get("from") || params.get("period") || 2010, params.get("to") || "");
+    if (query.subtopicId) Object.assign(query, { subtopicName: params.get("subtopicName"), parent: normaliseQuery(params.get("q"), params.get("syn") || "", "", params.get("include") || "", query.from, query.to).id });
+    return { ok: true, json: async () => shapeTopic(query, responses, new Date("2026-11-01T12:00:00Z")) };
+  };
+  const app = setup(fetch);
+  app.get("topic-input").value = "moss";
+  app.get("include-input").value = "child,children";
+  app.get("from-input").value = "2023";
+  app.submit(); await settle();
+  const mainHash = app.context.location.hash;
+  assert.equal(calls[0].get("from"), "2023");
+  assert.equal(app.get("topic-name").textContent, "moss + child / children · since 2023");
+  assert.match(app.get("headline").textContent, /since 2023/);
+  assert.match(app.get("kpis").innerHTML, /GROWTH 2023–2025/);
+  assert(!app.get("year-chart").innerHTML.includes("2022:"));
+  assert(app.get("year-chart").innerHTML.includes("2023:"));
+  assert.equal(app.get("subtopics-note").textContent, "2024–2025 vs. 2023 · total change");
+  assert.equal(app.get("experts-note").textContent, "Since 2023");
+  app.click({ subtopic: "T123", title: "Orbital logic" }); await settle();
+  assert.equal(calls.at(-1).get("from"), "2023");
+  assert.equal(calls.at(-1).get("include"), "child,children");
+  assert.equal(new URLSearchParams(app.get("back-parent").href.slice(1)).get("from"), "2023");
+  app.click({ nextTerm: "genetics" }); await settle();
+  assert.equal(calls.at(-1).get("from"), "2023");
+  assert.equal(calls.at(-1).get("include"), "child,children");
+  app.context.history.back(); await settle();
+  assert.equal(app.get("topic-name").textContent, "Orbital logic + child / children · since 2023");
+  app.context.history.back(); await settle();
+  assert.equal(app.context.location.hash, mainHash);
+  app.get("from-input").value = "2025";
+  app.submit(); await settle();
+  assert.equal(app.get("subtopics-heading").textContent, "Sub-topics by paper count");
+  assert.equal(app.get("subtopics-metric").textContent, "PAPERS");
+  assert(!app.get("subtopics").innerHTML.includes("%"));
+  assert(!app.get("subtopics").innerHTML.includes("New"));
+  assert.match(app.get("kpis").innerHTML, /LARGEST SUB-TOPIC/);
+  const restored = setup(() => assert.fail("Restoring stays offline"), app.stored.get("topic-momentum:last-topic"));
+  assert.equal(restored.get("from-input").value, "2025");
+  app.navigate("#library"); await settle();
+  const links = libraryLinks(app);
+  assert(links.some((link) => new URLSearchParams(link.slice(1)).get("from") === "2025"));
+  const child = links.find((link) => new URLSearchParams(link.slice(1)).has("sub"));
+  const reopened = setup(fetch, null, child);
+  await settle();
+  assert.equal(calls.at(-1).get("cache"), "only");
+  assert.equal(calls.at(-1).get("from"), "2023");
+  assert.equal(calls.at(-1).get("include"), "child,children");
+  assert.equal(reopened.get("topic-name").textContent, "Orbital logic + child / children · since 2023");
+});
+
+test("quick-fill years clear To without searching and invalid ranges show plain errors", async () => {
+  const app = setup(() => assert.fail("Quick-fill and validation must not request data"));
+  assert.equal(app.get("from-input").value, "2010");
+  assert.equal(app.get("to-input").value, "");
+  for (const year of [2010, 2020, 2023, 2024, 2025]) {
+    app.get("to-input").value = "2025";
+    app.click({ rangePreset: String(year) });
+    assert.equal(app.get("from-input").value, String(year));
+    assert.equal(app.get("to-input").value, "");
+  }
+  const currentYear = new Date().getFullYear();
+  for (const [from, to, message] of [["", "", "From year"], ["1999", "", "From year"], [String(currentYear + 1), "", "From year"], ["2020", "bad", "To year"], ["2020", String(currentYear + 1), "To year"], ["2025", "2020", "From must be earlier"]]) {
+    app.get("from-input").value = from;
+    app.get("to-input").value = to;
+    app.submit(); await settle();
+    assert(app.get("status").textContent.includes(message));
+    assert.equal(app.get("from-input").disabled, false);
+  }
+  assert(source("index.html").includes('data-range-preset="2024"'));
+});
+
+test("bounded ranges keep both years across report links, exploration, My library, restoration and CSV", async () => {
+  const { normaliseQuery, shapeTopic } = await import("../worker/lib.js");
+  const names = ["years", "experts", "early", "late", "countries", "uae", "gcc", "journals", "papers", "keywords", "field"];
+  const responses = Object.fromEntries(names.map((name) => [name, JSON.parse(readFileSync(__dirname + "/../worker/fixtures/" + name + ".json", "utf8"))]));
+  const calls = [];
+  const fetch = async (url) => {
+    const params = new URL(url).searchParams;
+    if (new URL(url).pathname === "/api/library") return { ok: true, json: async () => [] };
+    calls.push(params);
+    const q = normaliseQuery(params.get("q"), params.get("syn") || "", params.get("subtopic") || "", params.get("include") || "", params.get("from") || 2010, params.get("to") || "", 2026);
+    if (q.subtopicId) Object.assign(q, { subtopicName: "Orbital logic", parent: normaliseQuery(params.get("q"), "", "", "child", 2015, 2020).id });
+    return { ok: true, json: async () => shapeTopic(q, responses, new Date("2026-11-01T12:00:00Z")) };
+  };
+  const app = setup(fetch);
+  app.get("topic-input").value = "moss";
+  app.get("include-input").value = "child";
+  app.get("from-input").value = "2015";
+  app.get("to-input").value = "2020";
+  app.submit(); await settle();
+  assert.equal(app.get("topic-name").textContent, "moss + child · 2015–2020");
+  assert.match(app.get("headline").textContent, /2015–2020/);
+  assert.match(app.get("kpis").innerHTML, /GROWTH 2015–2020/);
+  assert.equal(app.get("experts-heading").textContent, "Leading experts");
+  assert.equal(app.get("experts-note").textContent, "2015–2020");
+  assert(!app.get("year-chart").innerHTML.includes("2021:"));
+  assert(!app.get("year-chart").innerHTML.includes("2014:"));
+  assert(app.get("year-chart").innerHTML.includes("2015:"));
+  app.click({ subtopic: "T123", title: "Orbital logic" }); await settle();
+  assert.equal(calls.at(-1).get("to"), "2020");
+  const back = new URLSearchParams(app.get("back-parent").href.slice(1));
+  assert.equal(back.get("from"), "2015");
+  assert.equal(back.get("to"), "2020");
+  app.click({ nextTerm: "genetics" }); await settle();
+  assert.equal(calls.at(-1).get("from"), "2015");
+  assert.equal(calls.at(-1).get("to"), "2020");
+  assert.equal(calls.at(-1).get("include"), "child");
+  const restored = setup(() => assert.fail("Restore stays offline"), app.stored.get("topic-momentum:last-topic"));
+  assert.equal(restored.get("to-input").value, "2020");
+  let blob;
+  restored.context.URL = { createObjectURL(value) { blob = value; return "blob:fixture"; }, revokeObjectURL() {} };
+  restored.get("export-csv").listeners.click();
+  const csv = await blob.text();
+  assert(csv.includes("2015–2020,2015,"));
+  assert(!csv.includes(",2021,"));
+  assert(!csv.includes(",2014,"));
+  app.navigate("#library"); await settle();
+  const link = libraryLinks(app).find((href) => new URLSearchParams(href.slice(1)).has("sub"));
+  const reopened = setup(fetch, null, link); await settle();
+  assert.equal(calls.at(-1).get("cache"), "only");
+  assert.equal(calls.at(-1).get("to"), "2020");
+  assert.equal(reopened.get("topic-name").textContent, "Orbital logic + child · 2015–2020");
+});
+
+test("CSV exports the chosen period and only its displayed years", async () => {
+  let data;
+  const app = setup(async () => ({ ok: true, json: async () => data }));
+  data = { ...report(app), period: 2025, years: [{ year: 2020, count: 10 }, { year: 2025, count: 4 }, { year: 2026, count: 2 }] };
+  app.get("from-input").value = "2025";
+  app.submit(); await settle();
+  let blob;
+  app.context.URL = { createObjectURL(value) { blob = value; return "blob:fixture"; }, revokeObjectURL() {} };
+  app.get("export-csv").listeners.click();
+  assert.equal(await blob.text(), "sample_data,range,year,papers\r\nfalse,Since 2025,2025,4\r\nfalse,Since 2025,2026,2\r\n");
+});
+
+test("legacy saved reports keep truthful aggregate labels without fetching or rewriting cached figures", () => {
+  const initial = setup(() => assert.fail("Sample stays offline"));
+  const saved = report(initial);
+  const restored = setup(() => assert.fail("Legacy restoration stays offline"), JSON.stringify(saved));
+  assert.equal(restored.get("from-input").value, "2010");
+  assert.equal(restored.get("experts-heading").textContent, "Active since 2020");
+  assert.equal(restored.get("journals-note").textContent, "Since 2020");
+  assert.equal(restored.get("papers-period").textContent, "Since 2022");
+  assert.equal(JSON.parse(restored.stored.get("topic-momentum:last-topic")).kpis.total, saved.kpis.total);
+});
+
 test("restored reports use compact labels and hide suggestions already in any search group", () => {
   const initial = setup(async () => assert.fail("No request needed"));
   const saved = { ...report(initial), name: "epigenetics + (children OR infant)", includeTerms: ["children", "infant"],
@@ -259,7 +415,7 @@ test("a search completed during an older library request refreshes the index on 
   assert.equal(app.get("library-count").textContent, "2 TOPICS · 1 SUB-TOPIC EXPLORED");
 });
 
-test("cache-only report links and reloads preserve the original date and never retry a missing report as a search", async () => {
+test("saved report links and reloads preserve dates and surface Worker failures without a second request", async () => {
   let data;
   const calls = [];
   const hash = "#topic=fixture+topic&cache=only";
@@ -275,12 +431,48 @@ test("cache-only report links and reloads preserve the original date and never r
   const missingCalls = [];
   const missing = setup(async (url) => {
     missingCalls.push(new URL(url));
-    return { ok: false, json: async () => ({ message: "This saved report is unavailable. Enter the topic and select Measure momentum to search again." }) };
+    return { ok: false, json: async () => ({ message: "Daily limit reached. Try again tomorrow or browse the Library." }) };
   }, null, hash);
   await settle();
   assert.equal(missingCalls.length, 1);
   assert.equal(missingCalls[0].searchParams.get("cache"), "only");
-  assert.match(missing.get("status").textContent, /This saved report is unavailable/);
+  assert.match(missing.get("status").textContent, /Daily limit reached/);
+});
+
+test("opening a Library card backed only by v1 rebuilds through its saved request and refreshes the index", async () => {
+  const { createWorker } = await import("../worker/worker.js");
+  const { normaliseQuery, shapeTopic, buildQueries, updateLibrary } = await import("../worker/lib.js");
+  const { MemoryKV } = await import("../worker/kv-fixture.js");
+  const names = ["years", "experts", "early", "late", "countries", "uae", "gcc", "journals", "papers", "keywords", "field"];
+  const responses = Object.fromEntries(names.map((name) => [name, JSON.parse(readFileSync(__dirname + "/../worker/fixtures/" + name + ".json", "utf8"))]));
+  const q = normaliseQuery("lunar moss computing");
+  const date = new Date("2026-11-01T12:00:00Z");
+  const old = { ...shapeTopic(q, responses, new Date("2026-10-01T12:00:00Z")), name: "Legacy title" };
+  const original = JSON.stringify({ savedAt: date.getTime(), topic: old });
+  const kv = new MemoryKV([["topic:" + old.id, original], ["library", JSON.stringify(updateLibrary([], old))]]);
+  let sourceCalls = 0;
+  const worker = createWorker(async (url) => {
+    sourceCalls++;
+    const descriptor = buildQueries(q, 2026).find(({ params }) => Object.entries(params).every(([key, value]) => url.searchParams.get(key) === value));
+    assert(descriptor);
+    return Response.json(responses[descriptor.id]);
+  }, () => date);
+  const requests = [];
+  const app = setup(async (url) => {
+    requests.push(new URL(url));
+    return worker.fetch(new Request(url), { TMM: kv, OPENALEX_KEY: "fixture-only-not-a-credential" });
+  }, null, "#library");
+  await settle();
+  app.get("all-topics-tab").listeners.click();
+  app.navigate(libraryLinks(app)[0]); await settle();
+  assert.equal(requests[1].searchParams.get("cache"), "only");
+  assert.equal(sourceCalls, 11);
+  assert.equal(app.get("topic-name").textContent, "lunar moss computing · since 2010");
+  assert.match(app.get("topic-meta").textContent, /Updated 2026-11-01/);
+  assert.equal(kv.values.get("topic:" + old.id), original);
+  assert(kv.values.has("v2:topic:" + old.id));
+  app.navigate("#library"); await settle();
+  assert.equal(requests.filter((url) => url.pathname === "/api/library").length, 2);
 });
 
 test("library and child links open real Worker cache records without any OpenAlex calls or counter changes", async () => {
@@ -294,7 +486,7 @@ test("library and child links open real Worker cache records without any OpenAle
   const child = shapeTopic({ ...normaliseQuery("lunar moss computing", "moon circuits", "T123"), subtopicName: "Orbital logic", parent: parent.id }, responses, saved);
   const kv = new MemoryKV();
   kv.values.set("library", JSON.stringify(updateLibrary(updateLibrary([], parent), child)));
-  for (const topic of [parent, child]) kv.values.set("topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
+  for (const topic of [parent, child]) kv.values.set("v2:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
   const worker = createWorker(() => assert.fail("Library navigation must never call OpenAlex"), () => new Date("2026-11-08T12:00:00Z"));
   const calls = [];
   const app = setup(async (url) => { calls.push(new URL(url)); return worker.fetch(new Request(url), { TMM: kv }); }, null, "#library");
@@ -306,7 +498,7 @@ test("library and child links open real Worker cache records without any OpenAle
   const childLink = links.find((href) => new URLSearchParams(href.slice(1)).has("sub"));
   app.navigate(childLink);
   await settle();
-  assert.equal(app.get("topic-name").textContent, "Orbital logic");
+  assert.equal(app.get("topic-name").textContent, "Orbital logic · since 2010");
   assert.equal(app.get("topic-input").value, "lunar moss computing");
   assert.match(app.get("topic-meta").textContent, /Under lunar moss computing/);
   assert.match(app.get("topic-meta").textContent, /older than 7 days/);
@@ -316,16 +508,16 @@ test("library and child links open real Worker cache records without any OpenAle
   assert.equal(new URLSearchParams(backLink.slice(1)).get("cache"), "only");
   app.navigate(backLink);
   await settle();
-  assert.equal(app.get("topic-name").textContent, "lunar moss computing");
+  assert.equal(app.get("topic-name").textContent, "lunar moss computing · since 2010");
   app.context.history.back();
   await settle();
-  assert.equal(app.get("topic-name").textContent, "Orbital logic");
+  assert.equal(app.get("topic-name").textContent, "Orbital logic · since 2010");
   app.context.history.back();
   await settle();
   assert.equal(app.context.location.hash, "#library");
   assert.equal(calls.length, 3);
   assert.equal(kv.writes.length, 0);
-  assert.deepEqual(kv.reads, ["library", "topic:" + child.id, "topic:" + parent.id]);
+  assert.deepEqual(kv.reads, ["library", "v2:topic:" + child.id, "v2:topic:" + parent.id]);
 });
 
 test("site searches, adds synonyms, sends explore parent, and restores the last successful topic", async () => {

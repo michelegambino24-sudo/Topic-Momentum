@@ -45,7 +45,7 @@ test("topic endpoint launches all eleven requests in parallel and returns the ex
   assert(!text.includes(env.OPENALEX_KEY));
   assert(!text.includes("api.openalex.org"));
   const data = JSON.parse(text);
-  assert.equal(data.name, "lunar moss computing");
+  assert.equal(data.name, "lunar moss computing · since 2010");
   assert.equal(data.kpis.total, 1992);
   assert.equal(data.cached, false);
   assert.equal(data.papers[1].journal, "Unknown journal");
@@ -301,7 +301,7 @@ test("sub-topic endpoint filters parent terms and retains title, ID and parent",
   assert.equal(response.status, 200);
   assert.equal(calls.length, 11);
   const data = await response.json();
-  assert.equal(data.name, "Orbital logic");
+  assert.equal(data.name, "Orbital logic · since 2010");
   assert.equal(data.subtopicId, "T123");
   assert.equal(data.parent, "lunar moss computing");
   assert.equal(data.searchTerms.name, "lunar moss computing");

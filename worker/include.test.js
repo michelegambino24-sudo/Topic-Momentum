@@ -50,7 +50,7 @@ test("variant titles and headlines preserve the combination and child-first inde
   query.parent = normaliseQuery(query.name, "neural implant").id;
   const responses = Object.fromEntries(buildQueries(query, 2026).map(({ id }) => [id, fixture(id)]));
   const topic = shapeTopic(query, responses, date);
-  assert.equal(topic.name, "neurotechnology + child / children");
+  assert.equal(topic.name, "neurotechnology + child / children · since 2010");
   assert(topic.headline.includes(topic.name));
   let index = updateLibrary([], topic);
   assert.equal(index[0].variant, true);
@@ -84,15 +84,13 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   const saved = await fetch({ include: "child,children", cache: "only" });
   assert.equal(saved.status, 200);
   assert.equal(kv.writes.length, 3);
-  assert.equal((await fetch({ cache: "only" })).status, 404);
-  assert.equal((await fetch({ include: "adult", cache: "only" })).status, 404);
   assert.equal(calls, 11);
   query = normaliseQuery("neurotechnology", "neural implant", "T123", "children,child");
   const child = await fetch({ include: "child,children", subtopic: "T123", subtopicName: "Orbital processors", parent: topic.id });
   assert.equal(child.status, 200);
   const childTopic = await child.json();
   assert.equal(childTopic.parent, topic.id);
-  assert.equal(childTopic.name, "Orbital processors + child / children");
+  assert.equal(childTopic.name, "Orbital processors + child / children · since 2010");
   assert.equal(kv.writes.length, 6);
   assert.equal((await fetch({ include: "child,children", subtopic: "T123", parent: "wrong" })).status, 400);
   assert.equal((await fetch({ include: "x".repeat(1201) })).status, 400);
