@@ -214,7 +214,7 @@ test("empty responses produce complete zero-valued topic; malformed responses th
   assert.deepEqual(topic.kpis, { total: 0, lastYear: 0, growth5y: null, growth: null, growthLabel: "Growth 2010–2025", momentum: "Not enough data" });
   assert.equal(topic.field, "Unclassified");
   for (const field of ["experts", "subtopics", "countries", "journals", "papers", "suggestedSynonyms", "exploreNext"]) assert.deepEqual(topic[field], []);
-  assert(topic.headline.includes("is a new research topic:"));
+  assert(topic.headline.includes("is a new topic:"));
   assert.throws(() => shapeYears({}, 2026));
   assert.throws(() => shapePapers({ results: [{}] }));
   assert.throws(() => shapeYears({ group_by: [{ key: "2020", key_display_name: "2020", count: -1 }] }, 2026));
@@ -371,7 +371,7 @@ test("headlines read naturally, preserve proper names and use range-specific num
   assert.match(headline("Epigenetics",kpis,2020,null,1,{from:2015,to:2020}),/^From 2015 to 2020, research on epigenetics was growing/);
   const topic=shapeTopic(query,responses(),date);
   const refreshed=presentReport({...topic,headline:"Obsolete presentation."});
-  assert.match(refreshed.headline,/^Lunar moss computing is a new research topic:/);
+  assert.match(refreshed.headline,/^Research on lunar moss computing is a new topic:/);
   assert.deepEqual(refreshed.years,topic.years);
   const summary=reportSummary({...topic,from:2024,to:2025,kpis:{...topic.kpis,growthLabel:"5-year growth"}});
   assert.equal(summary.sparkStartYear,2024);assert.equal(summary.spark.length,2);
@@ -391,7 +391,7 @@ test("growth baselines mark tiny starting counts without changing CAGR or moment
       const report=shapeTopic(q,data,date);
       assert.equal(growthStartCount(report),count);
       assert.equal(reportSummary(report).growthStartCount,count);
-      assert.equal(report.headline.includes('is a new research topic:'),count<20);
+      assert.equal(report.headline.includes('is a new topic:'),count<20);
       assert.equal(presentReport(report).headline,report.headline);
       assert.equal(report.kpis.momentum,momentum(report.kpis.growth));
     }
@@ -416,4 +416,26 @@ test("headline percentages use the approved precision and actual fallback years"
  const {formatPercent}=await import('./lib.js');
  for(const [value,text]of [[.3,'+30%'],[.1,'+10%'],[.089,'+8.9%'],[-.1,'−10%'],[-.089,'−8.9%'],[0,'+0.0%']])assert.equal(formatPercent(value),text);
  assert.equal(headline('moss',{growth:.3,growthLabel:'5-year growth',growthStartYear:2020,growthEndYear:2025,momentum:'Accelerating',lastYear:1},2024,null,10,{from:2024,to:2024}),'From 2024 to 2024, research on moss was accelerating (+30% a year over 2020–2025). In 2024, 1 paper was published.');
+});
+
+test('complexity counts normalized Boolean joins and Retry-After delays without changing term coverage',async()=>{
+ const {queryOperatorCount,retryDelay}=await import('./lib.js');
+ for(const [syn,include,operators]of [['','a,b,c,d,e',5],['','a,b,c,d,e,f',6],['alias','a,b,c,d,e',6],['alias,ALIAS,topic','a,A,a',2]])assert.equal(queryOperatorCount(normaliseQuery('topic',syn,'',include)),operators);
+ const preset='children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood';const q=normaliseQuery('topic','','',preset);assert.equal(queryOperatorCount(q),9);assert.equal(q.includeTerms.length,9);
+ assert.equal(retryDelay('1',0),1000);assert.equal(retryDelay(null,0),1000);assert.equal(retryDelay('Thu, 01 Jan 1970 00:00:02 GMT',0),2000);assert.equal(retryDelay('invalid',0),1000);
+});
+
+test('filtered headlines use natural contexts and zero-UAE wording with exact original numbers',()=>{
+ const preset='children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood'.split(', ').sort();
+ const kpis={growth:1,momentum:'Accelerating',lastYear:27,growthStartYear:2010,growthEndYear:2025,growthStartCount:1,growthEndCount:27};
+ assert.equal(headline('Neurotechnology',kpis,2025,{gcc:1,uae:0},100,{from:2010,to:null},preset),'Research on neurotechnology in children is a new topic: from 1 paper in 2010 to 27 in 2025. Only 1 paper published since 2010 comes from the GCC, none from the UAE.');
+ assert.equal(headline('Neurotechnology + child / infant',kpis,2025,null,100,{from:2010,to:null},['child','infant']),'Research on neurotechnology mentioning child or infant is a new topic: from 1 paper in 2010 to 27 in 2025.');
+ assert.equal(headline('CRISPR',{growth:.1,momentum:'Growing',lastYear:100},2020,{gcc:1,uae:0},100,{from:2015,to:2020}),'From 2015 to 2020, research on CRISPR was growing (+10% a year). In 2020, 100 papers were published. Only 1 paper published between 2015 and 2020 came from the GCC, none from the UAE.');
+ assert.equal(headline('Epigenetics',{growth:.1,momentum:'Growing',lastYear:100},2025,{gcc:2,uae:0},100,{from:2020,to:null}),'Since 2020, research on epigenetics has been growing (+10% a year). In 2025, 100 papers were published. Only 2 papers published since 2020 come from the GCC, none from the UAE.');
+});
+
+test('legacy cached headline prose also normalizes capitalized titles and zero UAE',async()=>{
+ const {presentReport}=await import('./lib.js');
+ const saved={name:'Neurotechnology',synonyms:[],searchTerms:{name:'Neurotechnology',synonyms:[]},headline:'Research on Neurotechnology is growing (+10% a year). Only 1 paper published since 2020 comes from the GCC (0 from the UAE).',regionalCounts:{gcc:1,uae:0}};
+ assert.equal(presentReport(saved).headline,'Research on neurotechnology is growing (+10% a year). Only 1 paper published since 2020 comes from the GCC, none from the UAE.');
 });

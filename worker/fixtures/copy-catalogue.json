@@ -378,7 +378,7 @@
           "to": null
         }
       ],
-      "expected": "Epigenetics is a new research topic: from 1 paper in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
+      "expected": "Research on epigenetics is a new topic: from 1 paper in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
     },
     {
       "label": "New topic, absolute threshold, open",
@@ -404,7 +404,7 @@
           "to": null
         }
       ],
-      "expected": "Epigenetics is a new research topic: from 12 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
+      "expected": "Research on epigenetics is a new topic: from 12 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
     },
     {
       "label": "New topic, relative threshold, open",
@@ -430,7 +430,7 @@
           "to": null
         }
       ],
-      "expected": "Epigenetics is a new research topic: from 20 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
+      "expected": "Research on epigenetics is a new topic: from 20 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE)."
     },
     {
       "label": "GCC singular, open",
@@ -540,7 +540,7 @@
           "to": 2020
         }
       ],
-      "expected": "Epigenetics is a new research topic: from 1 paper in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
+      "expected": "Research on epigenetics is a new topic: from 1 paper in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
     },
     {
       "label": "New topic, absolute threshold, bounded",
@@ -566,7 +566,7 @@
           "to": 2020
         }
       ],
-      "expected": "Epigenetics is a new research topic: from 12 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
+      "expected": "Research on epigenetics is a new topic: from 12 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
     },
     {
       "label": "New topic, relative threshold, bounded",
@@ -592,7 +592,7 @@
           "to": 2020
         }
       ],
-      "expected": "Epigenetics is a new research topic: from 20 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
+      "expected": "Research on epigenetics is a new topic: from 20 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE)."
     },
     {
       "label": "GCC singular, bounded",
@@ -681,6 +681,92 @@
         }
       ],
       "expected": "From 2012 to 2013, research on epigenetics was growing (+15% a year over 2008–2013). In 2013, 200 papers were published."
+    },
+    {
+      "label": "Children preset, new topic and zero UAE",
+      "args": [
+        "Neurotechnology",
+        {
+          "growth": 1,
+          "momentum": "Accelerating",
+          "lastYear": 27,
+          "growthStartYear": 2010,
+          "growthEndYear": 2025,
+          "growthStartCount": 1,
+          "growthEndCount": 27
+        },
+        2025,
+        {
+          "gcc": 1,
+          "uae": 0
+        },
+        100,
+        {
+          "from": 2010,
+          "to": null
+        },
+        [
+          "child",
+          "childhood",
+          "children",
+          "early childhood",
+          "infant",
+          "kindergarten",
+          "pediatric",
+          "preschool",
+          "toddler"
+        ]
+      ],
+      "expected": "Research on neurotechnology in children is a new topic: from 1 paper in 2010 to 27 in 2025. Only 1 paper published since 2010 comes from the GCC, none from the UAE."
+    },
+    {
+      "label": "Custom include terms, new topic",
+      "args": [
+        "Neurotechnology + child / infant",
+        {
+          "growth": 1,
+          "momentum": "Accelerating",
+          "lastYear": 27,
+          "growthStartYear": 2010,
+          "growthEndYear": 2025,
+          "growthStartCount": 1,
+          "growthEndCount": 27
+        },
+        2025,
+        null,
+        100,
+        {
+          "from": 2010,
+          "to": null
+        },
+        [
+          "child",
+          "infant"
+        ]
+      ],
+      "expected": "Research on neurotechnology mentioning child or infant is a new topic: from 1 paper in 2010 to 27 in 2025."
+    },
+    {
+      "label": "Acronym and bounded zero UAE",
+      "args": [
+        "CRISPR",
+        {
+          "growth": 0.1,
+          "momentum": "Growing",
+          "lastYear": 100
+        },
+        2020,
+        {
+          "gcc": 1,
+          "uae": 0
+        },
+        100,
+        {
+          "from": 2015,
+          "to": 2020
+        }
+      ],
+      "expected": "From 2015 to 2020, research on CRISPR was growing (+10% a year). In 2020, 100 papers were published. Only 1 paper published between 2015 and 2020 came from the GCC, none from the UAE."
     }
   ],
   "messages": [
@@ -849,8 +935,8 @@
       "text": "A research topic is required. Add a topic with the q parameter."
     },
     {
-      "file": "worker/worker.js",
-      "text": "The search has too many terms. Shorten the topic or synonyms and try again."
+      "file": "worker/lib.js",
+      "text": "This search has too many terms. Remove some synonyms or additional terms and try again."
     },
     {
       "file": "worker/worker.js",
@@ -910,7 +996,11 @@
     },
     {
       "file": "site/app.js",
-      "text": "Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage."
+      "text": "Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage."
+    },
+    {
+      "file": "site/app.js",
+      "text": "This search is more complex, so it takes a little longer…"
     }
   ],
   "dynamic": [
@@ -1055,19 +1145,24 @@
       "example": "Back to Epigenetics"
     },
     {
-      "label": "Sub-topic counts from a tiny base",
+      "label": "Sub-topic counts for tiny bases or growth above 300%",
       "template": "<earlier half> → <later half>",
       "example": "2 → 320"
     },
     {
       "label": "Sub-topics tooltip when at least one row shows counts",
-      "template": "<normal Sub-topics tooltip> Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.",
-      "example": "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage."
+      "template": "<normal Sub-topics tooltip> Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.",
+      "example": "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage."
     },
     {
       "label": "Sub-topic counts, accessible wording",
       "template": "Earlier half: <N papers>. Later half: <M papers>.",
       "example": "Earlier half: 1 paper. Later half: 320 papers."
+    },
+    {
+      "label": "Sub-topic counts above 300%",
+      "template": "<earlier half> → <later half>",
+      "example": "105 → 1,850"
     }
   ]
 }

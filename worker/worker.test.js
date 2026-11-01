@@ -111,7 +111,7 @@ for (const failure of ["http", "network", "json", "shape"]) {
       return Response.json(fixtureFor(url));
     }, () => date);
     const response = await worker.fetch(request(undefined, "null"), env);
-    assert.equal(calls, failure === "shape" ? 13 : 11);
+    assert.equal(calls, failure === "shape" || failure === "http" ? 13 : 11);
     assert.equal(response.status, 502);
     const text = await response.text();
     assert(!text.includes(env.OPENALEX_KEY));
@@ -318,4 +318,47 @@ test("worker fetches fallback lists only when needed and caches their independen
   assert.equal(data.kpis.total,1992);assert.deepEqual(data.regionalCounts,{uae:7,gcc:11});assert.equal(kv.values.get('count:2026-10-31'),'1');
   const cached=await(await worker.fetch(request(),testEnv)).json();assert.deepEqual(cached.sourceQuality,data.sourceQuality);assert.equal(calls.length,expectedCalls);
  }
+});
+
+function virtualTiming() {
+ let time=Date.parse('2026-10-31T12:00:00Z');
+ return {now:()=>time,async sleep(ms,signal){if(signal.aborted)throw new Error('Cancelled');time+=ms;await Promise.resolve();}};
+}
+function complexSource(url,queries) {
+ for(const q of queries){const d=[...buildQueries(q,2026),...buildQueries(q,2026,false)].find(({params})=>Object.entries(params).every(([k,v])=>url.searchParams.get(k)===v));if(d){const all=['experts','journals'].includes(d.id)&&!url.searchParams.get('filter').includes('is_core:true');return {id:d.id,label:d.id+(all?'All':''),query:q.id,all};}}
+ assert.fail('Unrecognised complex source query');
+}
+
+test('complex pacing is shared across concurrent searches including fallback lists',async()=>{
+ const include='child,children,childhood,infant,toddler,preschool';const queries=['lunar moss computing','orbital spore logic'].map(name=>normaliseQuery(name,'','',include));const timing=virtualTiming(),starts=[];
+ const worker=createWorker(async url=>{const d=complexSource(url,queries);starts.push({time:timing.now(),query:d.query});return Response.json(fixture(d.id));},()=>date,timing);
+ const result=await Promise.all(queries.map(q=>worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),{...env,ENVIRONMENT:'production'})));
+ assert(result.every(r=>r.status===200));assert.equal(starts.length,26);assert.equal(new Set(starts.map(x=>x.query)).size,2);
+ for(let i=1;i<starts.length;i++)assert(starts[i].time-starts[i-1].time>=400,'Requests from all users share the pacing interval');
+});
+
+test('complex retries honor cooldown and count core/fallback attempts in the same budget',async()=>{
+ const include='child,children,childhood,infant,toddler,preschool';const q=normaliseQuery('lunar moss computing','','',include),timing=virtualTiming(),attempts=new Map(),starts=[];
+ const worker=createWorker(async url=>{const d=complexSource(url,[q]),attempt=(attempts.get(d.label)||0)+1;attempts.set(d.label,attempt);starts.push({id:d.label,time:timing.now()});if(attempt<=(d.all?2:1))return new Response('Slow down',{status:429,headers:{'Retry-After':'1'}});return Response.json(fixture(d.id));},()=>date,timing);
+ const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),{...env,ENVIRONMENT:'production'});assert.equal(response.status,200);assert.equal(starts.length,28);assert([...attempts.values()].every(n=>n<=3));assert.equal(attempts.get('expertsAll'),3);assert.equal(attempts.get('journalsAll'),3);
+ for(const id of attempts.keys()){const list=starts.filter(x=>x.id===id);for(let i=1;i<list.length;i++)assert(list[i].time-list[i-1].time>=1000);}
+});
+
+test('retry exhaustion never exceeds thirty source calls or two retries per query',async(t)=>{
+ t.mock.method(console,'error',()=>{});const include='child,children,childhood,infant,toddler,preschool';const q=normaliseQuery('lunar moss computing','','',include),timing=virtualTiming(),attempts=new Map();let calls=0;
+ const worker=createWorker(async url=>{calls++;const d=complexSource(url,[q]);attempts.set(d.label,(attempts.get(d.label)||0)+1);return new Response('Too many boolean operators',{status:429,headers:{'Retry-After':'1'}});},()=>date,timing);
+ const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),env);assert.equal(response.status,429);assert.deepEqual(await response.json(),{error:'search_too_complex',message:'This search has too many terms. Remove some synonyms or additional terms and try again.'});assert.equal(calls,30);assert([...attempts.values()].every(n=>n<=3));assert.equal(env.TMM.values.get('count:2026-10-31'),'1');assert(!env.TMM.values.has('v3:topic:'+q.id));
+});
+
+test('long Retry-After is not retried early and source complexity errors use the plain message',async(t)=>{
+ t.mock.method(console,'error',()=>{});const include='child,children,childhood,infant,toddler,preschool';const q=normaliseQuery('lunar moss computing','','',include);
+ for(const status of [429,400,414]){const attempts=new Map(),timing=virtualTiming();const worker=createWorker(async url=>{const d=complexSource(url,[q]);attempts.set(d.label,(attempts.get(d.label)||0)+1);return Response.json({message:'Too many terms in boolean query'},{status,headers:{'Retry-After':'10'}});},()=>date,timing);
+ const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),{...env,ENVIRONMENT:'production',TMM:new MemoryKV()});assert.equal(response.status,status===429?429:400);assert.equal((await response.json()).message,'This search has too many terms. Remove some synonyms or additional terms and try again.');assert([...attempts.values()].every(n=>n===1));}
+});
+
+test('a terminal complex-search failure cancels queued outbound starts',async()=>{
+ const include='a,b,c,d,e,f';let calls=0;let signal;
+ const timing={now:()=>0,sleep:(ms,abortSignal)=>new Promise((resolve,reject)=>{abortSignal.addEventListener('abort',()=>reject(new Error('Cancelled')),{once:true});})};
+ const worker=createWorker(async(url,options)=>{calls++;signal=options.signal;return new Response('Request URL too long',{status:414});},()=>date,timing);
+ const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:'lunar moss computing',include})),{...env,ENVIRONMENT:'production'});assert.equal(response.status,400);assert.equal(calls,1);assert.equal(signal.aborted,true);
 });

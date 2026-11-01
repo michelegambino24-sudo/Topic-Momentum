@@ -128,11 +128,18 @@ export function growthStartCount(report) { return growthWindow(report).growthSta
 export function isNewTopic(window) {
   return Number.isFinite(window.growthStartCount) && (window.growthStartCount < 20 || window.growthStartCount < .02 * window.growthEndCount);
 }
-export function newTopicHeadline(name, window) {
-  const title = headlineTopicName(name);
-  const topic = title.charAt(0).toUpperCase() + title.slice(1);
+export function headlineSubject(name, includeTerms = []) {
+  let base = String(name).replace(/ · (?:since \d{4}|\d{4}–\d{4})$/, "");
+  const suffix = includeTerms.length ? reportLabel("", includeTerms) : "";
+  if (suffix && base.endsWith(suffix)) base = base.slice(0, -suffix.length);
+  const topic = headlineTopicName(base);
+  if (!includeTerms.length) return topic;
+  const preset = JSON.stringify([...includeTerms].sort()) === JSON.stringify(childrenTerms);
+  return topic + (preset ? " in children" : " mentioning " + includeTerms.map(headlineTopicName).join(" or "));
+}
+export function newTopicHeadline(name, window, includeTerms = []) {
   const count = (n) => new Intl.NumberFormat("en-US").format(n);
-  return `${topic} is a new research topic: from ${count(window.growthStartCount)} ${window.growthStartCount === 1 ? "paper" : "papers"} in ${window.growthStartYear} to ${count(window.growthEndCount)} in ${window.growthEndYear}.`;
+  return `Research on ${headlineSubject(name, includeTerms)} is a new topic: from ${count(window.growthStartCount)} ${window.growthStartCount === 1 ? "paper" : "papers"} in ${window.growthStartYear} to ${count(window.growthEndCount)} in ${window.growthEndYear}.`;
 }
 
 // Store the actual complete-year series and its range; no implicit ten-year window.
@@ -178,6 +185,17 @@ export function buildSearchExpression(query) {
 }
 
 // Descriptors contain only public parameters; the Worker adds authentication.
+export const COMPLEX_SEARCH_MESSAGE = "This search has too many terms. Remove some synonyms or additional terms and try again.";
+export const MAX_SOURCE_REQUESTS = 30;
+export function queryOperatorCount(query) {
+  return (query.synonyms?.length || 0) + (query.includeTerms?.length || 0);
+}
+export function retryDelay(value, time) {
+  if (value == null || value === "") return 1000;
+  const milliseconds = /^\d+(?:\.\d+)?$/.test(value) ? Number(value) * 1000 : Date.parse(value) - time;
+  return Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : 1000;
+}
+
 export function buildQueries(query, currentYear, coreOnly = true) {
   const search = `title_and_abstract.search:${buildSearchExpression(query)}${query.subtopicId ? `,primary_topic.id:${normaliseSubtopicId(query.subtopicId)}` : ""}`;
   const grouped = (id, group, filter, limit) => ({ id, params: {
@@ -347,10 +365,18 @@ export function presentReport(report) {
     if (suffix) baseName = baseName.slice(0, -suffix.length);
   }
   const name = reportLabel(baseName, terms, reportRange);
+  let legacyHeadline = report.headline?.replace(report.name, name);
+  if (legacyHeadline) {
+    const subject = headlineSubject(report.headlineName || baseName, terms);
+    legacyHeadline = legacyHeadline.replace(/^Research on .+?(?= (?:is|has been|was) )/, "Research on " + subject)
+      .replace(/^.+? is a new (?:research )?topic:/, "Research on " + subject + " is a new topic:");
+    if (report.regionalCounts?.uae === 0) legacyHeadline = legacyHeadline.replace("from the GCC (0 from the UAE).", "from the GCC, none from the UAE.");
+  }
+
   return { ...report, name,
     ...(typeof report.headline === "string" ? { headline: report.kpis && report.from !== undefined && Array.isArray(report.years)
-      ? headline(reportLabel(report.headlineName || baseName, terms), { ...report.kpis, ...growthWindow(report) }, Math.max(report.from, Math.min(report.to ?? Number(report.updated.slice(0, 4)) - 1, Number(report.updated.slice(0, 4)) - 1)), report.regionalCounts, report.kpis.total, report)
-      : report.headline.replace(report.name, name) } : {}),
+      ? headline(reportLabel(report.headlineName || baseName, terms), { ...report.kpis, ...growthWindow(report) }, Math.max(report.from, Math.min(report.to ?? Number(report.updated.slice(0, 4)) - 1, Number(report.updated.slice(0, 4)) - 1)), report.regionalCounts, report.kpis.total, report, terms)
+      : legacyHeadline } : {}),
     ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, includeTerms: terms }) } : {}) };
 }
 
@@ -376,17 +402,17 @@ export function formatPercent(value) {
   return `${value < 0 ? "−" : "+"}${Math.abs(value * 100).toFixed(Math.abs(value * 100) >= 10 ? 0 : 1)}%`;
 }
 
-export function headline(name, kpis, lastYear, regionalCounts, periodTotal = 0, period = 2020) {
+export function headline(name, kpis, lastYear, regionalCounts, periodTotal = 0, period = 2020, includeTerms = []) {
   const range = typeof period === "object" ? period : { from: period, to: null };
   const prefix = range.to == null ? `Since ${range.from}, ` : `From ${range.from} to ${range.to}, `;
-  const topicName = headlineTopicName(name);
+  const topicName = headlineSubject(name, includeTerms);
   const count = new Intl.NumberFormat("en-US").format(kpis.lastYear);
   const published = `In ${lastYear}, ${count} ${kpis.lastYear === 1 ? "paper was" : "papers were"} published.`;
   const regionalPeriod = range.to == null ? `since ${range.from}` : `between ${range.from} and ${range.to}`;
   const regional = regionalCounts && periodTotal > 0 && regionalCounts.gcc / periodTotal < .05
-    ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} published ${regionalPeriod} ${range.to != null ? "came" : regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).` : "";
+    ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} published ${regionalPeriod} ${range.to != null ? "came" : regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC${regionalCounts.uae === 0 ? ", none from the UAE." : ` (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).`}` : "";
   const rateValue = Object.hasOwn(kpis, "growth") ? kpis.growth : kpis.growth5y;
-  if (isNewTopic(kpis)) return newTopicHeadline(name, kpis) + regional;
+  if (isNewTopic(kpis)) return newTopicHeadline(name, kpis, includeTerms) + regional;
   if (rateValue === null) return `${prefix}there is not enough data to calculate annual growth for ${topicName}. ${published}${regional}`;
   const rate = formatPercent(rateValue);
   const fallback = kpis.growthLabel === "5-year growth" ? ` over ${kpis.growthStartYear ?? lastYear - 5}–${kpis.growthEndYear ?? lastYear}` : "";
@@ -425,7 +451,7 @@ export function shapeTopic(query, responses, date) {
     ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name } : {}),
     field: ranked(responses.field).map(displayName)[0] || "Unclassified",
     updated: date.toISOString().slice(0, 10), years, kpis,
-    headline: headline(reportLabel(headlineName, query.includeTerms), { ...kpis, ...window }, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, range),
+    headline: headline(reportLabel(headlineName, query.includeTerms), { ...kpis, ...window }, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, range, query.includeTerms),
     sourceQuality: { experts: responses.expertsAll ? "all" : "core", journals: responses.journalsAll ? "all" : "core" },
     experts: shapeExperts(responses.expertsAll || responses.experts), subtopics: subtopics.slice(0, 9),
     countries: shapeCountries(responses.countries), regionalCounts, journals: shapeJournals(responses.journalsAll || responses.journals),

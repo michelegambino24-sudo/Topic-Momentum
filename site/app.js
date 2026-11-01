@@ -119,6 +119,24 @@
     const words = name.toLowerCase().split(/(\s+)/);
     return words.map((word, i) => keep.has(word.toUpperCase()) ? word.toUpperCase() : i > 0 && i < words.length - 1 && minor.has(word) ? word : word.replace(/(^|[-/])\p{L}/gu, (c) => c.toUpperCase())).join("");
   }
+  function headlineTopicName(value) {
+    const proper = new Map(["Alzheimer", "Parkinson", "Huntington", "Bayesian", "Fourier", "Gaussian", "Darwin", "Einstein", "Newton", "Japan", "China", "Europe", "European", "Africa", "African", "Asia", "Asian", "Arab", "Emirates", "Dubai", "Abu", "Dhabi"].map((word) => [word.toLowerCase(), word]));
+    return String(value).replace(/[A-Za-z]+(?:[’'][A-Za-z]+)?/g, (word) => {
+      const stem = word.replace(/[’']s$/i, "");
+      if (proper.has(stem.toLowerCase())) return proper.get(stem.toLowerCase()) + word.slice(stem.length);
+      return /^[A-Z]{2,6}$/.test(word) || /[a-z][A-Z]/.test(word) ? word : word.toLowerCase();
+    });
+  }
+  function headlineSubject(report, terms) {
+    const base = report.subtopicId ? baseTitle(report) : report.headlineName || report.searchTerms?.name || baseTitle(report);
+    const preset = JSON.stringify([...terms].sort()) === JSON.stringify(childrenPreset.split(", ").sort());
+    return headlineTopicName(base) + (!terms.length ? "" : preset ? " in children" : " mentioning " + terms.map(headlineTopicName).join(" or "));
+  }
+  function queryOperatorCount(name, synonyms, include) {
+    const clean = (value) => String(value).toLowerCase().replace(/[,|[\]{}()"'“”‘’:\\\x00-\x1f\x7f]/g, "").trim().replace(/\s+/g, " ");
+    const topic = clean(name);
+    return new Set(synonyms.map(clean).filter((term) => term && term !== topic)).size + new Set(include.map(clean).filter(Boolean)).size;
+  }
   function presentReport(report) {
     report = repairBoundedGrowth(report);
     const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
@@ -126,16 +144,20 @@
     let sentence = report.headline?.replace(report.name, name);
     if (report.kpis && report.from !== undefined && Array.isArray(report.years)) {
       const range = reportRange(report), window = growthWindow(report);
-      const topicName = name.replace(/ · (?:since \d{4}|\d{4}–\d{4})$/, "");
+      const topicName = headlineSubject(report, terms);
       const prefix = range.to == null ? `Since ${range.from}, ` : `From ${range.from} to ${range.to}, `;
       const lastYear = Math.max(range.from, Math.min(range.to ?? Number(report.updated.slice(0,4)) - 1, Number(report.updated.slice(0,4)) - 1));
       const published = `In ${lastYear}, ${papers(report.kpis.lastYear)} ${report.kpis.lastYear === 1 ? "was" : "were"} published.`;
-      const regional = report.regionalCounts && report.kpis.total > 0 && report.regionalCounts.gcc / report.kpis.total < .05 ? ` Only ${papers(report.regionalCounts.gcc)} published ${periodPhrase(range)} ${range.to != null ? "came" : report.regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC (${number(report.regionalCounts.uae)} from the UAE).` : "";
+      const regional = report.regionalCounts && report.kpis.total > 0 && report.regionalCounts.gcc / report.kpis.total < .05 ? ` Only ${papers(report.regionalCounts.gcc)} published ${periodPhrase(range)} ${range.to != null ? "came" : report.regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC${report.regionalCounts.uae === 0 ? ", none from the UAE." : ` (${number(report.regionalCounts.uae)} from the UAE).`}` : "";
       const growth = primaryGrowth(report);
-      if (isNewTopic(window) && Number.isFinite(window.growthEndCount)) sentence = `${titleCase(topicName)} is a new research topic: from ${papers(window.growthStartCount)} in ${window.growthStartYear} to ${number(window.growthEndCount)} in ${window.growthEndYear}.${regional}`;
+      if (isNewTopic(window) && Number.isFinite(window.growthEndCount)) sentence = `Research on ${topicName} is a new topic: from ${papers(window.growthStartCount)} in ${window.growthStartYear} to ${number(window.growthEndCount)} in ${window.growthEndYear}.${regional}`;
       else if (growth === null) sentence = `${prefix}there is not enough data to calculate annual growth for ${topicName}. ${published}${regional}`;
       else sentence = `${prefix}research on ${topicName} ${range.to == null ? "has been" : "was"} ${report.kpis.momentum.toLowerCase()} (${percent(growth)} a year${report.kpis.growthLabel === "5-year growth" ? " over " + window.growthStartYear + "–" + window.growthEndYear : ""}). ${published}${regional}`;
     } else if (sentence) {
+      const subject = headlineSubject(report, terms);
+      sentence = sentence.replace(/^Research on .+?(?= (?:is|has been|was) )/, "Research on " + subject)
+        .replace(/^.+? is a new (?:research )?topic:/, "Research on " + subject + " is a new topic:");
+      if (report.regionalCounts?.uae === 0) sentence = sentence.replace("from the GCC (0 from the UAE).", "from the GCC, none from the UAE.");
       sentence = sentence.replace(/([+−-]?)(\d+(?:\.\d+)?)%/g, (_, sign, value) => percent((sign === "-" || sign === "−" ? -1 : 1) * Number(value) / 100));
     }
     return { ...report, name, ...(sentence ? { headline: sentence } : {}), ...(report.journals ? { journals: report.journals.map((item) => ({...item, name: normalJournalName(item.name)})) } : {}), ...(report.papers ? { papers: report.papers.map((item) => ({...item, journal: normalJournalName(item.journal)})) } : {}) };
@@ -248,12 +270,12 @@
     const subtopics = topic.subtopics.filter((item) => Number.isFinite(item.late) && (Number.isFinite(item.growth) || item.growth === null));
     // Older reports encode a zero earlier half as null growth.
     const earlierCount = (item) => item.early ?? (item.growth === null ? 0 : Number.isFinite(item.growth) && item.growth > -1 ? Math.round(item.late / (1 + item.growth)) : undefined);
-    const showsCounts = (item) => !countsOnly && Number.isFinite(earlierCount(item)) && earlierCount(item) >= 0 && earlierCount(item) < 20;
+    const showsCounts = (item) => !countsOnly && Number.isFinite(earlierCount(item)) && earlierCount(item) >= 0 && (earlierCount(item) < 20 || item.growth > 3);
 
     $("subtopics-heading").textContent = "Sub-topics";
     $("subtopics-metric").textContent = "Growth";
     $("subtopics-note").textContent = countsOnly ? "Research areas inside this topic, ranked by number of papers. Click a row to open it." : "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it.";
-    if (subtopics.some(showsCounts)) $("subtopics-note").textContent += " Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.";
+    if (subtopics.some(showsCounts)) $("subtopics-note").textContent += " Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.";
     const empty = topic.kpis.total === 0;
     $("no-results").hidden = !empty;
     $("report-content").hidden = empty;
@@ -552,7 +574,7 @@
     if (to != null && to !== "" && Number(from) > Number(to)) { $("search-options").open = true; notify("The From year must be the same as or earlier than the To year.", true); return; }
     setLoading(true);
     const version = ++requestVersion;
-    notify("Loading research data…", true);
+    notify(queryOperatorCount(name, terms, include) > 5 ? "This search is more complex, so it takes a little longer…" : "Loading research data…", true);
     const controller = new AbortController();
     requestController = controller;
     const timeout = setTimeout(() => controller.abort(), 30000);

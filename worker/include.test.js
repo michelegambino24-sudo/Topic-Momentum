@@ -22,7 +22,7 @@ test("compact labels and suggestions respect every search group, including saved
   old.headline = `Research on ${old.name} is growing.`;
   const displayed = presentReport(old);
   assert.equal(displayed.name, "epigenetics + Children 0–9");
-  assert.equal(displayed.headline, "Research on epigenetics + Children 0–9 is growing.");
+  assert.equal(displayed.headline, "Research on epigenetics in children is growing.");
   assert.deepEqual(displayed.suggestedSynonyms, ["Brain signals"]);
   assert.deepEqual(presentReport(displayed), displayed);
 });
@@ -51,8 +51,8 @@ test("variant titles and headlines preserve the combination and child-first inde
   const responses = Object.fromEntries(buildQueries(query, 2026).map(({ id }) => [id, fixture(id)]));
   const topic = shapeTopic(query, responses, date);
   assert.equal(topic.name, "neurotechnology + child / children · since 2010");
-  assert.match(topic.headline, /^Neurotechnology .* is a new research topic:/);
-  assert(topic.headline.includes("Neurotechnology + child / children"));
+  assert.match(topic.headline, /^Research on neurotechnology .* is a new topic:/);
+  assert(topic.headline.includes("neurotechnology mentioning child or children"));
   let index = updateLibrary([], topic);
   assert.equal(index[0].variant, true);
   assert.deepEqual(index[0].searchTerms.includeTerms, ["child", "children"]);

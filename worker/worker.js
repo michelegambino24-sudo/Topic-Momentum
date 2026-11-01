@@ -1,7 +1,32 @@
-import { normaliseQuery, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
+import { normaliseQuery, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
-export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date()) {
+export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date(), timing = {}) {
+  const clock = timing.now || Date.now;
+  const sleep = timing.sleep || ((milliseconds, signal) => new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(new Error("Request cancelled")); };
+    const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, milliseconds);
+    signal.addEventListener("abort", abort, {once:true});
+    if (signal.aborted) abort();
+  }));
+  // Shared by searches in this instance; upstream 429 handling covers other instances.
+  let pacingTail = Promise.resolve(), nextSourceStart = 0, cooldownUntil = 0, complexSearches = 0;
+  async function pace(signal, complex, start) {
+    if (!complex && complexSearches === 0 && clock() >= cooldownUntil) return start();
+    let response;
+    const turn = pacingTail.then(async () => {
+      if (signal.aborted) throw new Error("Request cancelled");
+      let delay;
+      while ((delay = Math.max(nextSourceStart, cooldownUntil) - clock()) > 0) await sleep(delay, signal);
+      if (signal.aborted) throw new Error("Request cancelled");
+      nextSourceStart = clock() + 400;
+      response = start();
+    });
+    pacingTail = turn.catch(() => {});
+    await turn;
+    return response;
+  }
+  const complexityError = (status = 400) => Object.assign(new Error(COMPLEX_SEARCH_MESSAGE), {code:"search_too_complex", status});
   // Serialise matching operations in this isolate; KV remains eventually consistent across isolates.
   const queues = new WeakMap();
   async function locked(kv, key, action) {
@@ -75,7 +100,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
       if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);
       const key = REPORT_CACHE_PREFIX + query.id;
-      if (new TextEncoder().encode(key).length > 512) return error("invalid_query", "The search has too many terms. Shorten the topic or synonyms and try again.", 400);
+      if (new TextEncoder().encode(key).length > 512) return error("invalid_query", COMPLEX_SEARCH_MESSAGE, 400);
       if (!env.TMM) return storageError();
       try {
         return await locked(env.TMM, key, async () => {
@@ -115,6 +140,9 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
             return error("daily_limit", "Daily limit reached. Try again tomorrow or browse the Library.", 429);
           }
           if (admitted === "missing_key") return error("missing_key", "OPENALEX_KEY is not set. Add it to worker/.dev.vars.", 503);
+          const complex = queryOperatorCount(query) > 5;
+          if (complex) complexSearches++;
+          let sourceRequests = 0;
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 20000);
           try {
@@ -127,17 +155,33 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                 const upstream = new URL("https://api.openalex.org/works");
                 upstream.search = new URLSearchParams(params).toString();
                 upstream.searchParams.set("api_key", env.OPENALEX_KEY);
-                stage = "fetch";
-                // Workers supports manual redirects; never follow a credential-bearing redirect.
-                const response = await fetchSource(upstream, { signal: controller.signal, redirect: "manual" });
+                let response;
+                for (let attempt = 0; attempt <= 2; attempt++) {
+                  stage = "pacing";
+                  response = await pace(controller.signal, complex, () => {
+                    if (controller.signal.aborted) throw new Error("Request cancelled");
+                    if (sourceRequests >= MAX_SOURCE_REQUESTS) throw complexityError(429);
+                    sourceRequests++;
+                    stage = "fetch";
+                    // Count retries and fallbacks; never follow a credential-bearing redirect.
+                    return fetchSource(upstream, { signal: controller.signal, redirect: "manual" });
+                  });
+                  status = response.status;
+                  if (status !== 429) break;
+                  const delay = Math.max(400, retryDelay(response.headers?.get("Retry-After"), clock()));
+                  cooldownUntil = Math.max(cooldownUntil, clock() + delay);
+                  if (attempt === 2 || delay > 1500) break;
+                  await response.body?.cancel();
+                }
                 status = response.status;
                 stage = "http_response";
                 // Response.ok excludes every 3xx response as well as 4xx/5xx errors.
                 if (!response.ok) {
-                  if (dev) {
+                  if (dev || (complex && status === 400)) {
                     sourceMessage = "The source error message could not be read.";
                     sourceMessage = await response.text();
                   }
+                  if (status === 414 || (complex && (status === 429 || (status === 400 && /too many|boolean|complex|too long|length|syntax|parse/i.test(sourceMessage || ""))))) throw complexityError(status === 429 ? 429 : 400);
                   throw new Error("Source unavailable");
                 }
                 stage = "response_parsing";
@@ -150,6 +194,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                       status === null ? "The request failed before an HTTP response was received." : "The source returned an unreadable JSON response.",
                   error: sanitiseCaughtError(caught, env.OPENALEX_KEY)
                 });
+                if (caught.code === "search_too_complex") throw caught;
+                if (complex && controller.signal.aborted && stage === "pacing") throw complexityError(429);
                 throw new Error("Source unavailable");
               }
             };
@@ -158,7 +204,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
             if (dev) {
               // Let every query finish so one failure cannot hide other error messages.
               const settled = await Promise.allSettled(pending);
-              if (settled.some((item) => item.status === "rejected")) throw new Error("Source unavailable");
+              if (settled.some((item) => item.status === "rejected")) throw settled.find((item) => item.status === "rejected" && item.reason?.code === "search_too_complex")?.reason || new Error("Source unavailable");
               results = settled.map((item) => item.value);
             } else {
               results = await Promise.all(pending);
@@ -171,11 +217,12 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
               await indexTopic(env.TMM, topic);
             } catch { return storageError(); }
             return respond(topic);
-          } catch {
+          } catch (caught) {
             controller.abort();
+            if (caught.code === "search_too_complex") return error(caught.code, COMPLEX_SEARCH_MESSAGE, caught.status);
             // Responses never include upstream details; development logs are sanitised above.
             return error("source_unavailable", "The research data source is unavailable. Try again later.", 502);
-          } finally { clearTimeout(timeout); }
+          } finally { clearTimeout(timeout); if (complex) complexSearches--; }
         });
       } catch { return storageError(); }
     }

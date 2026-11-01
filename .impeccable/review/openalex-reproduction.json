@@ -1,0 +1,85 @@
+{
+  "environment": "dev",
+  "topic": "neurotechnology",
+  "cases": [
+    {
+      "terms": 5,
+      "workerStatus": 200
+    },
+    {
+      "terms": 6,
+      "workerStatus": 502,
+      "sourceStatus": 429,
+      "failingQueries": [
+        "countries",
+        "late",
+        "field",
+        "experts",
+        "uae",
+        "papers",
+        "keywords",
+        "gcc",
+        "journals",
+        "years"
+      ],
+      "message": "Your query uses 6 boolean operators (OR/AND/NOT). Broad boolean searches are heavy for our search cluster, so queries with more than 5 operators are limited to 5 requests per second per client. Paid plans get 25 requests per second ([URL removed] Please wait 1s and retry, space out these requests, or narrow the query (fewer OR/AND/NOT terms). See [URL removed]"
+    },
+    {
+      "preset": "Children 0–9",
+      "terms": 9,
+      "workerStatus": 502,
+      "sourceStatus": 429,
+      "failingQueries": [
+        "journals",
+        "field",
+        "papers",
+        "keywords",
+        "countries",
+        "late",
+        "uae",
+        "early",
+        "gcc",
+        "experts"
+      ],
+      "message": "Your query uses 9 boolean operators (OR/AND/NOT). Broad boolean searches are heavy for our search cluster, so queries with more than 5 operators are limited to 5 requests per second per client. Paid plans get 25 requests per second ([URL removed] Please wait 1s and retry, space out these requests, or narrow the query (fewer OR/AND/NOT terms). See [URL removed]"
+    }
+  ],
+  "stemming": [
+    {
+      "expression": "child",
+      "count": 1843615
+    },
+    {
+      "expression": "children",
+      "count": 4650790
+    },
+    {
+      "expression": "childhood",
+      "count": 978178
+    },
+    {
+      "expression": "children NOT child",
+      "count": 3737598
+    },
+    {
+      "expression": "childhood NOT child",
+      "count": 777589
+    },
+    {
+      "expression": "child NOT children",
+      "count": 930423
+    }
+  ],
+  "verification": {
+    "concurrent": true,
+    "sixTerms": {
+      "status": 200,
+      "seconds": 6.9
+    },
+    "fullPreset": {
+      "status": 200,
+      "seconds": 8.8
+    },
+    "presetTermsUnchanged": true
+  }
+}

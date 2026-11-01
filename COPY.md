@@ -1,6 +1,6 @@
 # Sentence catalogue
 
-Filled examples are illustrative. Display titles are capitalised, with the period only in the subtitle. Dates use day, abbreviated month and year. Percentages have no decimals from 10% upwards, one decimal below 10%, and a real minus sign. A five-year fallback is five elapsed years between annual counts: a bounded range ending in 2019 uses 2014–2019. Current partial years are excluded.
+Filled examples are illustrative. Display titles are capitalised; headline topic words use lowercase, preserving typed acronyms and recognised proper names. Periods appear in subtitles. Dates use day, abbreviated month and year. Percentages have no decimals from 10% upwards, one decimal below 10%, and a real minus sign. Bounded five-year fallbacks end at the selected last complete year.
 
 ## Headlines
 
@@ -74,15 +74,15 @@ Since 2020, there is not enough data to calculate annual growth for epigenetics.
 
 ### New topic, singular, open
 
-Epigenetics is a new research topic: from 1 paper in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE).
+Research on epigenetics is a new topic: from 1 paper in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE).
 
 ### New topic, absolute threshold, open
 
-Epigenetics is a new research topic: from 12 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE).
+Research on epigenetics is a new topic: from 12 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE).
 
 ### New topic, relative threshold, open
 
-Epigenetics is a new research topic: from 20 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE).
+Research on epigenetics is a new topic: from 20 papers in 2020 to 2,571 in 2025. Only 23 papers published since 2020 come from the GCC (4 from the UAE).
 
 ### GCC singular, open
 
@@ -102,15 +102,15 @@ From 2015 to 2020, there is not enough data to calculate annual growth for epige
 
 ### New topic, singular, bounded
 
-Epigenetics is a new research topic: from 1 paper in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE).
+Research on epigenetics is a new topic: from 1 paper in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE).
 
 ### New topic, absolute threshold, bounded
 
-Epigenetics is a new research topic: from 12 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE).
+Research on epigenetics is a new topic: from 12 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE).
 
 ### New topic, relative threshold, bounded
 
-Epigenetics is a new research topic: from 20 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE).
+Research on epigenetics is a new topic: from 20 papers in 2015 to 2,571 in 2020. Only 23 papers published between 2015 and 2020 came from the GCC (4 from the UAE).
 
 ### GCC singular, bounded
 
@@ -127,6 +127,18 @@ From 2015 to 2020, research on epigenetics was growing (+10% a year). In 2020, 1
 ### Bounded fallback before 2010
 
 From 2012 to 2013, research on epigenetics was growing (+15% a year over 2008–2013). In 2013, 200 papers were published.
+
+### Children preset, new topic and zero UAE
+
+Research on neurotechnology in children is a new topic: from 1 paper in 2010 to 27 in 2025. Only 1 paper published since 2010 comes from the GCC, none from the UAE.
+
+### Custom include terms, new topic
+
+Research on neurotechnology mentioning child or infant is a new topic: from 1 paper in 2010 to 27 in 2025.
+
+### Acronym and bounded zero UAE
+
+From 2015 to 2020, research on CRISPR was growing (+10% a year). In 2020, 100 papers were published. Only 1 paper published between 2015 and 2020 came from the GCC, none from the UAE.
 
 ## Periods, metadata and count templates
 
@@ -298,6 +310,30 @@ Template: `Back to <Topic>`
 
 Back to Epigenetics
 
+### Sub-topic counts for tiny bases or growth above 300%
+
+Template: `<earlier half> → <later half>`
+
+2 → 320
+
+### Sub-topics tooltip when at least one row shows counts
+
+Template: `<normal Sub-topics tooltip> Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.`
+
+Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.
+
+### Sub-topic counts, accessible wording
+
+Template: `Earlier half: <N papers>. Later half: <M papers>.`
+
+Earlier half: 1 paper. Later half: 320 papers.
+
+### Sub-topic counts above 300%
+
+Template: `<earlier half> → <later half>`
+
+105 → 1,850
+
 ## Fixed tooltips, empty states, errors and status messages
 
 - Papers published each year. The current year isn’t over, so its line is dashed.
@@ -341,7 +377,7 @@ Back to Epigenetics
 - The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.
 - A topic cannot be its own parent. Choose a different parent and try again.
 - A research topic is required. Add a topic with the q parameter.
-- The search has too many terms. Shorten the topic or synonyms and try again.
+- This search has too many terms. Remove some synonyms or additional terms and try again.
 - The daily search limit is invalid. Set NEW_TOPICS_PER_DAY to a non-negative whole number and try again.
 - Daily limit reached. Try again tomorrow or browse the Library.
 - OPENALEX_KEY is not set. Add it to worker/.dev.vars.
@@ -356,37 +392,21 @@ Back to Epigenetics
 - Research on lunar moss computing is accelerating (+33% a year). The fictional field reached 760 papers in 2025, up from 180 in 2020.
 - This topic started from very few papers, so a yearly percentage would be misleading. We show the real counts instead.
 - Can’t reach the data service. Check your connection and try again.
+- Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.
+- This search is more complex, so it takes a little longer…
 
-## Source quality, historical windows and caching
+## Search complexity and source quality
 
-Experts and journals fall back independently below five core entries. Fallback lists show Includes non-core sources and omit the core-only tooltip claim.
+The normal loading message is Loading research data…. With more than five Boolean operators after normalisation, it is This search is more complex, so it takes a little longer…. Duplicate terms do not increase the operator count.
 
-Cache version stays v3. Bounded growth is recomputed on opening from saved yearly counts; the saved date and other data are retained. If historical endpoints are missing, an automatic capped search rebuilds the report. At the cap, preserve the report but show Not enough data for unavailable growth; never retain the old percentage. New yearly queries extend to the fallback baseline, including before 2010 (2012–2013 uses 2008–2013).
+The Children preset retains all nine existing terms: child does not cover all children or childhood matches. Complex source requests share a conservative 400ms start interval within a Worker instance, including concurrent searches, retries and source fallbacks. A search makes at most 30 OpenAlex calls; each query has at most two retries. Retry-After is honoured, with retries only for short cooldowns (up to 1.5 seconds). Cloudflare can run multiple instances, so shared in-instance pacing cannot enforce one global limit across instances; bounded 429 handling covers that contention without new infrastructure.
 
-Missing reports rebuild subject to the daily cap. At the cap, use an existing v3 report, then v2, then v1; old records remain untouched. Freshness is seven days and report expiration is 60 days. Worker errors pass through unchanged.
+Core experts and journals independently fall back below five entries and show Includes non-core sources. Other counts and search semantics are unchanged.
 
-## Sub-topic counts from tiny bases
+## Sub-topic count pairs
 
-Rows that previously said New now show the actual earlier and later counts, for example `2 → 320`. The second-half paper count remains in the Papers column. No per-row question-mark help is added. Percentage rows and ranges with no growth comparison keep their existing presentation.
+A row displays earlier → later counts when the earlier half has fewer than 20 papers OR growth is strictly above 300%. At exactly 300%, keep the percentage unless the base is below 20. No per-row question-mark controls are added. The arrow explanation appears in the card tooltip only when a displayed row contains counts. Count-only ranges show no growth comparison or arrow.
 
-Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.
+## Historical windows and caching
 
-### Sub-topic counts from a tiny base
-
-Template: `<earlier half> → <later half>`
-
-2 → 320
-
-### Sub-topics tooltip when at least one row shows counts
-
-Template: `<normal Sub-topics tooltip> Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.`
-
-Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.
-
-### Sub-topic counts, accessible wording
-
-Template: `Earlier half: <N papers>. Later half: <M papers>.`
-
-Earlier half: 1 paper. Later half: 320 papers.
-
-The arrow explanation is appended to the normal Sub-topics card tooltip only when at least one displayed row contains an arrow. It is omitted for count-only ranges and reports without arrow rows.
+Cache version remains v3. Correct bounded growth from saved counts on opening; rebuild missing historical endpoints under the daily cap. At the cap, unavailable growth is not replaced by the old wrong percentage. Missing current reports rebuild under the cap, with fallback to v2 then v1 if capped. Seven-day freshness, 60-day expiration, private variants and source-count calculations remain unchanged.

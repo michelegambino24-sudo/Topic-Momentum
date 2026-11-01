@@ -81,8 +81,8 @@ test("range CAGR, fallback growth and totals use the right endpoints while prese
     const last = data.years.group_by.find((item) => Number(item.key) === end)?.count ?? 0;
     assert.equal(report.kpis.growth5y, baseline === 0 ? null : (last / baseline) ** .2 - 1);
     assert(report.name.endsWith(to === "" ? `since ${from}` : `${from}–${to}`));
-    assert(report.headline.includes("is a new research topic:") || report.headline.startsWith(to === "" ? `Since ${from}, ` : `From ${from} to ${to}, `));
-    assert(report.headline.includes("child / children"));
+    assert(report.headline.includes("is a new topic:") || report.headline.startsWith(to === "" ? `Since ${from}, ` : `From ${from} to ${to}, `));
+    assert(report.headline.includes("child or children"));
     assert.deepEqual(presentReport(presentReport(report)), report);
     if (to !== "") assert(!report.headline.includes("published in 2025") || to === 2025);
   }

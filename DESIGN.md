@@ -120,3 +120,7 @@ Panels have gently rounded corners. Inputs and buttons use smaller rounded corne
 ## Copy formatting
 
 Use capitalised report titles and place periods only in subtitles. Format visible dates as 1 Nov 2026; signed percentages use a real minus and whole numbers from 10% upwards, one decimal below 10%. Growth and New topic have independent help, and the chart has a concise dashed-year explanation. Library counters say topics, sub-topics and saved versions. All generated sentence examples live in COPY.md.
+
+## Complex searches and comparison copy
+
+Queries above five Boolean operators explain the longer loading time with one plain status sentence. Natural filtered headlines say in children or mentioning the custom alternatives, retaining sentence case and typed acronyms. Sub-topic count pairs also replace growth above 300%; the card tooltip explains both arrow conditions, without per-row controls.

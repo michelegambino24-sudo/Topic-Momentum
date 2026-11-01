@@ -168,7 +168,7 @@ test("open ranges survive combined searches, sub-topics, exploration, cache-only
   assert.match(app.get("kpis").innerHTML, /Average yearly increase in papers since 2023/);
   assert(!app.get("year-chart").innerHTML.includes("2022:"));
   assert(app.get("year-chart").innerHTML.includes("2023:"));
-  assert.equal(app.get("subtopics-note").textContent, "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.");
+  assert.equal(app.get("subtopics-note").textContent, "Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.");
   assert.equal(app.get("experts-note").textContent, "Authors with the most papers on this topic since 2023. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted.");
   app.click({ subtopic: "T123", title: "Orbital logic" }); await settle();
   assert.equal(calls.at(-1).get("from"), "2023");
@@ -243,7 +243,7 @@ test("bounded ranges keep both years across report links, exploration, My librar
   app.get("to-input").value = "2020";
   app.submit(); await settle();
   assert.equal(app.get("topic-name").textContent, "Moss + child");
-  assert.match(app.get("headline").textContent, /Moss \+ child is a new research topic:/);
+  assert.match(app.get("headline").textContent, /Research on moss mentioning child is a new topic:/);
   assert.match(app.get("kpis").innerHTML, /Average yearly increase in papers between 2015 and 2020/);
   assert.equal(app.get("experts-heading").textContent, "Leading experts");
   assert.equal(app.get("experts-note").textContent, "Authors with the most papers on this topic between 2015 and 2020. A starting point for speakers, not a ranking of quality. Only papers in journals on the Leiden Ranking core list are counted.");
@@ -307,7 +307,7 @@ test("restored reports use compact labels and hide suggestions already in any se
     suggestedSynonyms: ["Children", "epigenetics", "neural implant", "infant", "brain signals"] };
   const app = setup(async () => assert.fail("Restoration must stay offline"), JSON.stringify(saved));
   assert.equal(app.get("topic-name").textContent, "Epigenetics + children / infant");
-  assert.equal(app.get("headline").textContent, "Research on epigenetics + children / infant is growing.");
+  assert.equal(app.get("headline").textContent, "Research on epigenetics mentioning children or infant is growing.");
   const chips = app.get("suggested-synonyms").innerHTML;
   assert(chips.includes("brain signals"));
   for (const term of ["Children", "epigenetics", "neural implant", "infant"]) assert(!chips.includes(`data-suggest="${term}"`));
@@ -1029,7 +1029,7 @@ test("tiny-base thresholds are strict and retain the real endpoint counts", asyn
     app.submit();await settle();
     const kpis=app.get('kpis').innerHTML;
     assert.equal(kpis.includes('>New topic<span class="help"'),expected);
-    if(expected){assert(kpis.includes(`${start} papers in 2020 → ${new Intl.NumberFormat('en-US').format(end)} in 2025`));assert.equal(app.get('headline').textContent,`Fixture topic is a new research topic: from ${start} papers in 2020 to ${new Intl.NumberFormat('en-US').format(end)} in 2025. Only 12 papers published since 2020 come from the GCC (0 from the UAE).`);}
+    if(expected){assert(kpis.includes(`${start} papers in 2020 → ${new Intl.NumberFormat('en-US').format(end)} in 2025`));assert.equal(app.get('headline').textContent,`Research on fixture topic is a new topic: from ${start} papers in 2020 to ${new Intl.NumberFormat('en-US').format(end)} in 2025. Only 12 papers published since 2020 come from the GCC, none from the UAE.`);}
     assert(app.get('momentum-segments').innerHTML.includes('aria-current="true">Accelerating'));
     app.navigate('#library');await settle();assert.equal(app.get('library-cards').innerHTML.includes('New topic'),expected);app.navigate('#search');await settle();
   }
@@ -1039,7 +1039,7 @@ test("sub-topic tiny earlier halves show counts, retain percentages at twenty, a
  let data;const app=setup(async()=>({ok:true,json:async()=>data}));
  data={...report(app),subtopics:[{id:'T1',name:'Nineteen',early:19,late:190,growth:9},{id:'T2',name:'Twenty',early:20,late:200,growth:9},{id:'T3',name:'Cached without early',late:100,growth:99}]};app.submit();await settle();
  const rows=app.get('subtopics').innerHTML;
- assert.equal((rows.match(/Earlier half:/g)||[]).length,2);assert(rows.includes('19 → 190'));assert(rows.includes('1 → 100'));assert.equal((rows.match(/Growth: \+900%/g)||[]).length,1);
+ assert.equal((rows.match(/Earlier half:/g)||[]).length,3);assert(rows.includes('19 → 190'));assert(rows.includes('1 → 100'));assert.equal((rows.match(/Growth: \+900%/g)||[]).length,0);
  data.subtopicWindow={countsOnly:true};app.submit();await settle();assert(!app.get('subtopics').innerHTML.includes('Growth: New'));assert(!app.get('subtopics').innerHTML.includes('%'));
 });
 
@@ -1132,18 +1132,41 @@ test("sub-topic navigation retains the parent acronym casing in its request and 
 
 test("sub-topic arrow counts explain tiny bases only in the card tooltip",async()=>{
  const base='Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it.';
- const explanation='Rows with an arrow had fewer than 20 papers in the earlier half, so we show the earlier and later counts instead of a growth percentage.';
+ const explanation='Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.';
  let data;const app=setup(async()=>({ok:true,json:async()=>data}));
  data={...report(app),subtopics:[{id:'T1',name:'Small base',early:2,late:320,growth:159},{id:'T2',name:'Zero base',early:0,late:1000,growth:null},{id:'T3',name:'Established',early:20,late:400,growth:19}]};
  app.submit();await settle();let rows=app.get('subtopics').innerHTML;
- assert(rows.includes('2 → 320'));assert(rows.includes('0 → 1,000'));assert(rows.includes('+1900%'));
+ assert(rows.includes('2 → 320'));assert(rows.includes('0 → 1,000'));assert(rows.includes('20 → 400'));
  assert(rows.includes('aria-label="Earlier half: 2 papers. Later half: 320 papers."'));
  assert(!rows.includes('data-help'));assert(!rows.includes('>New<'));assert.equal(app.get('subtopics-note').textContent,base+' '+explanation);
  assert.equal(data.subtopics[0].growth,159);
- data.subtopics=[data.subtopics[2],{id:'T4',name:'No current count',early:2,growth:159}];app.submit();await settle();
+ data.subtopics=[{...data.subtopics[2],late:80,growth:3},{id:'T4',name:'No current count',early:2,growth:159}];app.submit();await settle();
  assert(!app.get('subtopics').innerHTML.includes('→'));assert.equal(app.get('subtopics-note').textContent,base);
  data.subtopics=[{id:'T5',name:'One earlier paper',early:1,late:12,growth:11}];app.submit();await settle();
  assert(app.get('subtopics').innerHTML.includes('1 → 12'));assert(app.get('subtopics').innerHTML.includes('Earlier half: 1 paper. Later half: 12 papers.'));
  data.subtopicWindow={countsOnly:true};app.submit();await settle();
  assert(!app.get('subtopics').innerHTML.includes('→'));assert.equal(app.get('subtopics-note').textContent,'Research areas inside this topic, ranked by number of papers. Click a row to open it.');
+});
+
+test('loading copy changes only when the normalized query has more than five Boolean operators',async()=>{
+ for(const [syn,include,complex]of [['','a,b,c,d,e',false],['','a,b,c,d,e,f',true],['alias','a,b,c,d,e',true],['alias,ALIAS,topic','a,A',false]]){
+  let finish;const app=setup(()=>new Promise(resolve=>{finish=resolve}));app.get('topic-input').value='topic';app.get('synonyms-input').value=syn;app.get('include-input').value=include;app.submit();
+  assert.equal(app.get('status').textContent,complex?'This search is more complex, so it takes a little longer…':'Loading research data…');
+  finish({ok:true,json:async()=>report(app)});await settle();assert.equal(app.get('status').textContent,'Research data loaded.');
+ }
+});
+
+test('sub-topic counts also replace growth strictly above three hundred percent',async()=>{
+ let data;const app=setup(async()=>({ok:true,json:async()=>data}));
+ data={...report(app),subtopics:[{id:'T1',name:'Fast increase',early:105,late:1850,growth:1850/105-1},{id:'T2',name:'At the threshold',early:100,late:400,growth:3}]};app.submit();await settle();
+ const rows=app.get('subtopics').innerHTML;assert(rows.includes('105 → 1,850'));assert(rows.includes('Growth: +300%'));assert.equal((rows.match(/Earlier half:/g)||[]).length,1);
+ assert.equal(app.get('subtopics-note').textContent,'Research areas inside this topic. Growth compares the second half of the period with the first. Click a row to open it. Rows with an arrow had fewer than 20 papers in the earlier half or growth above 300%, so we show the earlier and later counts instead of a growth percentage.');
+});
+
+test('restored Library titles use sentence case with natural include context and typed acronyms',()=>{
+ const init=setup(()=>assert.fail('Sample stays offline'));
+ for(const [name,original,terms,expected]of [['Neurotechnology','Neurotechnology',['child','infant'],'Research on neurotechnology mentioning child or infant'],['Crispr','CRISPR',[],'Research on CRISPR'],["Alzheimer’s Disease","Alzheimer’s Disease",[],"Research on Alzheimer’s disease"]]){
+  const data={...report(init),name,headlineName:original,from:2010,to:null,searchTerms:{name,synonyms:[]},includeTerms:terms,years:[{year:2010,count:1},{year:2025,count:27}],kpis:{...report(init).kpis,growth:1,growthLabel:'Growth 2010–2025'}};
+  const restored=setup(()=>assert.fail('Restoring stays offline'),JSON.stringify(data));assert(restored.get('headline').textContent.startsWith(expected+' is a new topic:'));assert(restored.get('headline').textContent.endsWith('Only 12 papers published since 2010 come from the GCC, none from the UAE.'));
+ }
 });
