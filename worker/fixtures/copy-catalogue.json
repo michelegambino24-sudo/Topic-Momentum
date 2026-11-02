@@ -956,7 +956,7 @@
     },
     {
       "file": "site/index.html",
-      "text": "Type a field or technology, like “epigenetics”. We search titles and abstracts."
+      "text": "Write what you're looking for in plain words, like a question to a colleague. For example: \"epigenetics in pregnant women since 2020\" or \"inheritance law for children in the GCC\". We pick out the topic, who it's about (children, pregnancy, women, teenagers, students, older adults), places (GCC, Middle East or a country) and years (\"since 2020\", \"last 5 years\"). The chips under the box show what we understood: remove a wrong one with ×. Put an exact phrase in \"quotes\". Places and people match words in titles and abstracts, not where authors work."
     },
     {
       "file": "site/index.html",
@@ -964,7 +964,7 @@
     },
     {
       "file": "site/index.html",
-      "text": "Papers must also mention one of these words. Use it to narrow a topic, for example to children."
+      "text": "Each group must match. Within a group, any term can match. For example, inheritance + GCC + children. Terms can appear anywhere in the title or abstract; multi-word terms stay together as phrases."
     },
     {
       "file": "site/index.html",
@@ -972,7 +972,7 @@
     },
     {
       "file": "site/index.html",
-      "text": "No papers found for this topic. Check the spelling or add synonyms."
+      "text": "No papers found for this search. Try a broader topic or remove a detail."
     },
     {
       "file": "site/index.html",
@@ -1001,6 +1001,38 @@
     {
       "file": "site/app.js",
       "text": "This search is more complex, so it takes a little longer…"
+    },
+    {
+      "file": "site/index.html",
+      "text": "Add another group"
+    },
+    {
+      "file": "site/index.html",
+      "text": "Remove group"
+    },
+    {
+      "file": "site/index.html",
+      "text": "These presets match words in titles and abstracts, not where the authors work."
+    },
+    {
+      "file": "site/index.html",
+      "text": "You can use up to three include groups. Remove a group to add another."
+    },
+    {
+      "file": "worker/worker.js",
+      "text": "Use up to three include groups, with each group supplied once."
+    },
+    {
+      "file": "site/app.js",
+      "text": "The data service did not retain every include group. Update the Worker and try again."
+    },
+    {
+      "file": "site/map-feedback.js",
+      "text": "Hover or focus a country for its exact count."
+    },
+    {
+      "file": "site/index.html",
+      "text": "Separate alternatives with commas."
     }
   ],
   "dynamic": [

@@ -1,0 +1,10 @@
+{
+  "meta": { "count": 1992, "per_page": 5, "groups_count": 5 },
+  "group_by": [
+    { "key": "https://openalex.org/subfields/3308", "key_display_name": "Law", "count": 1235 },
+    { "key": "https://openalex.org/subfields/1311", "key_display_name": "Genetics", "count": 598 },
+    { "key": "https://openalex.org/subfields/2002", "key_display_name": "Economics and Econometrics", "count": 70 },
+    { "key": "https://openalex.org/subfields/3304", "key_display_name": "Education", "count": 30 },
+    { "key": "https://openalex.org/subfields/3312", "key_display_name": "Sociology and Political Science", "count": 20 }
+  ]
+}

@@ -1,4 +1,5 @@
-import { normaliseQuery, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
+import { createAIService } from "./ai.js";
+import { normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date(), timing = {}) {
@@ -11,6 +12,20 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
   }));
   // Shared by searches in this instance; upstream 429 handling covers other instances.
   let pacingTail = Promise.resolve(), nextSourceStart = 0, cooldownUntil = 0, complexSearches = 0;
+  let semanticTail = Promise.resolve(), nextSemanticStart = 0;
+  async function paceSemantic(signal, start) {
+    let response;
+    const turn = semanticTail.then(async () => {
+      const delay = nextSemanticStart - clock();
+      if (delay > 0) await sleep(delay, signal);
+      if (signal.aborted) throw new Error("Request cancelled");
+      try { response = await start(); }
+      finally { nextSemanticStart = clock() + 1000; }
+    });
+    semanticTail = turn.catch(() => {});
+    await turn;
+    return response;
+  }
   async function pace(signal, complex, start) {
     if (!complex && complexSearches === 0 && clock() >= cooldownUntil) return start();
     let response;
@@ -30,6 +45,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
   // Serialise matching operations in this isolate; KV remains eventually consistent across isolates.
   const queues = new WeakMap();
   async function locked(kv, key, action) {
+    kv = kv.originalBinding || kv;
     let pending = queues.get(kv);
     if (!pending) { pending = new Map(); queues.set(kv, pending); }
     const previous = pending.get(key) || Promise.resolve();
@@ -50,76 +66,10 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       if (JSON.stringify(before) !== JSON.stringify(after)) await kv.put("library", JSON.stringify(updated));
     });
   }
-  return {
-    async fetch(request, env) {
-      const origin = request.headers.get("Origin");
-      const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Origin" };
-      const respond = (body, status = 200, extra = {}) => new Response(body === null ? null : JSON.stringify(Array.isArray(body) ? body.map(presentReport) : presentReport(body)), { status, headers: { ...headers, ...extra } });
-      const error = (code, message, status, extra) => respond({ error: code, message }, status, extra);
-      if (!originAllowed(origin, env)) return error("origin_not_allowed", "This origin is not allowed. Open the configured site or use local development mode.", 403);
-      if (origin !== null) headers["Access-Control-Allow-Origin"] = origin;
-      const url = new URL(request.url);
-      if (!["/api/topic", "/api/library"].includes(url.pathname)) return error("not_found", "This endpoint does not exist. Use /api/topic?q=your-topic.", 404);
-      if (request.method === "OPTIONS") {
-        const method = request.headers.get("Access-Control-Request-Method");
-        if (method && method !== "GET") return error("method_not_allowed", "This endpoint accepts GET requests. Send a GET request.", 405, { Allow: "GET, OPTIONS" });
-        return respond(null, 204, { "Access-Control-Allow-Methods": "GET, OPTIONS", "Access-Control-Max-Age": "600" });
-      }
-      if (request.method !== "GET") return error("method_not_allowed", "This endpoint accepts GET requests. Send a GET request.", 405, { Allow: "GET, OPTIONS" });
-      const storageError = () => error("storage_unavailable", "The topic storage is unavailable. Try again later.", 503);
-      if (url.pathname === "/api/library") {
-        if (!env.TMM) return storageError();
-        try { return respond(publicLibrary(await env.TMM.get("library", "json") || [])); }
-        catch { return storageError(); }
-      }
-      const rawQuery = url.searchParams.get("q") || "";
-      const rawSynonyms = url.searchParams.get("syn") || "";
-      const rawInclude = url.searchParams.get("include") || "";
-      if (rawInclude.length > 1200) return error("invalid_query", "The additional terms are too long. Use fewer than 1,200 characters and try again.", 400);
-      const cacheMode = url.searchParams.get("cache");
-      if (cacheMode !== null && cacheMode !== "only") return error("invalid_query", "The cache option is invalid. Use cache=only to open a saved report.", 400);
-      if (rawQuery.length > 200 || rawSynonyms.length > 1200) return error("invalid_query", "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters.", 400);
-      let range;
-      const currentYear = now().getUTCFullYear();
-      try { range = validateRange(url.searchParams.get("from") ?? url.searchParams.get("period") ?? "2010", url.searchParams.get("to") ?? "", currentYear); }
-      catch (caught) { return error("invalid_query", caught.message, 400); }
-      let query;
-      const subtopicId = url.searchParams.get("subtopic") || "";
-      const subtopicName = url.searchParams.get("subtopicName") || "";
-      const parent = url.searchParams.get("parent") || "";
-      const parentName = url.searchParams.get("parentName") || "";
-      if (subtopicName.length > 300 || parent.length > 2000 || parentName.length > 300) return error("invalid_query", "The sub-topic details are too long. Shorten them and try again.", 400);
-      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId, rawInclude, range.from, range.to, currentYear); }
-      catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
-      query.headlineName = rawQuery.trim();
-      const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear);
-      if (subtopicId && parent && parent !== parentQuery.id) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
-      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentName.trim() || rawQuery.trim() });
-      else if (query.includeTerms?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
-      else if (parent) query.parent = parent;
-      if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
-      if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);
-      const key = REPORT_CACHE_PREFIX + query.id;
-      if (new TextEncoder().encode(key).length > 512) return error("invalid_query", COMPLEX_SEARCH_MESSAGE, 400);
-      if (!env.TMM) return storageError();
-      try {
-        return await locked(env.TMM, key, async () => {
-          const date = now();
-          const record = await env.TMM.get(key, "json");
-          const cached = record?.topic?.id === query.id ? { ...record, topic: presentReport(record.topic) } : null;
-          // Saved links rebuild automatically when the current-version record is missing.
-          if (cacheMode === "only" && cached && !cached.topic.growthNeedsRebuild) {
-            return respond({ ...cached.topic, cached: true, ...(!cacheIsFresh(cached, date.getTime()) ? { stale: true } : {}) });
-          }
-          if (cached && !cached.topic.growthNeedsRebuild && cacheIsFresh(cached, date.getTime())) {
-            await indexTopic(env.TMM, { ...cached.topic, ...(query.parent ? { parent: query.parent } : {}) });
-            return respond({ ...cached.topic, cached: true });
-          }
-          let cap;
-          try { cap = dailyCap(env.NEW_TOPICS_PER_DAY); }
-          catch { return error("invalid_configuration", "The daily search limit is invalid. Set NEW_TOPICS_PER_DAY to a non-negative whole number and try again.", 503); }
-          const countKey = "count:" + date.toISOString().slice(0, 10);
-          const admitted = await locked(env.TMM, countKey, async () => {
+  async function reserveTopic(env, date) {
+    const cap = dailyCap(env.NEW_TOPICS_PER_DAY);
+    const countKey = "count:" + date.toISOString().slice(0, 10);
+          return await locked(env.TMM, countKey, async () => {
             const count = await env.TMM.get(countKey, "json") ?? 0;
             if (!Number.isSafeInteger(count) || count < 0) throw new Error("Invalid counter");
             if (count >= cap) return false;
@@ -128,26 +78,10 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
             await env.TMM.put(countKey, JSON.stringify(count + 1), { expirationTtl: 172800 });
             return true;
           });
-          if (!admitted) {
-            if (cached) {
-              if (!cached.topic.growthNeedsRebuild) await indexTopic(env.TMM, cached.topic);
-              return respond({ ...cached.topic, cached: true, stale: true });
-            }
-            for (const prefix of ["v2:topic:", "topic:"]) {
-              const legacy = await env.TMM.get(prefix + query.id, "json");
-              if (legacy?.topic?.id === query.id) return respond({ ...legacy.topic, cached: true, stale: true });
-            }
-            return error("daily_limit", "Daily limit reached. Try again tomorrow or browse the Library.", 429);
-          }
-          if (admitted === "missing_key") return error("missing_key", "OPENALEX_KEY is not set. Add it to worker/.dev.vars.", 503);
-          const complex = queryOperatorCount(query) > 5;
-          if (complex) complexSearches++;
-          let sourceRequests = 0;
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 20000);
-          try {
-            const dev = env.ENVIRONMENT === "dev";
-            const requestSource = async ({ id, params }) => {
+  }
+  function sourceRequester(env, session, controller, complex) {
+    const dev = env.ENVIRONMENT === "dev";
+    return async ({ id, params }) => {
               let status = null;
               let stage = "url_setup";
               let sourceMessage;
@@ -158,14 +92,16 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                 let response;
                 for (let attempt = 0; attempt <= 2; attempt++) {
                   stage = "pacing";
-                  response = await pace(controller.signal, complex, () => {
+                  const start = () => pace(controller.signal, complex, () => {
                     if (controller.signal.aborted) throw new Error("Request cancelled");
-                    if (sourceRequests >= MAX_SOURCE_REQUESTS) throw complexityError(429);
-                    sourceRequests++;
+                    if (session.requests >= MAX_SOURCE_REQUESTS) throw complexityError(429);
+                    session.requests++;
+                    session.bump?.("source");
                     stage = "fetch";
                     // Count retries and fallbacks; never follow a credential-bearing redirect.
                     return fetchSource(upstream, { signal: controller.signal, redirect: "manual" });
                   });
+                  response = await (id === "semanticPapers" ? paceSemantic(controller.signal, start) : start());
                   status = response.status;
                   if (status !== 429) break;
                   const delay = Math.max(400, retryDelay(response.headers?.get("Retry-After"), clock()));
@@ -199,6 +135,98 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                 throw new Error("Source unavailable");
               }
             };
+  }
+  async function topicResponse(url, env, respond, error, session = { requests: 0, reserved: false }) {
+    const storageError = () => error("storage_unavailable", "The topic storage is unavailable. Try again later.", 503);
+      const rawQuery = url.searchParams.get("q") || "";
+      const rawSynonyms = url.searchParams.get("syn") || "";
+      const includeKeys = ["include", "include2", "include3"];
+      for (const key of url.searchParams.keys()) {
+        if (/^include(?:\d*|Groups)$/.test(key) && (!includeKeys.includes(key) || url.searchParams.getAll(key).length > 1)) return error("invalid_query", "Use up to three include groups, with each group supplied once.", 400);
+      }
+      const rawIncludes = includeKeys.map(key => url.searchParams.get(key) || "");
+      if (rawIncludes.reduce((sum, value) => sum + value.length, 0) > 1200) return error("invalid_query", "The additional terms are too long. Use fewer than 1,200 characters and try again.", 400);
+      const rawInclude = rawIncludes.map(value => value.split(","));
+      const cacheMode = url.searchParams.get("cache");
+      if (cacheMode !== null && cacheMode !== "only") return error("invalid_query", "The cache option is invalid. Use cache=only to open a saved report.", 400);
+      if (rawQuery.length > 200 || rawSynonyms.length > 1200) return error("invalid_query", "The search is too long. Use a topic under 200 characters and synonyms under 1,200 characters.", 400);
+      let range;
+      const currentYear = now().getUTCFullYear();
+      try { range = validateRange(url.searchParams.get("from") ?? url.searchParams.get("period") ?? "2010", url.searchParams.get("to") ?? "", currentYear); }
+      catch (caught) { return error("invalid_query", caught.message, 400); }
+      let subfieldId = "";
+      if (url.searchParams.getAll("subfield").length > 1) return error("invalid_query", "Choose a subfield from the report and try again.", 400);
+      try { if (url.searchParams.has("subfield")) subfieldId = normaliseSubfieldId(url.searchParams.get("subfield")); }
+      catch (caught) { return error("invalid_query", caught.message, 400); }
+      let filters;
+      try {
+        if (url.searchParams.getAll("exclude").length > 1 || url.searchParams.getAll("authored").length > 1) throw new Error("Use each search filter once and try again.");
+        filters = normaliseFilters({ excludeTerms: url.searchParams.has("exclude") ? JSON.parse(url.searchParams.get("exclude")) : [], authoredCodes: url.searchParams.has("authored") ? url.searchParams.get("authored").split(",") : [] });
+      } catch { return error("invalid_query", "Use valid excluded terms and country codes, then try again.", 400); }
+      let query;
+      const subtopicId = url.searchParams.get("subtopic") || "";
+      const subtopicName = url.searchParams.get("subtopicName") || "";
+      const parent = url.searchParams.get("parent") || "";
+      const parentName = url.searchParams.get("parentName") || "";
+      if (subtopicName.length > 300 || parent.length > 2000 || parentName.length > 300) return error("invalid_query", "The sub-topic details are too long. Shorten them and try again.", 400);
+      try { query = normaliseQuery(rawQuery, rawSynonyms, subtopicId, rawInclude, range.from, range.to, currentYear, subfieldId, SEARCH_PRESETS, filters); }
+      catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
+      query.headlineName = rawQuery.trim();
+      const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear, subfieldId);
+      if (subtopicId && parent && parent !== parentQuery.id && parent !== legacyMultiGroupId(parentQuery)) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
+      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentName.trim() || rawQuery.trim() });
+      else if (subfieldId) query.parent = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear, "", SEARCH_PRESETS, filters).id;
+      else if (query.excludeTerms?.length || query.authoredCodes?.length || query.includeTerms?.length || query.includeGroups?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
+      else if (parent) query.parent = parent;
+      if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
+      if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);
+      const key = REPORT_CACHE_PREFIX + query.id;
+      if (new TextEncoder().encode(key).length > 512) return error("invalid_query", COMPLEX_SEARCH_MESSAGE, 400);
+      if (!env.TMM) return storageError();
+      try {
+        return await locked(env.TMM, key, async () => {
+          const date = now();
+          let record = await env.TMM.get(key, "json");
+          const legacyId = legacyMultiGroupId(query);
+          let legacyHit = false;
+          if (!record && legacyId && new TextEncoder().encode(REPORT_CACHE_PREFIX + legacyId).length <= 512) {
+            const previous = await env.TMM.get(REPORT_CACHE_PREFIX + legacyId, "json");
+            if (previous?.topic?.id === legacyId) { record = previous; legacyHit = true; }
+          }
+          const cached = record?.topic?.id === (legacyHit ? legacyId : query.id) ? { ...record, topic: presentReport(record.topic) } : null;
+          // Saved links rebuild automatically when the current-version record is missing.
+          if (cacheMode === "only" && cached && !cached.topic.growthNeedsRebuild) {
+            return respond({ ...cached.topic, cached: true, ...(!cacheIsFresh(cached, date.getTime()) ? { stale: true } : {}) });
+          }
+          if (cached && !cached.topic.growthNeedsRebuild && cacheIsFresh(cached, date.getTime())) {
+            await indexTopic(env.TMM, { ...cached.topic, ...(!legacyHit && query.parent ? { parent: query.parent } : {}) });
+            return respond({ ...cached.topic, cached: true });
+          }
+          let cap;
+          try { cap = dailyCap(env.NEW_TOPICS_PER_DAY); }
+          catch { return error("invalid_configuration", "The daily search limit is invalid. Set NEW_TOPICS_PER_DAY to a non-negative whole number and try again.", 503); }
+          const admitted = session.reserved || await reserveTopic(env, date);
+          if (admitted === true) session.reserved = true;
+          if (!admitted) {
+            if (cached) {
+              if (!cached.topic.growthNeedsRebuild) await indexTopic(env.TMM, cached.topic);
+              return respond({ ...cached.topic, cached: true, stale: true });
+            }
+            for (const prefix of ["v2:topic:", "topic:"]) {
+              const legacy = await env.TMM.get(prefix + query.id, "json");
+              if (legacy?.topic?.id === query.id) return respond({ ...legacy.topic, cached: true, stale: true });
+            }
+            return error("daily_limit", "Daily limit reached. Try again tomorrow or browse the Library.", 429);
+          }
+          if (admitted === "missing_key") return error("missing_key", "OPENALEX_KEY is not set. Add it to worker/.dev.vars.", 503);
+          const complex = queryOperatorCount(query) > 5;
+          if (complex) complexSearches++;
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 20000);
+          try {
+            const dev = env.ENVIRONMENT === "dev";
+            const requestSource = sourceRequester(env, session, controller, complex);
             const pending = buildQueries(query, date.getUTCFullYear()).map(requestSource);
             let results;
             if (dev) {
@@ -225,6 +253,55 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           } finally { clearTimeout(timeout); if (complex) complexSearches--; }
         });
       } catch { return storageError(); }
+  }
+  const aiService = createAIService({ now, clock, locked, reserve: reserveTopic, source: async (descriptor, env, session, query, signal) => {
+    const complex = queryOperatorCount(query) > 5;
+    if (complex) complexSearches++;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) controller.abort();
+    try { return (await sourceRequester(env, session, controller, complex)(descriptor))[1]; }
+    finally { signal?.removeEventListener("abort", abort); if (complex) complexSearches--; }
+  } });
+  return {
+    async fetch(request, env) {
+      const origin = request.headers.get("Origin");
+      const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Origin" };
+      const respond = (body, status = 200, extra = {}) => new Response(body === null ? null : JSON.stringify(Array.isArray(body) ? body.map(presentReport) : presentReport(body)), { status, headers: { ...headers, ...extra } });
+      const error = (code, message, status, extra) => respond({ error: code, message }, status, extra);
+      if (!originAllowed(origin, env)) return error("origin_not_allowed", "This origin is not allowed. Open the configured site or use local development mode.", 403);
+      if (origin !== null) headers["Access-Control-Allow-Origin"] = origin;
+      const url = new URL(request.url);
+      if (!["/api/topic", "/api/library", "/api/search"].includes(url.pathname)) return error("not_found", "This endpoint does not exist. Use /api/topic?q=your-topic.", 404);
+      if (request.method === "OPTIONS") {
+        const method = request.headers.get("Access-Control-Request-Method");
+        const expected = url.pathname === "/api/search" ? "POST" : "GET";
+        if (method && method !== expected) return error("method_not_allowed", expected === "POST" ? "Send a POST request with your search sentence." : "This endpoint accepts GET requests. Send a GET request.", 405, { Allow: expected + ", OPTIONS" });
+        return respond(null, 204, { "Access-Control-Allow-Methods": url.pathname === "/api/search" ? "POST, OPTIONS" : "GET, OPTIONS", ...(url.pathname === "/api/search" ? { "Access-Control-Allow-Headers": "Content-Type" } : {}), "Access-Control-Max-Age": "600" });
+      }
+      if (url.pathname === "/api/search") {
+        if (request.method !== "POST") return error("method_not_allowed", "Send a POST request with your search sentence.", 405, { Allow: "POST, OPTIONS" });
+        if (Number(request.headers.get("Content-Length")) > 16384) return error("invalid_query", "The search is too long. Use a shorter sentence.", 400);
+        let input;
+        try { const text = await request.text(); if (new TextEncoder().encode(text).length > 16384) throw new Error(); input = JSON.parse(text); }
+        catch { return error("invalid_query", "Send a search sentence as JSON and try again.", 400); }
+        const result = await aiService.search(input, env, async (query, activeEnv, session) => {
+          const result = await topicResponse(new URL("https://worker.invalid/api/topic?" + queryParams(query)), activeEnv, respond, error, session);
+          return { body: await result.json(), status: result.status };
+        });
+        return respond(result.body, result.status);
+      }
+      if (request.method !== "GET") return error("method_not_allowed", "This endpoint accepts GET requests. Send a GET request.", 405, { Allow: "GET, OPTIONS" });
+      const storageError = () => error("storage_unavailable", "The topic storage is unavailable. Try again later.", 503);
+      if (url.pathname === "/api/library") {
+        if (!env.TMM) return storageError();
+        try { return respond(publicLibrary(await env.TMM.get("library", "json") || [])); }
+        catch { return storageError(); }
+      }
+      const result = await topicResponse(url, env, respond, error);
+      if (!result.ok || !url.searchParams.has("understanding")) return result;
+      return respond(await aiService.attach(await result.json(), url.searchParams.get("understanding"), env));
     }
   };
 }

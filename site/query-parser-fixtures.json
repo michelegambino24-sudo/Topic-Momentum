@@ -1,0 +1,15 @@
+[
+  { "sentence": "I'm looking for epigenetics in children since 2020", "topic": "epigenetics", "groups": [["children", "child", "childhood", "infant", "toddler", "preschool", "kindergarten", "pediatric", "early childhood"]], "from": 2020, "to": null },
+  { "sentence": "Show me inheritance in Gulf countries between 2015 and 2020", "topic": "inheritance", "groups": [["gulf cooperation council", "gulf states", "bahrain", "bahraini", "kuwait", "kuwaiti", "oman", "omani", "qatar", "qatari", "saudi arabia", "saudi", "saudi arabian", "ksa", "united arab emirates", "uae", "emirati"]], "from": 2015, "to": 2020 },
+  { "sentence": "Studies on effects of screen time on sleep, attention and learning in teenagers last 5 years", "topic": "screen time", "groups": [["sleep", "attention", "learning"], ["adolescent", "adolescents", "teen", "teens", "teenager", "teenagers"]], "from": 2021, "to": null },
+  { "sentence": "Find neurotechnology for women in Egypt after 2022", "topic": "neurotechnology", "groups": [["women", "woman"], ["egypt", "egyptian"]], "from": 2023, "to": null },
+  { "sentence": "Research on agentic AI for students and its impact on productivity, wages and jobs from 2020", "topic": "agentic AI", "groups": [["student", "students"], ["productivity", "wages", "jobs"]], "from": 2020, "to": null },
+  { "sentence": "research and development in the UAE", "topic": "research and development", "groups": [["united arab emirates", "uae", "emirati"]], "from": 2010, "to": null },
+  { "sentence": "law and economics since 2018", "topic": "law and economics", "groups": [], "from": 2018, "to": null },
+  { "sentence": "machine learning in healthcare", "topic": "machine learning", "groups": [["healthcare"]], "from": 2010, "to": null },
+  { "sentence": "epigenetics in children since 2020", "topic": "epigenetics", "groups": [["children", "child", "childhood", "infant", "toddler", "preschool", "kindergarten", "pediatric", "early childhood"]], "from": 2020, "to": null },
+  { "sentence": "inheritance law in the GCC", "topic": "inheritance law", "groups": [["gulf cooperation council", "gulf states", "bahrain", "bahraini", "kuwait", "kuwaiti", "oman", "omani", "qatar", "qatari", "saudi arabia", "saudi", "saudi arabian", "ksa", "united arab emirates", "uae", "emirati"]], "from": 2010, "to": null },
+  { "sentence": "AI and its impact on jobs, wages and productivity", "topic": "AI", "groups": [["jobs", "wages", "productivity"]], "from": 2010, "to": null },
+  { "sentence": "neurotechnology in the UAE, last 5 years", "topic": "neurotechnology", "groups": [["united arab emirates", "uae", "emirati"]], "from": 2021, "to": null },
+  { "sentence": "screen time and sleep in teenagers", "topic": "screen time and sleep", "groups": [["adolescent", "adolescents", "teen", "teens", "teenager", "teenagers"]], "from": 2010, "to": null }
+]

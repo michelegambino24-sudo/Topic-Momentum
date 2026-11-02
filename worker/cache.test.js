@@ -33,7 +33,7 @@ test("normalised second search is cached without source requests or KV writes, e
   const first = await app.search(req(" Lunar Moss Computing ", { syn: "moon circuits,orbital logic,moon circuits" }));
   const topic = await first.json();
   assert.equal(topic.cached, false);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
   assert.equal(app.kv.writes.length, 3);
   assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v3:topic:" + topic.id, "library"]);
   assert.equal(app.kv.writes[0].value, "1");
@@ -43,7 +43,7 @@ test("normalised second search is cached without source requests or KV writes, e
   const second = await app.search(req("lunar moss computing", { syn: "orbital logic,MOON CIRCUITS" }));
   assert.equal(second.status, 200);
   assert.deepEqual(await second.json(), { ...topic, cached: true });
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
   assert.equal(app.kv.writes.length, 3);
 });
 
@@ -53,21 +53,21 @@ test("freshness ends at exactly seven days and refreshing keeps existing childre
   await app.search(req(undefined, { subtopic: "T123", subtopicName: "Orbital logic", parent: parent.id }));
   app.state.time = start + CACHE_MAX_AGE_MS - 1;
   assert.equal((await (await app.search()).json()).cached, true);
-  assert.equal(app.state.calls, 26);
+  assert.equal(app.state.calls, 28);
   app.state.time++;
   const refreshed = await (await app.search()).json();
   assert.equal(refreshed.cached, false);
   assert.equal(refreshed.updated, "2026-11-07");
-  assert.equal(app.state.calls, 39);
+  assert.equal(app.state.calls, 42);
   const index = await app.kv.get("library", "json");
   assert.deepEqual(index.find((entry) => entry.id === parent.id).children, [parent.id + "|primary_topic:T123"]);
 });
 
-test("default cap admits attempt 90, blocks attempt 91, and still serves fresh and expired reports", async () => {
+test("default cap admits attempt 50, blocks attempt 51, and still serves fresh and expired reports", async () => {
   const app = setup();
-  app.kv.values.set("count:2026-10-31", "89");
+  app.kv.values.set("count:2026-10-31", "49");
   const topic = await (await app.search()).json();
-  assert.equal(app.kv.values.get("count:2026-10-31"), "90");
+  assert.equal(app.kv.values.get("count:2026-10-31"), "50");
   const blocked = await app.search(req("other moss"));
   assert.equal(blocked.status, 429);
   assert.deepEqual(await blocked.json(), { error: "daily_limit", message: "Daily limit reached. Try again tomorrow or browse the Library." });
@@ -84,7 +84,7 @@ test("default cap admits attempt 90, blocks attempt 91, and still serves fresh a
   assert.equal(stale.status, 200);
   assert.deepEqual(await stale.json(), { ...old, cached: true, stale: true });
   assert.equal(app.kv.writes.length, writes);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
   assert.equal((await app.kv.get("v3:topic:" + topic.id, "json")).savedAt, start - CACHE_MAX_AGE_MS);
 });
 
@@ -103,7 +103,7 @@ test("failed attempts count, leave no partial report or index, and do not overwr
   assert.equal(app.kv.values.has("v3:topic:other topic"), false);
   assert.equal((await app.kv.get("library", "json")).length, 1);
   assert.equal((await app.search(req("third topic"))).status, 429);
-  assert.equal(app.state.calls, 35);
+  assert.equal(app.state.calls, 38);
 });
 
 test("daily counters roll over at midnight UTC and honour a configured cap", async () => {
@@ -115,7 +115,7 @@ test("daily counters roll over at midnight UTC and honour a configured cap", asy
   assert.equal((await app.search(req("second topic"))).status, 200);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
   assert.equal(app.kv.values.get("count:2026-11-01"), "1");
-  assert.equal(app.state.calls, 26);
+  assert.equal(app.state.calls, 28);
 });
 
 test("sub-topics use canonical parent terms plus ID and are indexed as children without duplicates", async () => {
@@ -142,7 +142,7 @@ test("sub-topics use canonical parent terms plus ID and are indexed as children 
   const invalid = await app.search(req(undefined, { subtopic: "T123", parent: "unrelated topic" }));
   assert.equal(invalid.status, 400);
   assert.equal(app.kv.reads.length, reads);
-  assert.equal(app.state.calls, 65);
+  assert.equal(app.state.calls, 70);
 });
 
 test("same-isolate simultaneous requests respect reservations and coalesce identical searches", async () => {
@@ -150,7 +150,7 @@ test("same-isolate simultaneous requests respect reservations and coalesce ident
   const results = await Promise.all([app.search(), app.search(), app.search(req("other topic"))]);
   assert.deepEqual(results.map((response) => response.status), [200, 200, 429]);
   assert.equal((await results[1].json()).cached, true);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
   assert.equal(app.kv.writes.length, 3);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
 });
@@ -202,14 +202,14 @@ test("KV failures prevent uncounted source work and a later cache hit can repair
   assert.equal(app.state.calls, 0);
   app.kv.put = async (key, ...args) => { if (key === "library") throw new Error("Storage failed"); return put(key, ...args); };
   assert.equal((await app.search()).status, 503);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
   assert.equal(app.kv.values.get("count:2026-10-31"), "1");
   app.kv.put = put;
   const repaired = await app.search();
   assert.equal(repaired.status, 200);
   assert.equal((await repaired.json()).cached, true);
   assert.equal((await app.kv.get("library", "json")).length, 1);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
 });
 
 test("missing bindings and invalid caps or counters fail closed without source calls", async () => {
@@ -241,7 +241,7 @@ test("cache-only reads serve both fresh and stale reports without counters, inde
   assert.deepEqual(await stale.json(), { ...topic, cached: true, stale: true });
   assert.deepEqual(app.kv.reads, ["v3:topic:" + topic.id, "v3:topic:" + topic.id]);
   assert.equal(app.kv.writes.length, writes);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
 });
 
 test("missing current-version saved reports rebuild automatically and reject invalid requests", async () => {
@@ -249,11 +249,11 @@ test("missing current-version saved reports rebuild automatically and reject inv
   const response = await app.search(req(undefined, { cache: "only" }));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).cached, false);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
   assert.equal(app.kv.writes.length, 3);
   assert.equal((await app.search(req(undefined, { cache: "onyl" }))).status, 400);
   assert.equal((await app.search(req(undefined, { cache: "only", subtopic: "T123|T456" }))).status, 400);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
 });
 
 test("normal searches and saved links rebuild fresh v1 reports into v2 without changing v1", async () => {
@@ -269,7 +269,7 @@ test("normal searches and saved links rebuild fresh v1 reports into v2 without c
     assert.equal(topic.from, 2010);
     assert.equal(topic.to, null);
     assert.equal(topic.kpis.growthLabel, "Growth 2010–2025");
-    assert.equal(app.state.calls, 13);
+    assert.equal(app.state.calls, 14);
     assert.equal(app.kv.values.get("topic:lunar moss computing"), original);
     assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v3:topic:lunar moss computing", "library"]);
     assert.deepEqual(app.kv.writes[1].options, { expirationTtl: 5184000 });
@@ -277,7 +277,7 @@ test("normal searches and saved links rebuild fresh v1 reports into v2 without c
     delete app.env.OPENALEX_KEY;
     assert.equal((await app.search(req(undefined, { cache: "only" }))).status, 200);
     assert.equal(app.kv.writes.length, writes); // Hits do not extend retention.
-    assert.equal(app.state.calls, 13);
+    assert.equal(app.state.calls, 14);
   }
 });
 
@@ -323,7 +323,7 @@ test("v2 refreshes renew the 60-day TTL and reports deleted by expiry rebuild on
   app.state.time += 60 * 24 * 60 * 60 * 1000;
   app.kv.values.delete("v3:topic:" + topic.id); // Model the record's deletion by KV expiry.
   assert.equal((await app.search(req(undefined, { cache: "only" }))).status, 200);
-  assert.equal(app.state.calls, 39);
+  assert.equal(app.state.calls, 42);
   assert.equal(app.kv.writes.filter((entry) => entry.key === "v3:topic:" + topic.id).at(-1).options.expirationTtl, 5184000);
 });
 
@@ -344,7 +344,7 @@ test("library browsing reads only the index, returning new spark arrays and olde
   assert.deepEqual(await response.json(), [...index, legacy]);
   assert.deepEqual(app.kv.reads, ["library"]);
   assert.equal(app.kv.writes.length, writes);
-  assert.equal(app.state.calls, 13);
+  assert.equal(app.state.calls, 14);
 });
 
 test("v3 migration rebuilds v2 reports without modifying either older cache generation", async()=>{
@@ -354,7 +354,7 @@ test("v3 migration rebuilds v2 reports without modifying either older cache gene
   const v1=JSON.stringify({savedAt:start,topic:{id,name:'First generation',updated:'2026-09-01'}});
   app.kv.values.set('v2:topic:'+id,v2);app.kv.values.set('topic:'+id,v1);
   const response=await app.search(req(undefined,extra));assert.equal(response.status,200);
-  assert.equal((await response.json()).cached,false);assert.equal(app.state.calls,13);
+  assert.equal((await response.json()).cached,false);assert.equal(app.state.calls, 14);
   assert.equal(app.kv.values.get('v2:topic:'+id),v2);assert.equal(app.kv.values.get('topic:'+id),v1);
   assert.equal(app.kv.writes.find(w=>w.key==='v3:topic:'+id).options.expirationTtl,5184000);
  }

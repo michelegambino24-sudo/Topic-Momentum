@@ -384,7 +384,7 @@ Template: `<earlier half> → <later half>`
 - The research data source is unavailable. Try again later.
 - Type a field or technology, like “epigenetics”. We search titles and abstracts.
 - Other words for the same topic. Papers that use any of them are counted too.
-- Papers must also mention one of these words. Use it to narrow a topic, for example to children.
+- Each group must match. Within a group, any term can match. For example, inheritance + GCC + children. Terms can appear anywhere in the title or abstract; multi-word terms stay together as phrases. Separate alternatives with commas. These presets match words in titles and abstracts, not where the authors work.
 - Leave empty to include papers up to today.
 - No papers found for this topic. Check the spelling or add synonyms.
 - Accelerating means 20% or more a year. Growing is 8 to 20%, Stable is 0 to 8%, Cooling means fewer papers each year.
@@ -410,3 +410,133 @@ A row displays earlier → later counts when the earlier half has fewer than 20 
 ## Historical windows and caching
 
 Cache version remains v3. Correct bounded growth from saved counts on opening; rebuild missing historical endpoints under the daily cap. At the cap, unavailable growth is not replaced by the old wrong percentage. Missing current reports rebuild under the cap, with fallback to v2 then v1 if capped. Seven-day freshness, 60-day expiration, private variants and source-count calculations remain unchanged.
+
+## Step 12a — Precise searches
+
+Approved copy for multiple include groups, region keyword presets and map inspection.
+
+- Add another group
+- Remove group
+- Include group <number>
+- Each group must match. Within a group, any term can match. For example, inheritance + GCC + children. Terms can appear anywhere in the title or abstract; multi-word terms stay together as phrases.
+- You can use up to three include groups. Remove a group to add another.
+- These presets match words in titles and abstracts, not where the authors work.
+- This search has too many terms. Remove some synonyms or additional terms and try again.
+- This search is more complex, so it takes a little longer…
+- Hover or focus a country for its exact count.
+- Map label template: `<country>: <N papers>`. Example: `Switzerland: 149 papers` (illustrative wording only; the UI always uses the current report count).
+
+### Multi-group report titles and contexts
+
+Title template: `<topic> + <group label> + <group label>[ + <group label>]`, with the existing range suffix appended.
+
+Example title: `Inheritance + GCC + Children 0–9`.
+
+Subject template: `<topic> matching <group description> and <group description>[ and <group description>]`. Presets use GCC terms, Middle East terms or children; custom groups use one of <term> or <term>.
+
+Example subject: `inheritance in children in the GCC` (all groups are presets, people before places). Mixed groups keep `<topic> matching <subject> and one of <term> or <term>`.
+
+Pass this subject into the existing headline sentence templates. Do not invent a growth rate, count or date for an example. Single-group sentences and CSV exports remain unchanged.
+
+### Group validation and deployment
+
+- Use up to three include groups, with each group supplied once.
+- The data service did not retain every include group. Update the Worker and try again.
+- The additional terms are too long. Use fewer than 1,200 characters and try again.
+
+### Region presets
+
+GCC: `gulf cooperation council, gulf states, bahrain, bahraini, kuwait, kuwaiti, oman, omani, qatar, qatari, saudi arabia, saudi, saudi arabian, ksa, united arab emirates, uae, emirati`.
+
+Middle East: `middle east, middle eastern, gulf states, bahrain, bahraini, egypt, egyptian, iran, iranian, iraq, iraqi, israel, israeli, jordanian, kuwait, kuwaiti, lebanon, lebanese, oman, omani, palestine, palestinian, qatar, qatari, saudi arabia, saudi, saudi arabian, ksa, syria, syrian, türkiye, turkish, united arab emirates, uae, emirati, yemen, yemeni`.
+
+Europe is deferred. The ambiguous standalone terms gcc, turkey and jordan are not preset alternatives; Middle East also excludes cyprus and cypriot. Country text in a paper does not identify its authors’ location.
+
+- Separate alternatives with commas.
+
+## Step 13 — Refine bar (approved)
+
+- Bar label: `Refine:`
+- Subfield chip: `Only <subfield name> · <whole-number share>%`
+- Region chips: `Mentions GCC` and `Mentions Middle East`
+- Synonym chip: `+ <suggested synonym>`
+- Subfield chip accessible description: `Search only within <subfield name>.`
+- Region chip accessible description: `Add <preset name> terms. These match words in titles and abstracts, not where the authors work.`
+- Synonym chip accessible description: `Add <synonym> as an alternative to the topic.`
+- Invalid subfield: `Choose a subfield from the report and try again.`
+
+Subfield-filtered title template: `<existing topic/group title>, <Subfield> papers`, followed by the existing range suffix when applicable. Examples: `Inheritance law, Law papers` and `Inheritance + GCC + Children 0–9, Law papers`. Names come from actual OpenAlex subfields; do not substitute an example name for a returned name. This is the step-13 exception to putting fields only in subtitles. Titles have no middle dot; the requested subfield-chip separator is allowed.
+
+Subfield-filtered headline subject template: `<existing topic/group subject> within <Subfield>`. Example subject: `inheritance in children in the GCC within Law`. Feed the complete subject into the existing headline templates without changing values, periods or growth wording.
+
+Undo link: `Back to <previous report title>`, retaining all restrictions in that report. No separate undo button or new loading sentence; reuse the normal and complex-search loading text. More options stays collapsed by default without discarding its values. Omit the entire Refine line when no useful chip exists or the report is the sample.
+
+Subfield chips use at most 30 characters, including Only and the percentage. Shorten a long subfield name with an ellipsis; the tooltip and accessible name retain the full name and percentage. Keep the existing Library field label/query unchanged.
+
+- The data service did not retain the subfield. Update the Worker and try again.
+
+## Step 14 — Plain-language search (approved)
+
+- Main input label: `Describe your research topic`
+- Main help: `Write what you're looking for in plain words, like a question to a colleague. For example: "epigenetics in pregnant women since 2020" or "inheritance law for children in the GCC". We pick out the topic, who it's about (children, pregnancy, women, teenagers, students, older adults), places (GCC, Middle East or a country) and years ("since 2020", "last 5 years"). The chips under the box show what we understood: remove a wrong one with ×. Put an exact phrase in "quotes". Places and people match words in titles and abstracts, not where authors work.`
+- Main action: `Measure momentum`
+- Advanced disclosure: `Advanced`
+- Understood chip templates: `Topic: <topic>`, `About: <people or focus terms>`, `Mentions: <region or country>`, `Since <year>`, `From <year>`, `Until <year>`, `Also searches: <synonym>`, `Only: <subfield name>`.
+- Removal button: `×`; accessible name: `Remove <description>`.
+- Missing topic: `Add a research topic, then try again.`
+- Overflow: `You can use up to three groups. Not added: <ignored parts>. Remove a group to include them.`
+- Invalid relative years: `Use a positive whole number of years, then try again.`
+- Conflicting years: `Use one year range, then try again.`
+- Refinement input label: `Narrow down`
+- Refinement placeholder: `Add a focus, people, place or years`
+- Refinement action: `Apply`
+- Refinement help: `Add words that must also match. Separate alternatives with commas or “and”. Check the chips before applying.`
+- Empty intersection: `Those years do not overlap this report. Choose years within its range.`
+- No change: `Those details are already included. Add something else to narrow the search.`
+- No papers: `No papers found for this search. Try a broader topic or remove a detail.`
+- Alias clarification: `MENA and Arab world use the Middle East keyword preset. It is not a complete country list for either region.`
+
+Reuse existing range-validation, too-many-terms and longer-loading sentences verbatim. Chips are a readout of literal search terms, not a claim that the parser has understood an intent, verified a population or identified a paper's location. Focus words such as impact/effect do not prove a causal relationship. The five exact example searches and the finite country/people term arrays are specified in SPEC step 14. No synonyms are generated by the parser.
+
+After a year is exclusive: `after 2020` is displayed as `Since 2021`. Since/from remain inclusive. Plain and in a topic is literal; their impact on is accepted alongside its impact on.
+
+Rotating search placeholders, in order:
+
+- epigenetics in children since 2020
+- inheritance law in the GCC
+- AI and its impact on jobs, wages and productivity
+- neurotechnology in the UAE, last 5 years
+- screen time and sleep in teenagers
+
+### Step 14 parser follow-up
+
+Repeated topic words (including simple plurals) in Narrow down reuse the existing no-change sentence when nothing else is added. Age expressions with children/kids/infants select the Children 0–9 keyword preset; they are never publication years and do not promise exact age filtering. Region fillers and new focus phrases produce the existing About/Mentions chips. Versioned multi-group preset tokens now let the exact Children 0–9 plus Middle East example fit. Oversized custom or mixed identities still use the existing too-many-terms message. No new user-facing sentence is added.
+
+### Versioned preset identities
+
+Preset tokens and version numbers are internal identifiers and must not appear in report titles, headlines, understood chips, CSV or restored term inputs. Existing preset labels, full search terms and error copy stay unchanged.
+
+## Step 15 — AI-checked search (approved)
+
+- Loading: `Understanding and checking your search…`
+- Readout: `Understood: <topic>[ (<synonyms>)] · about <people/focus> · written in <place> · excluded <terms> · Checked: <matching> of <sample size> sample papers on-topic.` Omit empty clauses; use `mentioning <place>` for keyword geography.
+- Illustrative readout only: `Understood: gene editing (CRISPR, genome editing) · about children · written in the GCC · excluded MERS · Checked: 23 of 25 sample papers on-topic.` Render actual sample judgments, never these example numbers by default.
+- Quick fallback clause: `Quick mode`
+- Check help: `The model reviewed paper titles, not full papers. This check does not verify every paper counted in the report.`
+- Authored help: `At least one author’s listed country matches this place. Other authors may be based elsewhere.`
+- Low-match check: `Checked: <matching> of <sample size> sample papers on-topic (low match).`
+- No titles: `No sample titles available to check.`
+- Changed filters without valid matching evidence: `Search changed; not checked.`
+- Paper list headings: `Most relevant papers` for the semantic list; `Most cited papers` for the existing cited-paper fallback.
+
+AI only interprets searches and labels title relevance. Publication counts, sample denominators and growth calculations are produced by source data and ordinary code; do not describe AI as creating or verifying those figures. Retain the existing connection, complexity, source-quota and validation messages. A title check is not an accuracy guarantee or evidence of causation.
+
+- Place chips: `Written in <place>` / `Mentions <place>`. Switch help: `Switch between author location and words mentioned in papers`.
+- Enter a search sentence under 1,000 characters and try again.
+- Choose Written in or Mentions and try again.
+- Choose a place mode before applying the current search.
+- This interpretation has expired. Search again before changing its place mode.
+- This interpretation is unavailable. Search again before changing its place mode.
+- This place mode could not be applied. Check the search details and try again.
+- Use valid excluded terms and country codes, then try again.
+- Send a POST request with your search sentence.

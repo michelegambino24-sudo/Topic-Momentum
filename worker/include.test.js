@@ -27,7 +27,7 @@ test("compact labels and suggestions respect every search group, including saved
   assert.deepEqual(presentReport(displayed), displayed);
 });
 
-test("include alternatives are canonical, separate identities and constrain all eleven queries", () => {
+test("include alternatives are canonical, separate identities and constrain all twelve queries", () => {
   const main = normaliseQuery("neurotechnology", "neural implant");
   const filtered = normaliseQuery("neurotechnology", "neural implant", "", " Children, child, early childhood, CHILD ");
   assert.deepEqual(filtered.includeTerms, ["child", "children", "early childhood"]);
@@ -78,14 +78,14 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   assert.equal(first.status, 200);
   const topic = await first.json();
   assert.equal(kv.writes.length, 3);
-  assert.equal(calls, 13);
+  assert.equal(calls, 14);
   const second = await fetch({ include: " CHILD, children,child " });
   assert.deepEqual(await second.json(), { ...topic, cached: true });
   assert.equal(kv.writes.length, 3);
   const saved = await fetch({ include: "child,children", cache: "only" });
   assert.equal(saved.status, 200);
   assert.equal(kv.writes.length, 3);
-  assert.equal(calls, 13);
+  assert.equal(calls, 14);
   query = normaliseQuery("neurotechnology", "neural implant", "T123", "children,child");
   const child = await fetch({ include: "child,children", subtopic: "T123", subtopicName: "Orbital processors", parent: topic.id });
   assert.equal(child.status, 200);
@@ -95,7 +95,7 @@ test("variants cache independently, reopen read-only, inherit into sub-topics an
   assert.equal(kv.writes.length, 6);
   assert.equal((await fetch({ include: "child,children", subtopic: "T123", parent: "wrong" })).status, 400);
   assert.equal((await fetch({ include: "x".repeat(1201) })).status, 400);
-  assert.equal(calls, 26);
+  assert.equal(calls, 28);
 });
 
  test("public library removes variants, filtered descendants and all references without cache writes", async () => {

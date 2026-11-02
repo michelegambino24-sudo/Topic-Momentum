@@ -1,4 +1,53 @@
 // Pure query and response logic. No credentials or network calls belong here.
+import "../site/search-presets.js";
+import { COUNTRY_CODES, placeDetails } from "./countries.js";
+
+export const SEARCH_PRESETS = globalThis.TMM_SEARCH_PRESETS;
+export const includeGroupIdentity = (groups, presets = SEARCH_PRESETS) => globalThis.TMM_PRESET_IDENTITIES.encode(groups, presets);
+
+export function legacyMultiGroupId(query) {
+  const groups = includeGroupsOf(query);
+  if (groups.length < 2) return null;
+  const current = includeGroupIdentity(groups), legacy = "includeGroups:" + JSON.stringify(groups);
+  return current === legacy ? null : query.id.replace("|" + current, "|" + legacy);
+}
+
+export function includeGroupsOf(source) {
+  if (Array.isArray(source)) return source.length ? Array.isArray(source[0]) ? source : [source] : [];
+  const groups = source.includeGroups || source.searchTerms?.includeGroups;
+  if (groups) return groups;
+  const terms = source.includeTerms || source.searchTerms?.includeTerms || [];
+  return terms.length ? [terms] : [];
+}
+
+export function normaliseIncludeGroups(input = "") {
+  const raw = Array.isArray(input) && input.some(Array.isArray) ? input : [input];
+  if (raw.length > 3) throw new Error("You can use up to three include groups. Remove a group to add another.");
+  const seen = new Set();
+  return raw.map(group => [...new Set((Array.isArray(group) ? group : String(group).split(",")).map(cleanTerm).filter(Boolean))].sort()).filter(group => {
+    const key = JSON.stringify(group);
+    if (!group.length || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function includeFields(groups) {
+  return groups.length > 1 ? { includeGroups: groups } : groups.length ? { includeTerms: groups[0] } : {};
+}
+
+// Long custom groups read as "pupils (and 4 similar terms)" instead of listing every word.
+export function shortGroup(terms, separator, format = (term) => term) {
+  const clean = terms.map((term) => String(term).trim()).filter(Boolean);
+  if (clean.length <= 3) return clean.map(format).join(separator);
+  const lead = [...clean].sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
+  return `${format(lead)} (and ${clean.length - 1} similar terms)`;
+}
+export function includePreset(terms) {
+  const key = JSON.stringify([...terms].sort());
+  return Object.values(SEARCH_PRESETS).find(preset => JSON.stringify([...preset.terms].sort()) === key)
+    || (globalThis.TMM_COUNTRY_GROUPS || []).find(country => JSON.stringify([...country.terms].sort()) === key);
+}
 export function sanitiseSourceError(body, secret) {
   let message = body;
   try {
@@ -56,6 +105,12 @@ export function normaliseSubtopicId(value) {
   return match[1];
 }
 
+export function normaliseSubfieldId(value) {
+  const match = String(value).match(/^(?:https:\/\/openalex\.org\/subfields\/)?([1-9][0-9]{3})$/);
+  if (!match) throw new Error("Choose a subfield from the report and try again.");
+  return match[1];
+}
+
 export function validateRange(from = 2010, to = "", currentYear = new Date().getUTCFullYear()) {
   if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) throw new Error(`Enter a From year between 2000 and ${currentYear}.`);
   if (to !== "" && to !== null && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) throw new Error(`Enter a To year between 2000 and ${currentYear}, or leave it empty to include papers up to today.`);
@@ -78,18 +133,162 @@ export function rangeDetails(range, currentYear) {
   return { from, to, end, lastComplete, completeYears, split, expertsFrom: from < 2020 && to === null ? 2020 : from };
 }
 
-export function normaliseQuery(query, synonyms = "", subtopicId = "", include = "", from = 2010, to = "", currentYear = new Date().getUTCFullYear()) {
+export function normaliseQuery(query, synonyms = "", subtopicId = "", include = "", from = 2010, to = "", currentYear = new Date().getUTCFullYear(), subfield = "", presets = SEARCH_PRESETS, filters = {}) {
   const range = validateRange(from, to, currentYear);
   const name = cleanTerm(query);
   const terms = [...new Set(String(synonyms).split(",").map(cleanTerm).filter((term) => term && term !== name))].sort();
   const filterId = subtopicId ? normaliseSubtopicId(subtopicId) : "";
-  const includeTerms = [...new Set(String(include).split(",").map(cleanTerm).filter(Boolean))].sort();
+  const subfieldId = subfield ? normaliseSubfieldId(subfield) : "";
+  const groups = normaliseIncludeGroups(include);
+  const encodedGroups = includeGroupIdentity(groups, presets);
+  const includeId = encodedGroups ? [encodedGroups] : [];
   const rangeId = range.to !== null ? [`range:${range.from}-${range.to}`] : range.from !== 2010 ? ["since:" + range.from] : [];
-  return { name, synonyms: terms, ...range, id: [name, ...terms, ...(includeTerms.length ? ["include:" + JSON.stringify(includeTerms)] : []), ...rangeId, ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"),
-    ...(includeTerms.length ? { includeTerms } : {}), ...(filterId ? { subtopicId: filterId } : {}) };
+  const extra = normaliseFilters(filters);
+  const extraId = [...(extra.excludeTerms?.length ? ["exclude:" + JSON.stringify(extra.excludeTerms)] : []), ...(extra.authoredCodes?.length ? ["authored:" + JSON.stringify(extra.authoredCodes)] : [])];
+  return { name, synonyms: terms, ...range, id: [name, ...terms, ...includeId, ...rangeId, ...extraId, ...(subfieldId ? ["subfield:" + subfieldId] : []), ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"),
+    ...includeFields(groups), ...extra, ...(subfieldId ? { subfieldId } : {}), ...(filterId ? { subtopicId: filterId } : {}) };
+}
+
+export function normaliseFilters({ excludeTerms = [], authoredCodes = [] } = {}) {
+  if (!Array.isArray(excludeTerms) || excludeTerms.length > 6 || excludeTerms.some(term => typeof term !== "string" || !cleanTerm(term) || term.length > 120)) throw new Error("Use up to six excluded terms, each under 120 characters.");
+  if (!Array.isArray(authoredCodes) || authoredCodes.length > 64 || authoredCodes.some(code => typeof code !== "string" || !COUNTRY_CODES.has(code))) throw new Error("Choose valid country codes and try again.");
+  return { ...(excludeTerms.length ? { excludeTerms: [...new Set(excludeTerms.map(cleanTerm))].sort() } : {}), ...(authoredCodes.length ? { authoredCodes: [...new Set(authoredCodes)].sort() } : {}) };
+}
+
+export function aiPlanSchema(year) {
+  const term = { type: "string", minLength: 1, maxLength: 80 };
+  const object = properties => ({ type: "object", additionalProperties: false, required: Object.keys(properties), properties });
+  const array = (items, maxItems, minItems = 0) => ({ type: "array", items, minItems, maxItems, uniqueItems: true });
+  return object({ topic: { ...term, maxLength: 200 }, synonyms: array(term, 5),
+    includeGroups: array({ oneOf: [object({ preset: { type: "string", enum: Object.keys(SEARCH_PRESETS) } }), object({ terms: array(term, 8, 1) })] }, 3),
+    place: object({ codes: array({ type: "string", pattern: "^[A-Z]{2}$" }, 64), mode: { type: "string", enum: ["authored", "mentions"] } }),
+    excludeTerms: array({ ...term, maxLength: 120 }, 6),
+    years: object({ from: { type: "integer", minimum: 2000, maximum: year }, to: { anyOf: [{ type: "null" }, { type: "integer", minimum: 2000, maximum: year }] } }) });
+}
+function exactObject(value, keys) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+export function validateAIPlan(raw, year) {
+  const fail = () => { throw new Error("Invalid interpretation"); };
+  const terms = (list, max, length = 80, min = 0) => Array.isArray(list) && list.length >= min && list.length <= max && list.every(value => typeof value === "string" && value.length <= length && cleanTerm(value) && !/[\x00-\x1f\x7f|{}[\]\\]/.test(value)) && new Set(list).size === list.length;
+  if (!exactObject(raw, ["topic", "synonyms", "includeGroups", "place", "excludeTerms", "years"]) || typeof raw.topic !== "string" || !terms([raw.topic], 1, 200)) fail();
+  if (!terms(raw.synonyms, 5) || !terms(raw.excludeTerms, 6, 120) || !Array.isArray(raw.includeGroups) || raw.includeGroups.length > 3 || new Set(raw.includeGroups.map(group => JSON.stringify(group))).size !== raw.includeGroups.length) fail();
+  for (const group of raw.includeGroups) {
+    if (exactObject(group, ["preset"])) { if (typeof group.preset !== "string" || !Object.hasOwn(SEARCH_PRESETS, group.preset)) fail(); }
+    else if (!exactObject(group, ["terms"]) || !terms(group.terms, 8, 80, 1)) fail();
+  }
+  if (!exactObject(raw.place, ["codes", "mode"]) || !["authored", "mentions"].includes(raw.place.mode) || !Array.isArray(raw.place.codes) || raw.place.codes.length > 64 || new Set(raw.place.codes).size !== raw.place.codes.length || raw.place.codes.some(code => !COUNTRY_CODES.has(code))) fail();
+  if (!exactObject(raw.years, ["from", "to"]) || !Number.isInteger(raw.years.from) || raw.years.to !== null && !Number.isInteger(raw.years.to)) fail();
+  validateRange(raw.years.from, raw.years.to, year);
+  const excluded = raw.excludeTerms.map(cleanTerm);
+  if (excluded.includes(cleanTerm(raw.topic)) || raw.synonyms.some(value => excluded.includes(cleanTerm(value)))) fail();
+  return JSON.parse(JSON.stringify(raw));
+}
+export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) {
+  raw = validateAIPlan(raw, year);
+  if (!["authored", "mentions"].includes(mode)) throw new Error("Invalid place mode");
+  const details = placeDetails(raw.place.codes, SEARCH_PRESETS, globalThis.TMM_COUNTRY_GROUPS);
+  const groupKey = group => JSON.stringify([...group].map(cleanTerm).sort());
+  let groups = current ? includeGroupsOf(current).map(group => [...group]) : raw.includeGroups.map(group => group.preset ? [...SEARCH_PRESETS[group.preset].terms] : [...group.terms]);
+  if (current && details.terms.length) groups = groups.filter(group => groupKey(group) !== groupKey(details.terms));
+  if (mode === "mentions" && details.terms.length && !groups.some(group => groupKey(group) === groupKey(details.terms))) groups.push(details.terms);
+  const query = normaliseQuery(current?.name || raw.topic, (current?.synonyms || raw.synonyms).join(","), current?.subtopicId || "", groups, current?.from ?? raw.years.from, (current ? current.to : raw.years.to) ?? "", year, current?.subfieldId || "", SEARCH_PRESETS,
+    { excludeTerms: current?.excludeTerms || raw.excludeTerms, authoredCodes: mode === "authored" ? raw.place.codes : [] });
+  if (new TextEncoder().encode(REPORT_CACHE_PREFIX + query.id).length > 512 || groups.reduce((sum, group) => sum + group.join(",").length, 0) > 1200) throw new Error(COMPLEX_SEARCH_MESSAGE);
+  query.headlineName = current?.headlineName || raw.topic;
+  if (current?.subtopicName) query.subtopicName = current.subtopicName;
+  return { query, place: raw.place.codes.length ? { codes: [...raw.place.codes].sort(), mode, label: details.label, terms: details.terms } : null };
+}
+export function isTighterPlan(initial, candidate, year) {
+  const a = compileAIPlan(initial, year), b = compileAIPlan(candidate, year);
+  return a.query.name === b.query.name && a.query.from === b.query.from && a.query.to === b.query.to && initial.place.mode === candidate.place.mode && JSON.stringify([...initial.place.codes].sort()) === JSON.stringify([...candidate.place.codes].sort()) && includeGroupIdentity(includeGroupsOf(a.query)) === includeGroupIdentity(includeGroupsOf(b.query)) && b.query.synonyms.every(term => a.query.synonyms.includes(term)) && (a.query.excludeTerms || []).every(term => b.query.excludeTerms?.includes(term));
+}
+export function judgeTitles(raw, size) {
+  if (!exactObject(raw, ["onTopic"]) || !Array.isArray(raw.onTopic) || raw.onTopic.length !== size || !raw.onTopic.every(value => typeof value === "boolean")) throw new Error("Invalid title judgments");
+  return { matched: raw.onTopic.filter(Boolean).length, total: size, judgments: raw.onTopic };
+}
+export function titleSample(query, year) {
+  const papers = buildQueries(query, year).find(item => item.id === "papers");
+  return { id: "checkTitles", params: { filter: papers.params.filter.replace(",type:article|review", ""), per_page: "25", select: "id,display_name", sort: "relevance_score:desc" } };
+}
+export function semanticQuery(query, sentence, year) {
+  const papers = buildQueries(query, year).find(item => item.id === "papers");
+  const [, nonText = ""] = papers.params.filter.split(/\),(.*)/s);
+  return { id: "semanticPapers", params: { "search.semantic": sentence, filter: nonText, per_page: "25", select: papers.params.select } };
+}
+export function semanticMembership(query, candidates, year) {
+  const ids = [...new Set(candidates.map(item => item.id).filter(id => /^https:\/\/openalex\.org\/W\d+$/.test(id)))];
+  if (!ids.length) throw new Error("No semantic candidates");
+  const papers = buildQueries(query, year).find(item => item.id === "papers");
+  return { id: "semanticMembership", params: { filter: papers.params.filter + ",openalex_id:" + ids.map(id => id.split("/").at(-1)).join("|"), per_page: "25", select: "id" } };
+}
+
+export function queryParams(query) {
+  const params = new URLSearchParams({ q: query.name, syn: query.synonyms.join(","), from: String(query.from) });
+  if (query.to != null) params.set("to", String(query.to));
+  includeGroupsOf(query).forEach((group, index) => params.set(index ? "include" + (index + 1) : "include", group.join(",")));
+  if (query.excludeTerms?.length) params.set("exclude", JSON.stringify(query.excludeTerms));
+  if (query.authoredCodes?.length) params.set("authored", query.authoredCodes.join(","));
+  if (query.subfieldId) params.set("subfield", query.subfieldId);
+  for (const [property, key] of [["subtopicId", "subtopic"], ["subtopicName", "subtopicName"], ["parent", "parent"], ["parentName", "parentName"]]) if (query[property]) params.set(key, query[property]);
+  return params;
 }
 
 export const REPORT_CACHE_PREFIX = "v3:topic:";
+
+export function refinementCandidates(report) {
+  const result = [], groups = includeGroupsOf(report);
+  const terms = report.searchTerms || { name: report.name, synonyms: report.synonyms || [] };
+  const excluded = new Set([terms.name, ...(terms.synonyms || []), ...groups.flat()].map(cleanTerm));
+  const fits = (synonyms, include, subfield = report.subfieldId || "") => {
+    try {
+      if (include.reduce((sum, group) => sum + group.join(",").length, 0) > 1200 || synonyms.join(",").length > 1200) return false;
+      const query = normaliseQuery(terms.name, synonyms.join(","), report.subtopicId || "", include, report.from ?? 2010, report.to ?? "", Number(report.updated.slice(0, 4)), subfield);
+      return new TextEncoder().encode(REPORT_CACHE_PREFIX + query.id).length <= 512;
+    } catch { return false; }
+  };
+  const distribution = report.subfields;
+  if (!report.subfieldId && distribution?.total > 0 && distribution.total === report.kpis?.total && distribution.from === report.from && distribution.to === report.to) {
+    const seen = new Set();
+    const items = distribution.items.filter(item => {
+      try { normaliseSubfieldId(item.id); } catch { return false; }
+      if (seen.has(item.id) || typeof item.name !== "string" || !item.name.trim() || !Number.isSafeInteger(item.count) || item.count <= 0 || item.count > distribution.total) return false;
+      seen.add(item.id); return true;
+    }).sort((a, b) => b.count - a.count).slice(0, 5);
+    const consistent = distribution.items.every(item => Number.isSafeInteger(item.count) && item.count >= 0 && item.count <= distribution.total) && distribution.items.reduce((sum, item) => sum + item.count, 0) <= distribution.total;
+    if (consistent && items.length && items[0].count / distribution.total < .85) {
+      for (const item of items) {
+        if (!fits(terms.synonyms || [], groups, item.id)) continue;
+        const suffix = ` · ${Math.round(item.count / distribution.total * 100)}%`;
+        const budget = 30 - 5 - suffix.length;
+        const chars = Array.from(item.name);
+        const short = chars.length > budget ? chars.slice(0, budget - 1).join("") + "…" : item.name;
+        result.push({ kind: "subfield", id: item.id, name: item.name, label: `Only ${short}${suffix}` });
+        if (result.length === 2) break;
+      }
+    }
+  }
+  if (groups.length < 3) {
+    for (const [preset, codes] of [["gcc", ["AE", "SA", "QA", "KW", "BH", "OM"]], ["middleEast", ["AE", "BH", "EG", "IL", "IQ", "IR", "JO", "KW", "LB", "OM", "PS", "QA", "SA", "SY", "TR", "YE"]]]) {
+      const definition = SEARCH_PRESETS[preset];
+      if (groups.some(group => includePreset(group) === definition)) continue;
+      const evidence = report.regionalCounts?.gcc > 0 || report.countries?.some(country => country.count > 0 && codes.includes(country.code));
+      if (evidence && fits(terms.synonyms || [], [...groups, definition.terms])) result.push({ kind: "region", preset, label: "Mentions " + definition.label });
+    }
+  }
+  let synonyms = 0;
+  for (const term of report.suggestedSynonyms || []) {
+    const clean = cleanTerm(term);
+    if (!clean || excluded.has(clean)) continue;
+    excluded.add(clean);
+    if (!fits([...(terms.synonyms || []), clean], groups)) continue;
+    result.push({ kind: "synonym", term: clean, label: "+ " + clean });
+    if (++synonyms === 2 || result.length === 5) break;
+  }
+  return result.slice(0, 5);
+}
+
+export const subfieldTitle = (name, selected) => selected ? `${name}, ${selected.name} papers` : name;
 export const REPORT_RETENTION_SECONDS = 60 * 24 * 60 * 60;
 
 export const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -99,7 +298,7 @@ export function cacheIsFresh(record, time) {
   return Number.isFinite(record?.savedAt) && age >= 0 && age < CACHE_MAX_AGE_MS;
 }
 
-export function dailyCap(value = 90) {
+export function dailyCap(value = 50) {
   if (!/^(0|[1-9][0-9]*)$/.test(String(value)) || !Number.isSafeInteger(Number(value))) throw new Error("Invalid daily cap");
   return Number(value);
 }
@@ -129,13 +328,27 @@ export function isNewTopic(window) {
   return Number.isFinite(window.growthStartCount) && (window.growthStartCount < 20 || window.growthStartCount < .02 * window.growthEndCount);
 }
 export function headlineSubject(name, includeTerms = []) {
+  const groups = includeGroupsOf(includeTerms);
   let base = String(name).replace(/ · (?:since \d{4}|\d{4}–\d{4})$/, "");
-  const suffix = includeTerms.length ? reportLabel("", includeTerms) : "";
+  const suffix = groups.length ? reportLabel("", includeTerms) : "";
   if (suffix && base.endsWith(suffix)) base = base.slice(0, -suffix.length);
   const topic = headlineTopicName(base);
-  if (!includeTerms.length) return topic;
+  if (groups.length > 1) {
+    const named = groups.map(terms => includePreset(terms));
+    // All-preset searches read naturally: "inheritance law in children in the GCC". Places come last.
+    if (named.every(preset => preset?.phrase)) return topic + " " + named.map(preset => preset.phrase).sort((left, right) => left.startsWith("in the ") - right.startsWith("in the ")).join(" ");
+    if (named.some(preset => preset?.phrase)) {
+      const custom = groups.filter((_, index) => !named[index]?.phrase).map(terms => shortGroup(terms, " or ", headlineTopicName));
+      const phrases = named.filter(preset => preset?.phrase).map(preset => preset.phrase).sort((left, right) => /^in (?:the )?[A-ZÀ-Ý]/.test(left) - /^in (?:the )?[A-ZÀ-Ý]/.test(right));
+      return topic + " mentioning " + custom.join(" and ") + " " + phrases.join(" ");
+    }
+    return topic + " matching " + groups.map(terms => includePreset(terms)?.subject || "one of " + shortGroup(terms, " or ", headlineTopicName)).join(" and ");
+  }
+  if (!groups.length) return topic;
+  includeTerms = groups[0];
   const preset = JSON.stringify([...includeTerms].sort()) === JSON.stringify(childrenTerms);
-  return topic + (preset ? " in children" : " mentioning " + includeTerms.map(headlineTopicName).join(" or "));
+  const named = preset ? null : includePreset(includeTerms);
+  return topic + (preset ? " in children" : named ? " " + (named.phrase || "mentioning " + named.subject) : " mentioning " + shortGroup(includeTerms, " or ", headlineTopicName));
 }
 export function newTopicHeadline(name, window, includeTerms = []) {
   const count = (n) => new Intl.NumberFormat("en-US").format(n);
@@ -149,7 +362,7 @@ export function reportSummary(topic) {
   const sparkStartYear = Math.max(range.from, firstAvailable);
   const counts = new Map(topic.years.map((item) => [item.year, item.count]));
   const spark = Array.from({ length: Math.max(0, range.lastComplete - sparkStartYear + 1) }, (_, i) => counts.get(sparkStartYear + i) ?? 0);
-  return { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field,
+  return { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field, ...normaliseFilters(topic),
     momentum: topic.kpis.momentum, growth: Object.hasOwn(topic.kpis, "growth") ? topic.kpis.growth : topic.kpis.growth5y,
     total: topic.kpis.total, spark, updated: topic.updated, from: range.from, to: range.to, sparkStartYear,
     growthLabel: topic.kpis.growthLabel || "5-year growth", ...growthWindow(topic) };
@@ -161,6 +374,9 @@ export function updateLibrary(index, topic) {
   const previous = index.find((entry) => entry.id === topic.id);
   const parent = topic.parent || previous?.parent || null;
   const entry = { ...reportSummary(topic), synonyms: topic.synonyms, parent, children: [],
+    ...(topic.authoredCodes?.length || topic.excludeTerms?.length ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}),
+    ...(topic.subfieldId ? { subfieldId: topic.subfieldId, selectedSubfield: topic.selectedSubfield, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
+    ...(topic.includeGroups?.length ? { includeGroups: topic.includeGroups, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
     ...(topic.includeTerms?.length ? { includeTerms: topic.includeTerms, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
     ...(topic.from !== undefined ? { from: topic.from, to: topic.to, ...(topic.from !== 2010 || topic.to !== null ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}) } : {}),
     ...(topic.period ? { period: topic.period, ...(topic.period !== 2010 ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}) } : {}),
@@ -181,14 +397,15 @@ export function updateLibrary(index, topic) {
 
 export function buildSearchExpression(query) {
   const group = (terms) => `(${terms.map((term) => /[\s-]/.test(term) ? `"${term}"` : term).join(" OR ")})`;
-  return group([query.name, ...query.synonyms]) + (query.includeTerms?.length ? ` AND ${group(query.includeTerms)}` : "");
+  const positive = group([query.name, ...query.synonyms]) + includeGroupsOf(query).map(terms => ` AND ${group(terms)}`).join("");
+  return positive + (query.excludeTerms?.length ? ` NOT ${group(query.excludeTerms)}` : "");
 }
 
 // Descriptors contain only public parameters; the Worker adds authentication.
 export const COMPLEX_SEARCH_MESSAGE = "This search has too many terms. Remove some synonyms or additional terms and try again.";
 export const MAX_SOURCE_REQUESTS = 30;
 export function queryOperatorCount(query) {
-  return (query.synonyms?.length || 0) + (query.includeTerms?.length || 0);
+  return (query.synonyms?.length || 0) + includeGroupsOf(query).reduce((sum, group) => sum + group.length, 0) + (query.excludeTerms?.length || 0);
 }
 export function retryDelay(value, time) {
   if (value == null || value === "") return 1000;
@@ -197,7 +414,7 @@ export function retryDelay(value, time) {
 }
 
 export function buildQueries(query, currentYear, coreOnly = true) {
-  const search = `title_and_abstract.search:${buildSearchExpression(query)}${query.subtopicId ? `,primary_topic.id:${normaliseSubtopicId(query.subtopicId)}` : ""}`;
+  const search = `title_and_abstract.search:${buildSearchExpression(query)}${query.subtopicId ? `,primary_topic.id:${normaliseSubtopicId(query.subtopicId)}` : ""}${query.subfieldId ? `,primary_topic.subfield.id:${normaliseSubfieldId(query.subfieldId)}` : ""}${query.authoredCodes?.length ? `,authorships.countries:${query.authoredCodes.join("|")}` : ""}`;
   const grouped = (id, group, filter, limit) => ({ id, params: {
     filter: `${search},${filter}`, group_by: group, per_page: String(limit)
   } });
@@ -223,7 +440,8 @@ export function buildQueries(query, currentYear, coreOnly = true) {
     grouped("journals", "primary_location.source.id", `${selected},primary_location.source.type:journal,type:article|review${core}`, 10),
     { id: "papers", params: { filter: `${search},${selected},type:article|review`, sort: "cited_by_count:desc", per_page: "6", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } },
     grouped("keywords", "keywords.id", since2020, 15),
-    grouped("field", "primary_topic.field.id", since2020, 1)
+    grouped("field", "primary_topic.field.id", since2020, 1),
+    grouped("subfields", "primary_topic.subfield.id", selected, 5)
   ];
 }
 
@@ -330,7 +548,7 @@ export function suggestedSynonyms(response, query) {
 }
 
 export function filterSuggestedTerms(names, query) {
-  const excluded = [query.name, ...(query.synonyms || []), ...(query.includeTerms || [])].map(cleanTerm);
+  const excluded = [query.name, ...(query.synonyms || []), ...includeGroupsOf(query).flat()].map(cleanTerm);
   const seen = new Set();
   return names.filter((name) => {
     const normalised = cleanTerm(name);
@@ -344,27 +562,30 @@ const childrenTerms = "children, child, childhood, infant, toddler, preschool, k
 
 export function reportLabel(baseName, includeTerms = [], period) {
   const suffix = period ? ` · ${typeof period === "object" ? rangeLabel(period) : `since ${period}`}` : "";
-  if (!includeTerms.length) return baseName + suffix;
-  const preset = JSON.stringify([...includeTerms].sort()) === JSON.stringify(childrenTerms);
-  return `${baseName} + ${preset ? "Children 0–9" : includeTerms.join(" / ")}${suffix}`;
+  const groups = includeGroupsOf(includeTerms);
+  return baseName + groups.map(terms => " + " + (includePreset(terms)?.label || shortGroup(terms, " / "))).join("") + suffix;
 }
 
 // Update presentation of older saved reports without refreshing data or writing KV.
 export function presentReport(report) {
   if (!report || typeof report.name !== "string") return report;
   report = repairBoundedGrowth(report);
-  const terms = report.includeTerms || report.searchTerms?.includeTerms || [];
+  const terms = includeGroupsOf(report);
   const reportRange = report.from !== undefined ? report : report.period;
   const periodSuffix = reportRange ? ` · ${typeof reportRange === "object" ? rangeLabel(reportRange) : `since ${reportRange}`}` : "";
   const bareName = periodSuffix && report.name.endsWith(periodSuffix) ? report.name.slice(0, -periodSuffix.length) : report.name;
   let baseName = report.searchTerms?.name || bareName;
   if (report.subtopicId) {
     baseName = bareName;
-    const suffixes = [` + (${terms.join(" OR ")})`, reportLabel("", terms)];
+    if (report.selectedSubfield) {
+      const selectedSuffix = `, ${report.selectedSubfield.name} papers`;
+      if (baseName.endsWith(selectedSuffix)) baseName = baseName.slice(0, -selectedSuffix.length);
+    }
+    const suffixes = [` + (${(terms[0] || []).join(" OR ")})`, reportLabel("", terms)];
     const suffix = terms.length && suffixes.find((item) => baseName.endsWith(item));
     if (suffix) baseName = baseName.slice(0, -suffix.length);
   }
-  const name = reportLabel(baseName, terms, reportRange);
+  const name = reportLabel(subfieldTitle(reportLabel(baseName, terms), report.selectedSubfield), [], reportRange);
   let legacyHeadline = report.headline?.replace(report.name, name);
   if (legacyHeadline) {
     const subject = headlineSubject(report.headlineName || baseName, terms);
@@ -373,11 +594,11 @@ export function presentReport(report) {
     if (report.regionalCounts?.uae === 0) legacyHeadline = legacyHeadline.replace("from the GCC (0 from the UAE).", "from the GCC, none from the UAE.");
   }
 
-  return { ...report, name,
+  return { ...report, name, ...(report.kpis && Array.isArray(report.years) ? { refinements: refinementCandidates(report) } : {}),
     ...(typeof report.headline === "string" ? { headline: report.kpis && report.from !== undefined && Array.isArray(report.years)
       ? headline(reportLabel(report.headlineName || baseName, terms), { ...report.kpis, ...growthWindow(report) }, Math.max(report.from, Math.min(report.to ?? Number(report.updated.slice(0, 4)) - 1, Number(report.updated.slice(0, 4)) - 1)), report.regionalCounts, report.kpis.total, report, terms)
       : legacyHeadline } : {}),
-    ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, includeTerms: terms }) } : {}) };
+    ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, ...includeFields(terms) }) } : {}) };
 }
 
 export function exploreNext(subtopics, topicName) {
@@ -405,14 +626,19 @@ export function formatPercent(value) {
 export function headline(name, kpis, lastYear, regionalCounts, periodTotal = 0, period = 2020, includeTerms = []) {
   const range = typeof period === "object" ? period : { from: period, to: null };
   const prefix = range.to == null ? `Since ${range.from}, ` : `From ${range.from} to ${range.to}, `;
-  const topicName = headlineSubject(name, includeTerms);
+  const context = (range.selectedSubfield ? ` within ${range.selectedSubfield.name}` : "") + (range.authoredCodes?.length ? ` with authors in ${placeDetails(range.authoredCodes, SEARCH_PRESETS).label}` : "") + (range.excludeTerms?.length ? ` excluding ${range.excludeTerms.join(" or ")}` : "");
+  const topicName = headlineSubject(name, includeTerms) + context;
   const count = new Intl.NumberFormat("en-US").format(kpis.lastYear);
   const published = `In ${lastYear}, ${count} ${kpis.lastYear === 1 ? "paper was" : "papers were"} published.`;
   const regionalPeriod = range.to == null ? `since ${range.from}` : `between ${range.from} and ${range.to}`;
-  const regional = regionalCounts && periodTotal > 0 && regionalCounts.gcc / periodTotal < .05
+  const regional = regionalCounts && periodTotal > 0 && regionalCounts.gcc === 0
+    ? ` None ${range.to != null ? "came" : "come"} from the GCC.`
+    : regionalCounts && periodTotal > 0 && regionalCounts.gcc / periodTotal < .05
     ? ` Only ${new Intl.NumberFormat("en-US").format(regionalCounts.gcc)} ${regionalCounts.gcc === 1 ? "paper" : "papers"} published ${regionalPeriod} ${range.to != null ? "came" : regionalCounts.gcc === 1 ? "comes" : "come"} from the GCC${regionalCounts.uae === 0 ? ", none from the UAE." : ` (${new Intl.NumberFormat("en-US").format(regionalCounts.uae)} from the UAE).`}` : "";
   const rateValue = Object.hasOwn(kpis, "growth") ? kpis.growth : kpis.growth5y;
-  if (isNewTopic(kpis)) return newTopicHeadline(name, kpis, includeTerms) + regional;
+  // Almost nothing published: say so plainly instead of "from 0 papers to 0".
+  if (kpis.growthStartCount === 0 && kpis.growthEndCount === 0 && periodTotal > 0) return `Research on ${headlineSubject(name, includeTerms)} is very rare: only ${new Intl.NumberFormat("en-US").format(periodTotal)} ${periodTotal === 1 ? "paper" : "papers"} found ${regionalPeriod}.${regional}`;
+  if (isNewTopic(kpis)) return newTopicHeadline(name, kpis, includeTerms).replace(" is a new topic:", context + " is a new topic:") + regional;
   if (rateValue === null) return `${prefix}there is not enough data to calculate annual growth for ${topicName}. ${published}${regional}`;
   const rate = formatPercent(rateValue);
   const fallback = kpis.growthLabel === "5-year growth" ? ` over ${kpis.growthStartYear ?? lastYear - 5}–${kpis.growthEndYear ?? lastYear}` : "";
@@ -440,24 +666,34 @@ export function shapeTopic(query, responses, date) {
   const regionalCounts = shapeRegionalCounts(responses.uae, responses.gcc);
   const periodTotal = kpis.total;
   const baseName = query.subtopicId ? query.subtopicName || query.subtopicId : query.name;
-  const name = reportLabel(baseName, query.includeTerms, range);
+  const groups = includeGroupsOf(query);
+  const fields = includeFields(groups);
+  const subfields = { from: range.from, to: range.to, total: kpis.total, items: ranked(responses.subfields).flatMap(item => {
+    try { return [{ id: normaliseSubfieldId(item.key), name: displayName(item), count: item.count }]; } catch { return []; }
+  }).slice(0, 5) };
+  const selectedSubfield = query.subfieldId ? subfields.items.find(item => item.id === query.subfieldId) || { id: query.subfieldId, name: "Subfield " + query.subfieldId } : null;
+  const selection = selectedSubfield ? { subfieldId: query.subfieldId, selectedSubfield: { id: selectedSubfield.id, name: selectedSubfield.name } } : {};
+  const name = reportLabel(subfieldTitle(reportLabel(baseName, groups), selectedSubfield), [], range);
   const window = growthWindow({ ...range, updated: date.toISOString().slice(0, 10), years, kpis });
   const headlineName = query.subtopicId ? baseName : query.headlineName || query.name;
-  return {
+  const report = {
     id: query.id, name, synonyms: query.synonyms, ...(headlineName !== baseName ? { headlineName } : {}), from: range.from, to: range.to,
     subtopicWindow: { countsOnly: subtopicCountsOnly, from: range.from, split: range.split, end: range.lastComplete },
-    searchTerms: { name: query.name, synonyms: query.synonyms, ...(query.includeTerms?.length ? { includeTerms: query.includeTerms } : {}) },
-    ...(query.includeTerms?.length ? { includeTerms: query.includeTerms, parent: query.parent || null } : {}),
+    searchTerms: { name: query.name, synonyms: query.synonyms, ...fields, ...normaliseFilters(query), ...(query.subfieldId ? { subfieldId: query.subfieldId } : {}) },
+    subfields, ...selection, ...normaliseFilters(query),
+    ...(query.authoredCodes?.length ? { authoredLabel: placeDetails(query.authoredCodes, SEARCH_PRESETS).label } : {}),
+    ...(groups.length ? { ...fields, parent: query.parent || null } : {}),
     ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name } : {}),
     field: ranked(responses.field).map(displayName)[0] || "Unclassified",
     updated: date.toISOString().slice(0, 10), years, kpis,
-    headline: headline(reportLabel(headlineName, query.includeTerms), { ...kpis, ...window }, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, range, query.includeTerms),
+    headline: headline(reportLabel(headlineName, groups), { ...kpis, ...window }, range.completeYears ? range.lastComplete : range.end, regionalCounts, periodTotal, { ...range, ...selection, ...normaliseFilters(query) }, groups),
     sourceQuality: { experts: responses.expertsAll ? "all" : "core", journals: responses.journalsAll ? "all" : "core" },
     experts: shapeExperts(responses.expertsAll || responses.experts), subtopics: subtopics.slice(0, 9),
     countries: shapeCountries(responses.countries), regionalCounts, journals: shapeJournals(responses.journalsAll || responses.journals),
     papers: shapePapers(responses.papers), suggestedSynonyms: suggestedSynonyms(responses.keywords, query),
     exploreNext: exploreNext(subtopics, name), cached: false
   };
+  return { ...report, refinements: refinementCandidates(report) };
 }
 
 export function originAllowed(origin, env) {
@@ -465,7 +701,6 @@ export function originAllowed(origin, env) {
   if (origin === null) return true;
   if (origin === "null") return env.ENVIRONMENT === "dev";
   if (origin === env.ALLOWED_ORIGIN && /^https?:\/\//.test(origin)) return true;
-  if (env.ENVIRONMENT !== "dev") return false;
   try {
     const url = new URL(origin);
     return url.origin === origin && url.protocol === "http:" && url.hostname === "localhost";
@@ -473,7 +708,7 @@ export function originAllowed(origin, env) {
 }
 // Remove filtered reports and their relationships from public browsing only.
 export function publicLibrary(index) {
-  const hidden = new Set(index.filter((item) => (item.from !== undefined && (item.from !== 2010 || item.to != null)) || item.id.includes("|range:") || (item.period && item.period !== 2010) || item.id.includes("|since:") || item.variant || item.includeTerms?.length || item.searchTerms?.includeTerms?.length || item.id.includes("|include:")).map((item) => item.id));
+  const hidden = new Set(index.filter((item) => (item.from !== undefined && (item.from !== 2010 || item.to != null)) || item.id.includes("|range:") || (item.period && item.period !== 2010) || item.id.includes("|since:") || item.variant || item.authoredCodes?.length || item.excludeTerms?.length || /\|(exclude:|authored:)/.test(item.id) || item.subfieldId || item.id.includes("|subfield:") || includeGroupsOf(item).length || item.id.includes("|include:") || item.id.includes("|includeGroups:")).map((item) => item.id));
   let changed;
   do {
     changed = false;

@@ -6,7 +6,7 @@ import { createWorker } from "./worker.js";
 import { MemoryKV } from "./kv-fixture.js";
 
 const date = new Date("2026-11-01T12:00:00Z");
-const fixtures = () => Object.fromEntries(["years", "experts", "early", "late", "countries", "uae", "gcc", "journals", "papers", "keywords", "field"].map((name) => [name, JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"))]));
+const fixtures = () => Object.fromEntries(["years", "experts", "early", "late", "countries", "uae", "gcc", "journals", "papers", "keywords", "field", "subfields"].map((name) => [name, JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"))]));
 const query = (from = 2010, to = "", include = "", subtopic = "") => normaliseQuery("moss", "moon circuits", subtopic, include, from, to, 2026);
 
 test("year validation accepts the boundaries and rejects missing, malformed, future and reversed years", () => {
@@ -23,7 +23,7 @@ test("one yearly query retains 2010 onward, extends before 2010, and aggregate q
     const q = query(from, to, "child,children", "T123");
     const descriptors = buildQueries(q, 2026);
     const byId = Object.fromEntries(descriptors.map((item) => [item.id, item.params]));
-    assert.equal(descriptors.length, 11);
+    assert.equal(descriptors.length, 12);
     assert.equal(descriptors.filter((item) => item.params.group_by === "publication_year").length, 1);
     assert(byId.years.filter.endsWith(`publication_year:${Math.min(2010, from)}-2026`));
     for (const id of ["countries", "uae", "gcc", "journals", "papers", "experts"]) {
@@ -143,13 +143,13 @@ test("ranges cache separately, preserve child parents, remain cache-only, and ar
   assert.deepEqual(result.map((item) => item.id), [query().id, query(2010, "", "", "T123").id]);
   assert.deepEqual(result[0].children, [result[1].id]);
   assert.equal(kv.writes.length, writes);
-  assert.equal(calls, 16 * 13);
+  assert.equal(calls, 16 * 14);
   for (const params of [{ from: "" }, { from: 1999 }, { to: 2027 }, { from: 2025, to: 2020 }]) {
     const response = await worker.fetch(request(params), env);
     assert.equal(response.status, 400);
     assert.match((await response.json()).message, /year|From must/);
   }
-  assert.equal(calls, 16 * 13);
+  assert.equal(calls, 16 * 14);
 });
 
 test("public projection strips range identities and their child references even without metadata", () => {
@@ -189,6 +189,6 @@ test("cached windows missing historical endpoints rebuild when admitted, and hid
   const response=await worker.fetch(new Request('http://localhost/api/topic?'+new URLSearchParams({q:'moss',syn:'moon circuits',from:'2012',to:'2013',cache:'only'})),{TMM:kv,NEW_TOPICS_PER_DAY:cap,OPENALEX_KEY:'fixture-only-not-a-credential'});
   assert.equal(response.status,200);const result=await response.json();
   if(cap==='0'){assert.equal(result.kpis.growth,null);assert.equal(result.kpis.momentum,'Not enough data');assert.equal(result.growthNeedsRebuild,true);assert(!result.headline.includes('+900%'));assert.equal(calls,0);assert.equal(kv.writes.length,0);assert.equal(kv.values.get('v3:topic:'+q.id),record);}
-  else{assert.equal(result.kpis.growth,2**.2-1);assert.equal(result.cached,false);assert.equal(calls,13);assert(result.years.some(item=>item.year===2008));assert.equal(kv.values.get('count:2026-11-01'),'1');}
+  else{assert.equal(result.kpis.growth,2**.2-1);assert.equal(result.cached,false);assert.equal(calls, 14);assert(result.years.some(item=>item.year===2008));assert.equal(kv.values.get('count:2026-11-01'),'1');}
  }
 });

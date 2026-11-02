@@ -1,0 +1,14 @@
+{
+  "presets": {
+    "children": ["children", "child", "childhood", "infant", "toddler", "preschool", "kindergarten", "pediatric", "early childhood"],
+    "gcc": ["gulf cooperation council", "gulf states", "bahrain", "bahraini", "kuwait", "kuwaiti", "oman", "omani", "qatar", "qatari", "saudi arabia", "saudi", "saudi arabian", "ksa", "united arab emirates", "uae", "emirati"],
+    "middleEast": ["middle east", "middle eastern", "gulf states", "bahrain", "bahraini", "egypt", "egyptian", "iran", "iranian", "iraq", "iraqi", "israel", "israeli", "jordanian", "kuwait", "kuwaiti", "lebanon", "lebanese", "oman", "omani", "palestine", "palestinian", "qatar", "qatari", "saudi arabia", "saudi", "saudi arabian", "ksa", "syria", "syrian", "türkiye", "turkish", "united arab emirates", "uae", "emirati", "yemen", "yemeni"]
+  },
+  "queries": [
+    {"name":"inheritance","synonyms":"estate","groups":[["gulf states","emirati"],["children","child"]],"id":"inheritance|estate|includeGroups:[[\"emirati\",\"gulf states\"],[\"child\",\"children\"]]","expression":"(inheritance OR estate) AND (emirati OR \"gulf states\") AND (child OR children)"},
+    {"name":"inheritance law","synonyms":"estate planning","groups":[["gulf states"],["children"],["school policy","education"]],"id":"inheritance law|estate planning|includeGroups:[[\"gulf states\"],[\"children\"],[\"education\",\"school policy\"]]","expression":"(\"inheritance law\" OR \"estate planning\") AND (\"gulf states\") AND (children) AND (education OR \"school policy\")"},
+    {"name":"inheritance","synonyms":"","groups":[[" CHILD ","children","child"],[],["children","child"]],"id":"inheritance|include:[\"child\",\"children\"]","expression":"(inheritance) AND (child OR children)"},
+    {"name":"inheritance","synonyms":"","groups":[[],[],[]],"id":"inheritance","expression":"(inheritance)"},
+    {"name":"inheritance","synonyms":"","groups":[["türkiye"],["child"]],"id":"inheritance|includeGroups:[[\"türkiye\"],[\"child\"]]","expression":"(inheritance) AND (türkiye) AND (child)"}
+  ]
+}

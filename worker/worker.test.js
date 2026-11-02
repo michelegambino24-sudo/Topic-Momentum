@@ -18,7 +18,7 @@ function fixtureFor(url) {
   return fixture(descriptor.id);
 }
 
-test("topic endpoint launches all eleven requests in parallel and returns the exact topic shape", async () => {
+test("topic endpoint launches all twelve requests in parallel and returns the exact topic shape", async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const calls = [];
@@ -34,7 +34,7 @@ test("topic endpoint launches all eleven requests in parallel and returns the ex
   }, () => date);
   const pending = worker.fetch(request(undefined, "null"), env);
   await new Promise(setImmediate);
-  assert.equal(calls.length, 11);
+  assert.equal(calls.length, 12);
   release();
   const response = await pending;
   assert.equal(response.status, 200);
@@ -77,7 +77,20 @@ test("disallowed origins, invalid queries, routes and methods fail before networ
   ]) assert.equal((await worker.fetch(req, env)).status, expected);
   const prod = { ...env, ENVIRONMENT: undefined };
   assert.equal((await worker.fetch(request(undefined, "null"), prod)).status, 403);
-  assert.equal((await worker.fetch(request(undefined, "http://localhost:3000"), prod)).status, 403);
+  assert.equal((await worker.fetch(request(undefined, "http://localhost.evil.test:3000"), prod)).status, 403);
+});
+
+test("production serves Library and preflight to HTTP localhost without source calls", async () => {
+  const worker = createWorker(() => assert.fail("Library and preflight must not call OpenAlex"));
+  const prod = { ...env, ENVIRONMENT: undefined };
+  for (const origin of ["http://localhost", "http://localhost:8000", "http://localhost:49152"]) {
+    for (const method of ["GET", "OPTIONS"]) {
+      const response = await worker.fetch(request("/api/library", origin, method, { "Access-Control-Request-Method": "GET" }), prod);
+      assert.equal(response.status, method === "GET" ? 200 : 204);
+      assert.equal(response.headers.get("Access-Control-Allow-Origin"), origin);
+      assert.equal(response.headers.get("Vary"), "Origin");
+    }
+  }
 });
 
 test("preflight reflects only an allowed origin and accepts GET without needing a key", async () => {
@@ -111,7 +124,7 @@ for (const failure of ["http", "network", "json", "shape"]) {
       return Response.json(fixtureFor(url));
     }, () => date);
     const response = await worker.fetch(request(undefined, "null"), env);
-    assert.equal(calls, failure === "shape" || failure === "http" ? 13 : 11);
+    assert.equal(calls, failure === "shape" || failure === "http" ? 14 : 12);
     assert.equal(response.status, 502);
     const text = await response.text();
     assert(!text.includes(env.OPENALEX_KEY));
@@ -204,9 +217,9 @@ test("manual mode rejects every redirect response without following its Location
       const start = logs.length;
       const response = await worker.fetch(request(), { ...env, ENVIRONMENT: environment });
       assert.equal(response.status, 502);
-      assert.equal(calls, 11);
+      assert.equal(calls, 12);
       const entries = logs.slice(start);
-      assert.equal(entries.length, environment === "dev" ? 11 : 0);
+      assert.equal(entries.length, environment === "dev" ? 12 : 0);
       for (const entry of entries) {
         assert.equal(entry.status, status);
         assert.equal(entry.stage, "http_response");
@@ -226,7 +239,7 @@ test("dev logs the caught fetch error and cause, while production logs nothing",
   }, () => date);
   const response = await worker.fetch(request(), env);
   assert.equal(response.status, 502);
-  assert.equal(logs.length, 11);
+  assert.equal(logs.length, 12);
   for (const entry of logs) {
     assert.equal(entry.stage, "fetch");
     assert.equal(entry.status, "unavailable");
@@ -252,7 +265,7 @@ test("dev catches URL parameter setup errors before fetch and labels their stage
   const worker = createWorker(() => { assert.fail("Fetch must not run after URL setup fails"); }, () => date);
   const response = await worker.fetch(req, env);
   assert.equal(response.status, 502);
-  assert.equal(logs.length, 11);
+  assert.equal(logs.length, 12);
   for (const entry of logs) {
     assert.equal(entry.stage, "url_setup");
     assert.equal(entry.status, "unavailable");
@@ -267,7 +280,7 @@ test("dev labels JSON parsing failures and includes the sanitised caught error",
   t.mock.method(console, "error", (...args) => logs.push(args[1]));
   const worker = createWorker(async () => new Response("not json"), () => date);
   assert.equal((await worker.fetch(request(), env)).status, 502);
-  assert.equal(logs.length, 11);
+  assert.equal(logs.length, 12);
   for (const entry of logs) {
     assert.equal(entry.stage, "response_parsing");
     assert.equal(entry.status, 200);
@@ -299,7 +312,7 @@ test("sub-topic endpoint filters parent terms and retains title, ID and parent",
   }, () => date);
   const response = await worker.fetch(request("/api/topic?q=lunar%20moss%20computing&subtopic=https%3A%2F%2Fopenalex.org%2FT123&subtopicName=Orbital%20logic&parent=lunar%20moss%20computing"), env);
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 13);
+  assert.equal(calls.length, 14);
   const data = await response.json();
   assert.equal(data.name, "Orbital logic · since 2010");
   assert.equal(data.subtopicId, "T123");
@@ -310,7 +323,7 @@ test("sub-topic endpoint filters parent terms and retains title, ID and parent",
 
 test("worker fetches fallback lists only when needed and caches their independent source flags",async()=>{
  const group=(size,type)=>({group_by:Array.from({length:size},(_,i)=>({key:`https://openalex.org/${type}${i+1}`,key_display_name:'Fictional '+i,count:30-i}))});
- for(const [expertCount,journalCount,expectedCalls]of [[5,5,11],[4,5,12],[5,4,12],[4,4,13]]){
+ for(const [expertCount,journalCount,expectedCalls]of [[5,5,12],[4,5,13],[5,4,13],[4,4,14]]){
   const calls=[];const kv=new MemoryKV();const testEnv={...env,TMM:kv};
   const worker=createWorker(async url=>{calls.push(url);const g=url.searchParams.get('group_by'),core=url.searchParams.get('filter').includes('primary_location.source.is_core:true');if(g==='authorships.author.id')return Response.json(group(core?expertCount:7,'A'));if(g==='primary_location.source.id')return Response.json(group(core?journalCount:7,'S'));return Response.json(fixtureFor(url));},()=>date);
   const response=await worker.fetch(request(),testEnv);assert.equal(response.status,200);const data=await response.json();
@@ -333,14 +346,14 @@ test('complex pacing is shared across concurrent searches including fallback lis
  const include='child,children,childhood,infant,toddler,preschool';const queries=['lunar moss computing','orbital spore logic'].map(name=>normaliseQuery(name,'','',include));const timing=virtualTiming(),starts=[];
  const worker=createWorker(async url=>{const d=complexSource(url,queries);starts.push({time:timing.now(),query:d.query});return Response.json(fixture(d.id));},()=>date,timing);
  const result=await Promise.all(queries.map(q=>worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),{...env,ENVIRONMENT:'production'})));
- assert(result.every(r=>r.status===200));assert.equal(starts.length,26);assert.equal(new Set(starts.map(x=>x.query)).size,2);
+ assert(result.every(r=>r.status===200));assert.equal(starts.length, 28);assert.equal(new Set(starts.map(x=>x.query)).size,2);
  for(let i=1;i<starts.length;i++)assert(starts[i].time-starts[i-1].time>=400,'Requests from all users share the pacing interval');
 });
 
 test('complex retries honor cooldown and count core/fallback attempts in the same budget',async()=>{
  const include='child,children,childhood,infant,toddler,preschool';const q=normaliseQuery('lunar moss computing','','',include),timing=virtualTiming(),attempts=new Map(),starts=[];
  const worker=createWorker(async url=>{const d=complexSource(url,[q]),attempt=(attempts.get(d.label)||0)+1;attempts.set(d.label,attempt);starts.push({id:d.label,time:timing.now()});if(attempt<=(d.all?2:1))return new Response('Slow down',{status:429,headers:{'Retry-After':'1'}});return Response.json(fixture(d.id));},()=>date,timing);
- const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),{...env,ENVIRONMENT:'production'});assert.equal(response.status,200);assert.equal(starts.length,28);assert([...attempts.values()].every(n=>n<=3));assert.equal(attempts.get('expertsAll'),3);assert.equal(attempts.get('journalsAll'),3);
+ const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),{...env,ENVIRONMENT:'production'});assert.equal(response.status,200);assert.equal(starts.length,30);assert([...attempts.values()].every(n=>n<=3));assert.equal(attempts.get('expertsAll'),3);assert.equal(attempts.get('journalsAll'),3);
  for(const id of attempts.keys()){const list=starts.filter(x=>x.id===id);for(let i=1;i<list.length;i++)assert(list[i].time-list[i-1].time>=1000);}
 });
 

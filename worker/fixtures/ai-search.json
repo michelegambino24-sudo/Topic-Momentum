@@ -1,0 +1,41 @@
+{
+  "sentence": "Gene editing in children, written in the GCC since 2020, excluding Middle East respiratory syndrome",
+  "plan": {
+    "topic": "gene editing",
+    "synonyms": ["CRISPR", "genome editing"],
+    "includeGroups": [{ "preset": "children" }],
+    "place": { "codes": ["AE", "BH", "KW", "OM", "QA", "SA"], "mode": "authored" },
+    "excludeTerms": ["Middle East respiratory syndrome"],
+    "years": { "from": 2020, "to": null }
+  },
+  "titles": [
+    "Gene editing in child cell cultures: experiment A",
+    "Gene editing in child cell cultures: experiment B",
+    "Genome editing methods for paediatric research",
+    "CRISPR delivery methods in childhood disease models",
+    "Gene repair in childhood cell models",
+    "Childhood gene therapy and genome editing",
+    "Gene editing safety in paediatric cell cultures",
+    "Genome repair methods in early childhood research",
+    "Paediatric genetic disease and CRISPR methods",
+    "Gene editing in infant cell models",
+    "CRISPR methods for child disease research",
+    "Genome editing delivery in childhood research",
+    "Gene editing tools for paediatric experiments",
+    "Childhood gene repair and molecular methods",
+    "Genome editing measurement in paediatric cultures",
+    "Gene repair in infant disease models",
+    "CRISPR assays for paediatric genetic research",
+    "Cell-based gene repair in childhood research",
+    "Child gene repair and laboratory methods",
+    "Genome editing and paediatric disease pathways",
+    "Gene editing in early childhood models",
+    "CRISPR delivery in infant cell experiments",
+    "Gene editing outcomes in child cell cultures",
+    "Unrelated ocean sediment measurement methods",
+    "Unrelated lunar mineral spectroscopy methods"
+  ],
+  "validJudgment": { "onTopic": [true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false,false] },
+  "invalidJSON": "{\"topic\":\"gene editing\",broken}",
+  "quotaError": "Workers AI free allocation exhausted"
+}

@@ -1,0 +1,119 @@
+{
+  "children": {
+    "1": [
+      "children",
+      "child",
+      "childhood",
+      "infant",
+      "toddler",
+      "preschool",
+      "kindergarten",
+      "pediatric",
+      "early childhood"
+    ]
+  },
+  "gcc": {
+    "1": [
+      "gulf cooperation council",
+      "gulf states",
+      "bahrain",
+      "bahraini",
+      "kuwait",
+      "kuwaiti",
+      "oman",
+      "omani",
+      "qatar",
+      "qatari",
+      "saudi arabia",
+      "saudi",
+      "saudi arabian",
+      "ksa",
+      "united arab emirates",
+      "uae",
+      "emirati"
+    ]
+  },
+  "middleEast": {
+    "1": [
+      "middle east",
+      "middle eastern",
+      "gulf states",
+      "bahrain",
+      "bahraini",
+      "egypt",
+      "egyptian",
+      "iran",
+      "iranian",
+      "iraq",
+      "iraqi",
+      "israel",
+      "israeli",
+      "jordanian",
+      "kuwait",
+      "kuwaiti",
+      "lebanon",
+      "lebanese",
+      "oman",
+      "omani",
+      "palestine",
+      "palestinian",
+      "qatar",
+      "qatari",
+      "saudi arabia",
+      "saudi",
+      "saudi arabian",
+      "ksa",
+      "syria",
+      "syrian",
+      "türkiye",
+      "turkish",
+      "united arab emirates",
+      "uae",
+      "emirati",
+      "yemen",
+      "yemeni"
+    ]
+  },
+  "pregnancy": {
+    "1": [
+      "pregnancy",
+      "pregnant",
+      "prenatal",
+      "antenatal",
+      "maternal",
+      "gestation",
+      "gestational",
+      "expectant mothers"
+    ]
+  },
+  "women": {
+    "1": [
+      "women",
+      "woman"
+    ]
+  },
+  "adolescents": {
+    "1": [
+      "adolescent",
+      "adolescents",
+      "teen",
+      "teens",
+      "teenager",
+      "teenagers"
+    ]
+  },
+  "olderAdults": {
+    "1": [
+      "older adult",
+      "older adults",
+      "elderly",
+      "older people"
+    ]
+  },
+  "students": {
+    "1": [
+      "student",
+      "students"
+    ]
+  }
+}

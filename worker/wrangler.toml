@@ -5,7 +5,12 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGIN = "https://michelegambino24-sudo.github.io"
-NEW_TOPICS_PER_DAY = "90"
+NEW_TOPICS_PER_DAY = "50"
+AI_SEARCHES_PER_DAY = "30"
+AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+# Up to 12 s per AI step, 28 s for all AI steps (the site waits 45 s).
+AI_TIMEOUT_MS = "12000"
+AI_PREPARATION_MS = "28000"
 
 [[kv_namespaces]]
 binding = "TMM"
@@ -17,3 +22,6 @@ id = "276a9e65cd504d1092c476a7e5eabc9a"
 ip = "127.0.0.1"
 port = 8787
 local_protocol = "http"
+
+[ai]
+binding = "AI"

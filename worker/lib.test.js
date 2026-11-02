@@ -9,7 +9,7 @@ import { normaliseQuery, normaliseSubtopicId, cleanTerm, buildSearchExpression, 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const date = new Date("2026-10-31T12:00:00Z");
 const query = normaliseQuery("Lunar moss computing", "moon moss circuits");
-const responses = () => Object.fromEntries(["years", "experts", "early", "late", "countries", "journals", "papers", "keywords", "field", "uae", "gcc"].map((name) => [name, fixture(name)]));
+const responses = () => Object.fromEntries(["years", "experts", "early", "late", "countries", "journals", "papers", "keywords", "field", "subfields", "uae", "gcc"].map((name) => [name, fixture(name)]));
 
 test("source error sanitisation extracts messages, removes URLs and credential variants before truncating", () => {
   const marker = "fixture-only /?&=marker";
@@ -70,9 +70,9 @@ test("search expression quotes spaces and hyphens and excludes filter delimiters
   assert.equal(expression, '(mossx OR foobar)');
 });
 
-test("eleven query descriptors use the specified filters, date windows and limits", () => {
+test("twelve query descriptors use the specified filters, date windows and limits", () => {
   const all = buildQueries(query, 2026);
-  assert.equal(all.length, 11);
+  assert.equal(all.length, 12);
   const byId = Object.fromEntries(all.map((item) => [item.id, item.params]));
   assert.equal(byId.years.group_by, "publication_year");
   assert(byId.years.filter.endsWith("publication_year:2010-2026"));
@@ -112,7 +112,7 @@ test("years fill missing years; KPIs exclude current year from growth and last-y
   assert.equal(topic.cached, false);
   assert.equal(topic.updated, "2026-10-31");
   assert.equal(topic.field, "Computer Science");
-  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "from", "to", "subtopicWindow", "searchTerms", "field", "updated", "years", "kpis", "headline", "sourceQuality", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached"]);
+  assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "from", "to", "subtopicWindow", "searchTerms", "subfields", "field", "updated", "years", "kpis", "headline", "sourceQuality", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached", "refinements"]);
   assert(topic.headline.includes("to 249 in 2025."));
 });
 
@@ -231,16 +231,17 @@ test("top lists obey their caps and unknown groups are ignored", () => {
   assert.deepEqual(shapeExperts({ group_by: [{ key: "unknown", key_display_name: "Unknown", count: 5 }] }), []);
 });
 
-test("origin rules allow only exact configured origin, local dev origins and dev-only null", () => {
+test("origin rules allow exact configured origins and HTTP localhost in production, with null only in dev", () => {
   const prod = { ALLOWED_ORIGIN: "https://sample.example" };
   assert(originAllowed(null, prod));
   assert(originAllowed("https://sample.example", prod));
-  for (const origin of ["null", "http://localhost:9000", "https://sample.example.evil.test", "https://sample.example/path", "https://elsewhere.example"]) assert.equal(originAllowed(origin, prod), false);
+  for (const origin of ["http://localhost", "http://localhost:8000", "http://localhost:9000", "http://localhost:65535"]) assert(originAllowed(origin, prod));
+  for (const origin of ["null", "https://sample.example.evil.test", "https://sample.example/path", "https://elsewhere.example"]) assert.equal(originAllowed(origin, prod), false);
   const dev = { ...prod, ENVIRONMENT: "dev" };
   assert(originAllowed("null", dev));
   assert(originAllowed("http://localhost:9000", dev));
   assert(originAllowed("http://localhost", dev));
-  for (const origin of ["http://localhost.evil.test:9000", "https://localhost:9000", "http://localhost:9000/path", "http://127.0.0.1:9000"]) assert.equal(originAllowed(origin, dev), false);
+  for (const settings of [prod, dev]) for (const origin of ["http://localhost.evil.test:9000", "https://localhost:9000", "http://localhost:9000/path", "http://127.0.0.1:9000", "http://[::1]:8000", "http://user@localhost:8000", "http://localhost:8000?x=1", "http://localhost:65536"]) assert.equal(originAllowed(origin, settings), false);
 });
 
 test("regional totals are independent of the top countries and use the GCC OR filter", () => {
@@ -327,7 +328,7 @@ test("cache freshness rejects missing and future timestamps and uses the precise
   assert(!cacheIsFresh({ savedAt }, savedAt - 1));
   assert(!cacheIsFresh({}, savedAt));
   assert(!cacheIsFresh({ savedAt: "not a timestamp" }, savedAt));
-  assert.equal(dailyCap(), 90);
+  assert.equal(dailyCap(), 50);
   assert.equal(dailyCap("0"), 0);
   for (const value of [null, "", "-1", "1.5", "1e3", "wrong", Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => dailyCap(value));
 });
@@ -438,4 +439,36 @@ test('legacy cached headline prose also normalizes capitalized titles and zero U
  const {presentReport}=await import('./lib.js');
  const saved={name:'Neurotechnology',synonyms:[],searchTerms:{name:'Neurotechnology',synonyms:[]},headline:'Research on Neurotechnology is growing (+10% a year). Only 1 paper published since 2020 comes from the GCC (0 from the UAE).',regionalCounts:{gcc:1,uae:0}};
  assert.equal(presentReport(saved).headline,'Research on neurotechnology is growing (+10% a year). Only 1 paper published since 2020 comes from the GCC, none from the UAE.');
+});
+
+test("a single region preset group is named in the headline instead of listing every term", async () => {
+  const { headlineSubject } = await import("./lib.js");
+  const terms = globalThis.TMM_SEARCH_PRESETS.middleEast.terms;
+  assert.equal(headlineSubject("inheritance law", [...terms]), "inheritance law in the Middle East");
+  assert.equal(headlineSubject("inheritance law", [...globalThis.TMM_SEARCH_PRESETS.gcc.terms]), "inheritance law in the GCC");
+  assert.equal(headlineSubject("neurotechnology", ["child", "infant"]), "neurotechnology mentioning child or infant");
+});
+
+test("all-preset groups read as a natural phrase, people before places", async () => {
+  const { headlineSubject } = await import("./lib.js");
+  const P = globalThis.TMM_SEARCH_PRESETS;
+  assert.equal(headlineSubject("inheritance law", [[...P.gcc.terms], [...P.children.terms]]), "inheritance law in children in the GCC");
+  assert.equal(headlineSubject("epigenetics", [...P.pregnancy.terms]), "epigenetics in pregnancy");
+  assert.equal(headlineSubject("neurotechnology", [[...P.children.terms], ["school", "classroom"]]), "neurotechnology mentioning school or classroom in children");
+  assert.equal(headlineSubject("artificial intelligence", [["early childhood education"], [...globalThis.TMM_COUNTRY_GROUPS.find(c => c.label === "UAE").terms]]), "artificial intelligence mentioning early childhood education in the UAE");
+});
+
+test("single-country groups are named in headlines", async () => {
+  const { headlineSubject } = await import("./lib.js");
+  const C = globalThis.TMM_COUNTRY_GROUPS, P = globalThis.TMM_SEARCH_PRESETS;
+  assert.equal(headlineSubject("child custody", [...C.find(c => c.label === "UAE").terms]), "child custody in the UAE");
+  assert.equal(headlineSubject("custody", [[...P.children.terms], [...C.find(c => c.label === "UAE").terms]]), "custody in children in the UAE");
+});
+
+test("long custom groups are shortened in titles and headlines", async () => {
+  const { headlineSubject, shortGroup } = await import("./lib.js");
+  const pupils = ["elementary school", "primary education", "primary school", "pupils", "schoolchildren"];
+  assert.equal(shortGroup(pupils, " or "), "pupils (and 4 similar terms)");
+  assert.equal(shortGroup(["child", "infant"], " or "), "child or infant");
+  assert.equal(headlineSubject("gamification", pupils), "gamification mentioning pupils (and 4 similar terms)");
 });
