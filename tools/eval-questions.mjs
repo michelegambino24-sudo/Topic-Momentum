@@ -1,13 +1,15 @@
 // Edit the shared fixture questions/expectations before a demo. Normal free caps apply.
 import { pathToFileURL } from "node:url";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { combineOpenAlexUsage, openAlexBudgetSummary } from "../worker/lib.js";
 export const evaluationCases = JSON.parse(readFileSync(new URL("../worker/fixtures/eval-questions.json", import.meta.url), "utf8"));
 export const questions = evaluationCases.map(item=>item.question);
 export function formatEvaluation(question, data, status = 200) {
-  if (status !== 200) return { question, status, error: data.message || data.error || "The Worker could not complete this search.", neurons: data.aiUsage?.neurons ?? null, measured: data.aiUsage?.measured === true, aiNotUsedReason: data.aiReason || data.error || "request_failed", aiUsage:data.aiUsage || null, plan: data.understood ? {topic:data.understood.topic,includeGroups:data.understood.includeGroups,from:data.understood.from,to:data.understood.to} : null };
-  if(data.clarification)return {question,mode:"clarification",clarification:data.clarification,neurons:data.aiUsage?.neurons??null,measured:data.aiUsage?.measured===true,aiUsage:data.aiUsage||null,aiNotUsedReason:"clarification"};
+  const openalex=data.openalexUsage || null;
+  if (status !== 200) return { question, status, openalex, error: data.message || data.error || "The Worker could not complete this search.", neurons: data.aiUsage?.neurons ?? null, measured: data.aiUsage?.measured === true, aiNotUsedReason: data.aiReason || data.error || "request_failed", aiUsage:data.aiUsage || null, plan: data.understood ? {topic:data.understood.topic,includeGroups:data.understood.includeGroups,from:data.understood.from,to:data.understood.to} : null };
+  if(data.clarification)return {question,openalex,mode:"clarification",clarification:data.clarification,neurons:data.aiUsage?.neurons??null,measured:data.aiUsage?.measured===true,aiUsage:data.aiUsage||null,aiNotUsedReason:"clarification"};
   const ready=data.papersKind==="checked" && data.evidence?.version===3 && data.understanding?.mode==="ai" && data.understanding?.check;
-  return { question, mode: data.understanding?.mode || "not_used", neurons: data.aiUsage?.neurons ?? null, measured: data.aiUsage?.measured === true, aiUsage: data.aiUsage || null, aiNotUsedReason: data.understanding?.mode === "ai" ? null : data.aiReason || data.understanding?.reason || "no_checked_evidence", cached: data.cached === true,
+  return { question, openalex, mode: data.understanding?.mode || "not_used", neurons: data.aiUsage?.neurons ?? null, measured: data.aiUsage?.measured === true, aiUsage: data.aiUsage || null, aiNotUsedReason: data.understanding?.mode === "ai" ? null : data.aiReason || data.understanding?.reason || "no_checked_evidence", cached: data.cached === true,
     plan: { topic: data.searchTerms?.name || data.name, synonyms: data.synonyms || [], includeGroups: data.includeGroups || (data.includeTerms?.length ? [data.includeTerms] : []),
       place: data.understanding?.place || null, authoredCodes: data.authoredCodes || [], exclusions: data.excludeTerms || [], from: data.from, to: data.to ?? null },
     checked: data.understanding?.check || null, notices: data.evidence?.notices || [],
@@ -30,14 +32,16 @@ export function checkExpectation(result, expected = {}, clarification = null) {
     for(const word of expected.exclusions || [])if(!(plan.exclusions||[]).some(term=>term.toLowerCase().includes(word)))errors.push("Missing exclusion: "+word);
     if(expected.region){const label=plan.place?.label||"";if(label!==(expected.region==="gcc"?"GCC":"Middle East"))errors.push("Wrong region");}
   }
+  if(!result.openalex?.measuredCalls)errors.push("Missing OpenAlex call measurement; deploy the updated Worker");
   if(!result.measured)errors.push("Missing measured neuron usage");
   if(result.mode==="ai" && result.aiUsage?.calls>0 && !result.aiUsage.stages?.selfCheck?.calls)errors.push("Missing self-check usage; deploy the updated Worker");
   return {pass:errors.length===0,errors};
 }
 export function combineUsage(usages) {
-  const total={neurons:0,calls:0,measured:true,byModel:{},stages:{}};
+  const total={neurons:0,calls:0,sourceCalls:0,measured:true,byModel:{},stages:{}};
   for(const usage of usages){
     if(!usage || !Number.isFinite(usage.neurons) || usage.neurons<0){total.measured=false;continue;}
+    if(Number.isInteger(usage.sourceCalls)&&usage.sourceCalls>=0&&total.sourceCalls!==null)total.sourceCalls+=usage.sourceCalls;else total.sourceCalls=null;
     total.neurons+=usage.neurons;total.calls+=usage.calls||0;total.measured&&=usage.measured===true;
     for(const [model,cost] of Object.entries(usage.byModel||{}))total.byModel[model]=(total.byModel[model]||0)+cost;
     for(const [stage,part] of Object.entries(usage.stages||{})){
@@ -54,10 +58,10 @@ export async function evaluateQuestions(worker, list = evaluationCases, fetcher 
       const response=await fetcher(new URL("/api/search",worker),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(110000)});
       return formatEvaluation(question,await response.json(),response.status);
     };
-    const usages=[];
+    const usages=[],sourceUsages=[];
     try {
       let result=await request({sentence:question});
-      usages.push(result.aiUsage);
+      usages.push(result.aiUsage);sourceUsages.push(result.openalex);
       const clarification=result.clarification || null;
       let selectedOption=null;
       // Only answer explicitly configured fixture choices; never guess an unexpected ambiguity.
@@ -65,25 +69,32 @@ export async function evaluateQuestions(worker, list = evaluationCases, fetcher 
         const index=expected.clarification.answer;
         if(clarification.key && clarification.options?.[index]){
           selectedOption=clarification.options[index].label;
-          result=await request({sentence:question,clarification:{key:clarification.key,option:index}});usages.push(result.aiUsage);
+          result=await request({sentence:question,clarification:{key:clarification.key,option:index}});usages.push(result.aiUsage);sourceUsages.push(result.openalex);
         }
       }
       const usage=combineUsage(usages);
-      result={...result,aiUsage:usage,neurons:usage.neurons,measured:usage.measured,...(clarification?{clarification,selectedOption}:{})};
+      result={...result,openalex:combineOpenAlexUsage(sourceUsages),aiUsage:usage,neurons:usage.neurons,measured:usage.measured,...(clarification?{clarification,selectedOption}:{})};
       const verdict=checkExpectation(result,expected,clarification);
       emit({...result,expectation:expected,pass:verdict.pass,failures:verdict.errors});
       if(!verdict.pass)failed=true;
-    } catch (error) { failed = true; const known=combineUsage(usages);emit({question,pass:false,error:String(error.message || error),aiNotUsedReason:"request_failed",neurons:usages.length?known.neurons:null,measured:false,aiUsage:{...known,measured:false}}); }
+    } catch (error) { failed = true; const known=combineUsage(usages);emit({question,pass:false,error:String(error.message || error),aiNotUsedReason:"request_failed",openalex:{...combineOpenAlexUsage(sourceUsages),measuredCalls:false,costBasis:"incomplete"},neurons:usages.length?known.neurons:null,measured:false,aiUsage:{...known,measured:false}}); }
   }
   return !failed;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
-  if (args.includes("--help")) console.log("Usage: node tools/eval-questions.mjs [--worker https://your-worker.workers.dev] [--limit N]\nEdit worker/fixtures/eval-questions.json. Prints expected-result pass/fail and measured usage including all planning, re-plans, self-checks and judging. Configured clarification answers include both requests in the cost. Cached reports cost zero; live searches use normal daily limits.");
+  if (args.includes("--help")) console.log("Usage: node tools/eval-questions.mjs [--worker https://your-worker.workers.dev] [--limit N] [--output report.json]\nEdit worker/fixtures/eval-questions.json. Prints expected-result pass/fail and measured usage including all planning, re-plans, self-checks and judging. Configured clarification answers include both requests in the cost. Includes real OpenAlex call counts, explicitly reported USD when present, and clearly labelled estimates otherwise. Saves tools/eval-results-latest.json by default. Cached reports cost zero; live searches use normal daily limits.");
   else {
     const worker = args.includes("--worker") ? args[args.indexOf("--worker") + 1] : "https://topic-momentum-meter.michelegambino24.workers.dev";
     const limit = args.includes("--limit") ? Number(args[args.indexOf("--limit") + 1]) : evaluationCases.length;
     if (!Number.isInteger(limit) || limit < 1 || limit > evaluationCases.length) throw new Error("Choose a limit between 1 and " + evaluationCases.length + ".");
-    if (!await evaluateQuestions(worker, evaluationCases.slice(0, limit))) process.exitCode = 1;
+    const output=args.includes("--output")?args[args.indexOf("--output")+1]:"tools/eval-results-latest.json";
+    if(!output || output.startsWith("--"))throw new Error("Choose an output file path.");
+    const rows=[];
+    const passed=await evaluateQuestions(worker,evaluationCases.slice(0,limit),fetch,row=>{rows.push(row);console.log(JSON.stringify(row,null,2));});
+    const summary=openAlexBudgetSummary(rows);
+    writeFileSync(output,JSON.stringify({created:new Date().toISOString(),worker,passed,questions:rows,openalexSummary:summary},null,2)+"\n");
+    console.log(JSON.stringify({openalexSummary:summary,savedReport:output},null,2));
+    if(!passed)process.exitCode=1;
   }
 }

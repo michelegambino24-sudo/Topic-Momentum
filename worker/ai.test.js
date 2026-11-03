@@ -33,22 +33,24 @@ function setup(replies = [data.plan, judgments(18)], options = {}) {
       return { response: typeof value === "string" ? value : JSON.stringify(value), usage:{neurons:1} };
     } }, ...options.env };
   const worker = createWorker(async url => {
+    const reply=body=>Response.json(options.costUsd!==undefined?{...body,meta:{...body.meta,cost_usd:options.costUsd}}:body,
+      {headers:options.unitlessCost!==undefined?{"x-ratelimit-cost":String(options.unitlessCost)}:{}});
     calls.push(new URL(url));
     starts.push(time);
     const p = url.searchParams, filter = p.get("filter") || "";
     if (options.source) { const override = options.source(url, calls.length); if (override) return override; }
-    if (p.has("search.semantic")) return Response.json(questionPapers());
-    if (filter.includes("openalex_id:")) return Response.json({ results: fixture("papers").results.map(item => ({ id: item.id })) });
+    if (p.has("search.semantic")) return reply(questionPapers());
+    if (filter.includes("openalex_id:")) return reply({ results: fixture("papers").results.map(item => ({ id: item.id })) });
     if (p.get("select") === "id,display_name") {
       const all = (options.titles || data.titles.map(title=>"Gene editing in children: "+title)).slice(0, 20), half = Math.ceil(all.length / 2);
       const early = /from_publication_date:(2010|2020)-01-01/.test(filter);
       const base = [...filter.replace(/,(?:from|to)_publication_date:[^,]+/g, "")].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 10000, 0);
-      return Response.json({ results: (early ? all.slice(0, half) : all.slice(half)).map((display_name, i) => ({ id: "https://openalex.org/W" + (1000000 + base * 100 + (early ? 0 : 10) + i), display_name })) });
+      return reply({ results: (early ? all.slice(0, half) : all.slice(half)).map((display_name, i) => ({ id: "https://openalex.org/W" + (1000000 + base * 100 + (early ? 0 : 10) + i), display_name })) });
     }
     const groups = { publication_year: "years", "authorships.author.id": "experts", "primary_topic.id": filter.includes("to_publication_date:2022") ? "early" : "late", "authorships.countries": "countries", "primary_location.source.id": "journals", "keywords.id": "keywords", "primary_topic.field.id": "field", "primary_topic.subfield.id": "subfields" };
-    if (groups[p.get("group_by")]) return Response.json(fixture(groups[p.get("group_by")]));
-    if (p.get("select") === "id") return Response.json(fixture(filter.includes("countries/sa") ? "gcc" : "uae"));
-    return Response.json(questionPapers());
+    if (groups[p.get("group_by")]) return reply(fixture(groups[p.get("group_by")]));
+    if (p.get("select") === "id") return reply(fixture(filter.includes("countries/sa") ? "gcc" : "uae"));
+    return reply(questionPapers());
   }, () => date, { now: () => time, sleep: async ms => { time += ms; } });
   return { kv, env, calls, starts, aiCalls, worker, search: input => worker.fetch(post(input), env) };
 }
@@ -483,4 +485,35 @@ test("the original 613-neuron/eight-attempt dashboard case no longer blocks chec
   app.kv.values.set("ai:count:2026-11-02","8");app.kv.values.set("ai:usage:2026-11-02",JSON.stringify({used:613,reserved:0}));
   const response=await app.search({sentence:f.question});assert.equal(response.status,200);const body=await response.json();assert.equal(body.understanding.mode,"ai");
   assert.equal(app.kv.values.get("ai:count:2026-11-02"),"9");assert(JSON.parse(app.kv.values.get("ai:usage:2026-11-02")).used<9000);
+});
+
+
+test("OpenAlex reporting counts every actual source attempt, with a distinct estimate when no USD is reported",async()=>{
+ const app=setup(),body=await(await app.search()).json(),cost=body.openalexUsage;
+ assert.equal(cost.calls,app.calls.length);assert.equal(cost.calls,20);assert(cost.measuredCalls);
+ assert.equal(cost.reportedUsd,null);assert.equal(cost.estimatedUsd,.020);assert.equal(cost.costBasis,"estimate_from_spec");assert.equal(body.aiUsage.sourceCalls,20);
+ assert.equal(cost.byQuery.checkearly,1);assert.equal(cost.byQuery.checklate,1);assert.equal(cost.byQuery.expertCandidates,1);assert.equal(cost.byStage.reliability,2);assert(cost.byStage.report>0&&cost.byStage.candidates>0&&cost.byStage.experts>0);
+ assert.equal(cost.attempts.length,20);assert(!JSON.stringify(cost).includes(app.env.OPENALEX_KEY));assert(!JSON.stringify(cost).includes("api_key"));
+ const cached=await(await app.search()).json();assert.equal(cached.openalexUsage.calls,0);assert.equal(cached.openalexUsage.reportedUsd,0);assert.equal(cached.openalexUsage.estimatedUsd,0);assert.equal(cached.aiUsage.sourceCalls,0);
+});
+test("explicit provider USD is summed separately from SPEC estimates, including charged retry responses",async()=>{
+ let semanticAttempts=0;
+ const app=setup(undefined,{costUsd:.00025,source:url=>url.searchParams.has("search.semantic")&&semanticAttempts++===0?Response.json({}, {status:429,headers:{"Retry-After":"0","x-ratelimit-cost-usd":"0.0001"}}):null});
+ const body=await(await app.search()).json(),cost=body.openalexUsage;
+ assert.equal(cost.calls,app.calls.length);assert.equal(cost.calls,21);assert.equal(cost.reportedCalls,21);assert.equal(cost.reportedUsd,.0051);assert.equal(cost.estimatedUsd,.021);assert.equal(cost.costBasis,"provider_reported_usd");
+ assert.equal(cost.byQuery.semanticPapers,2);assert(cost.attempts.some(item=>item.status===429&&item.reportedUsd===.0001));
+});
+test("unitless source cost headers are retained as signals, never invented dollar charges",async()=>{
+ const app=setup(undefined,{unitlessCost:100}),body=await(await app.search()).json();
+ assert.equal(body.openalexUsage.reportedUsd,null);assert.equal(body.openalexUsage.costBasis,"estimate_from_spec");assert(body.openalexUsage.attempts.every(item=>item.unitlessCostSignal===100));
+});
+test("source work before an AI failure remains visible in cost reporting",async()=>{
+ const app=setup([data.plan,judgments(18),new Error("quota"),new Error("quota")],{costUsd:.00025});
+ const response=await app.search(),body=await response.json();assert.equal(response.status,503);assert.equal(body.openalexUsage.calls,app.calls.length);assert(body.openalexUsage.calls>0);assert.equal(body.openalexUsage.reportedUsd,app.calls.length*.00025);assert.equal(body.aiUsage.sourceCalls,app.calls.length);
+});
+test("tightening samples and source transport failures count without hiding partial costs",async()=>{
+ const tighter=clone(data.plan);tighter.synonyms=["CRISPR"];
+ const app=setup([data.plan,judgments(12),tighter,judgments(18)],{costUsd:.00025,source:url=>{if(url.searchParams.has("search.semantic"))throw new Error("network failure");return null;}});
+ const body=await(await app.search()).json(),cost=body.openalexUsage;
+ assert.equal(cost.calls,app.calls.length);assert.equal(cost.byStage.tighteningReliability,2);assert(cost.attempts.some(item=>item.query==="semanticPapers"&&item.status===null));assert.equal(cost.reportedUsd,null);assert(cost.partialReportedUsd>0);assert.equal(cost.estimatedUsd,cost.calls*.001);
 });

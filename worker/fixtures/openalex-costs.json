@@ -1,0 +1,33 @@
+{
+  "description": "Synthetic offline cost responses, not live measurements or verified OpenAlex tariffs.",
+  "attempts": [
+    {
+      "query": "checkearly",
+      "stage": "reliability",
+      "attempt": 1,
+      "status": 200,
+      "reportedUsd": 0.00025
+    },
+    {
+      "query": "semanticPapers",
+      "stage": "candidates",
+      "attempt": 1,
+      "status": 429,
+      "reportedUsd": 0.0001
+    },
+    {
+      "query": "semanticPapers",
+      "stage": "candidates",
+      "attempt": 2,
+      "status": 200,
+      "reportedUsd": 0.00025
+    },
+    {
+      "query": "expertCandidates",
+      "stage": "experts",
+      "attempt": 1,
+      "status": 200,
+      "reportedUsd": 0.00025
+    }
+  ]
+}

@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { openAlexUsage } from "./lib.js";
 import { evaluateQuestions, formatEvaluation } from "../tools/eval-questions.mjs";
 
 test("demo evaluation is sequential, prints plan/checks/top lists and flags unverified searches", async () => {
   const outputs=[],calls=[];
-  const body={papersKind:"checked",evidence:{version:3},aiUsage:{neurons:7,measured:true,calls:3,stages:{planning:{neurons:3,calls:1},selfCheck:{neurons:1,calls:1},judging:{neurons:3,calls:1}}},name:"social media",synonyms:[],includeTerms:["attention span"],from:2010,kpis:{total:10},
+  const body={openalexUsage:openAlexUsage([]),papersKind:"checked",evidence:{version:3},aiUsage:{neurons:7,measured:true,calls:3,stages:{planning:{neurons:3,calls:1},selfCheck:{neurons:1,calls:1},judging:{neurons:3,calls:1}}},name:"social media",synonyms:[],includeTerms:["attention span"],from:2010,kpis:{total:10},
     understanding:{mode:"ai",check:{matched:14,total:20,early:{matched:7,total:10},late:{matched:7,total:10}}},
     papers:Array.from({length:10},(_,i)=>({title:"Checked title "+i,year:2025,citations:10-i,url:"https://openalex.org/W"+i})),
     experts:Array.from({length:4},(_,i)=>({name:"Researcher "+i,count:4-i}))};
@@ -34,8 +35,8 @@ test("evaluation includes clarification, all re-plans and self-checks in one mea
  const outputs=[],requests=[],key="ai:clarify:v1:11111111-1111-4111-8111-111111111111";
  const result=await evaluateQuestions("https://fixture.example",[{question:"ASD in adolescents",expected:{topic:["autism"],clarification:{pattern:"ASD",answer:1}}}],async(_url,options)=>{
   const body=JSON.parse(options.body);requests.push(body);
-  if(!body.clarification)return Response.json({clarification:{key,question:"Which ASD?",options:[{label:"Atrial septal defect"},{label:"Autism"}]},aiUsage:{neurons:3,measured:true,calls:1,stages:{planning:{neurons:3,calls:1}}}});
-  return Response.json({papersKind:"checked",evidence:{version:3},searchTerms:{name:"autism"},understanding:{mode:"ai",check:{matched:20,total:20}},aiUsage:{neurons:17,measured:true,calls:4,stages:{planning:{neurons:4,calls:1},replan:{neurons:5,calls:1},selfCheck:{neurons:6,calls:1},judging:{neurons:2,calls:1}}}});
+  if(!body.clarification)return Response.json({openalexUsage:openAlexUsage([]),clarification:{key,question:"Which ASD?",options:[{label:"Atrial septal defect"},{label:"Autism"}]},aiUsage:{neurons:3,measured:true,calls:1,stages:{planning:{neurons:3,calls:1}}}});
+  return Response.json({openalexUsage:openAlexUsage([]),papersKind:"checked",evidence:{version:3},searchTerms:{name:"autism"},understanding:{mode:"ai",check:{matched:20,total:20}},aiUsage:{neurons:17,measured:true,calls:4,stages:{planning:{neurons:4,calls:1},replan:{neurons:5,calls:1},selfCheck:{neurons:6,calls:1},judging:{neurons:2,calls:1}}}});
  },row=>outputs.push(row));
  assert(result);assert.equal(requests.length,2);assert.equal(requests[1].clarification.option,1);assert.equal(outputs[0].neurons,20);assert.equal(outputs[0].aiUsage.calls,5);assert.equal(outputs[0].aiUsage.stages.replan.neurons,5);assert.equal(outputs[0].aiUsage.stages.selfCheck.neurons,6);assert.equal(outputs[0].selectedOption,"Autism");assert(outputs[0].pass);
 });
@@ -45,4 +46,15 @@ test("evaluation fails wrong essentials, forbidden papers, unexpected or malform
  assert(!checkExpectation(plan,{topic:["solar energy"]}).pass);assert(!checkExpectation(plan,{forbiddenPapers:["Unrelated paper"]}).pass);
  assert(!checkExpectation({mode:"clarification",measured:true},{}).pass);
  assert(!checkExpectation({mode:"clarification",measured:true},{clarification:{pattern:"Meaning"}},{question:"Meaning?",options:[]}).pass);
+});
+
+
+test("eval preserves all OpenAlex calls across a clarification and checked search",async()=>{
+ const outputs=[],key="ai:clarify:v1:11111111-1111-4111-8111-111111111111";
+ const source=openAlexUsage(Array.from({length:22},(_,i)=>({query:i<2?"checkearly":"papers",stage:i<2?"tighteningReliability":"report",attempt:1,status:200,reportedUsd:null})));
+ const ok=await evaluateQuestions("https://fixture.example",[{question:"ASD",expected:{topic:["autism"],clarification:{pattern:"ASD",answer:0}}}],async(_url,options)=>{
+  if(!JSON.parse(options.body).clarification)return Response.json({openalexUsage:openAlexUsage([]),clarification:{key,question:"Which ASD?",options:[{label:"Autism"},{label:"Atrial septal defect"}]},aiUsage:{neurons:3,measured:true,calls:1,sourceCalls:0}});
+  return Response.json({openalexUsage:source,papersKind:"checked",evidence:{version:3},searchTerms:{name:"autism"},understanding:{mode:"ai",check:{matched:20,total:20}},aiUsage:{neurons:10,measured:true,calls:2,sourceCalls:22,stages:{selfCheck:{neurons:5,calls:1},judging:{neurons:5,calls:1}}}});
+ },row=>outputs.push(row));
+ assert(ok);assert.equal(outputs[0].openalex.calls,22);assert.equal(outputs[0].openalex.estimatedUsd,.022);assert.equal(outputs[0].openalex.reportedUsd,null);assert.equal(outputs[0].aiUsage.sourceCalls,22);assert.equal(outputs[0].neurons,13);
 });

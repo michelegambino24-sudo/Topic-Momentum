@@ -849,3 +849,54 @@ export function expertCandidateQuery(query, ranked, year) {
 export function rankExpertAuthors(response) {
   return ranked(response).flatMap(item=>/^https:\/\/openalex\.org\/A\d+$/.test(item.key||"")&&item.key_display_name&&item.count>0?[{name:item.key_display_name,openalexUrl:item.key,count:item.count}]:[]).slice(0,10);
 }
+
+// This is the existing SPEC budget assumption, not a verified billing tariff.
+export const OPENALEX_ESTIMATE_USD_PER_CALL = .001;
+export function explicitOpenAlexUsd(headerValue, bodyValue) {
+  const number = value => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value
+    : typeof value === "string" && /^(?:\d+)(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(value.trim()) && Number.isFinite(Number(value)) ? Number(value) : null;
+  const header=number(headerValue),body=number(bodyValue);
+  // Conflicting or unitless signals cannot establish dollar cost.
+  return header!==null && body!==null && header!==body ? null : body ?? header;
+}
+const usd = value => Math.round(value * 1e9) / 1e9;
+export function openAlexUsage(attempts = []) {
+  const reported=attempts.filter(item=>Number.isFinite(item.reportedUsd)&&item.reportedUsd>=0);
+  const byQuery={},byStage={};
+  for(const item of attempts){byQuery[item.query]=(byQuery[item.query]||0)+1;byStage[item.stage]=(byStage[item.stage]||0)+1;}
+  return {calls:attempts.length,measuredCalls:true,reportedCalls:reported.length,
+    reportedUsd:reported.length===attempts.length?usd(reported.reduce((sum,item)=>sum+item.reportedUsd,0)):null,
+    partialReportedUsd:usd(reported.reduce((sum,item)=>sum+item.reportedUsd,0)),
+    estimatedUsd:usd(attempts.length*OPENALEX_ESTIMATE_USD_PER_CALL),estimatePerCallUsd:OPENALEX_ESTIMATE_USD_PER_CALL,
+    costBasis:attempts.length===0?"no_requests":reported.length===attempts.length?"provider_reported_usd":"estimate_from_spec",
+    byQuery,byStage,attempts:attempts.map(item=>({...item}))};
+}
+export function combineOpenAlexUsage(usages) {
+  const result={calls:0,measuredCalls:true,reportedCalls:0,reportedUsd:0,partialReportedUsd:0,estimatedUsd:0,estimatePerCallUsd:OPENALEX_ESTIMATE_USD_PER_CALL,byQuery:{},byStage:{},attempts:[]};
+  for(const usage of usages){
+    if(!usage || usage.measuredCalls!==true || !Number.isInteger(usage.calls) || usage.calls<0){result.measuredCalls=false;continue;}
+    result.calls+=usage.calls;result.reportedCalls+=usage.reportedCalls||0;
+    result.partialReportedUsd+=usage.partialReportedUsd||0;
+    result.estimatedUsd+=usage.calls*OPENALEX_ESTIMATE_USD_PER_CALL;
+    for(const field of ["byQuery","byStage"])for(const [key,count] of Object.entries(usage[field]||{}))result[field][key]=(result[field][key]||0)+count;
+    result.attempts.push(...(usage.attempts||[]));
+  }
+  result.estimatedUsd=usd(result.estimatedUsd);result.partialReportedUsd=usd(result.partialReportedUsd);
+  result.reportedUsd=result.measuredCalls&&result.reportedCalls===result.calls?result.partialReportedUsd:null;
+  result.costBasis=!result.measuredCalls?"incomplete":result.calls===0?"no_requests":result.reportedUsd!==null?"provider_reported_usd":"estimate_from_spec";
+  return result;
+}
+export function openAlexBudgetSummary(rows, budgetUsd = .90) {
+  const evaluation=combineOpenAlexUsage(rows.map(row=>row.openalex));
+  const totals={evaluatedQuestions:rows.length,evalCalls:evaluation.calls,evalCallsComplete:evaluation.measuredCalls,evalReportedUsd:evaluation.reportedUsd,evalEstimatedUsd:evaluation.estimatedUsd};
+  // Zero-call cache hits and clarification-only responses cannot price a fresh search.
+  const fresh=rows.filter(row=>row.pass && row.mode==="ai" && !row.cached && row.openalex?.measuredCalls && row.openalex.calls>0);
+  if(!fresh.length)return {...totals,budgetUsd,freshSearches:0,recommendedNewTopicsPerDay:null,readyToRaiseCap:false,reason:"No complete fresh checked-search measurements"};
+  const provider=fresh.every(row=>row.openalex.reportedUsd!==null);
+  const costs=fresh.map(row=>provider?row.openalex.reportedUsd:row.openalex.estimatedUsd);
+  const maximum=Math.max(...costs),calls=fresh.map(row=>row.openalex.calls);
+  return {...totals,budgetUsd,freshSearches:fresh.length,totalCalls:calls.reduce((sum,count)=>sum+count,0),maxCallsPerSearch:Math.max(...calls),
+    totalUsd:usd(costs.reduce((sum,cost)=>sum+cost,0)),averageUsd:usd(costs.reduce((sum,cost)=>sum+cost,0)/costs.length),maxUsdPerSearch:maximum,
+    costBasis:provider?"provider_reported_usd":"estimate_from_spec",recommendedNewTopicsPerDay:maximum>0?Math.floor((budgetUsd+1e-12)/maximum):null,
+    readyToRaiseCap:false,reason:provider?"Observed sample maximum only; retain the 30-attempt cap until a hard daily dollar guard covers heavier searches and retries":"Dollar costs use the unverified SPEC rate; verify pricing and add a hard daily dollar guard before raising the cap"};
+}

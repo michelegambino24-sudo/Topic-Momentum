@@ -1,4 +1,4 @@
-import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, isTighterPlan, judgeTitles, titleSample, semanticQuery, semanticMembership, shapePapers, normaliseQuery, includeGroupsOf, cacheIsFresh, dailyCap, cleanTerm, cleanAIPlanTerms, reliabilitySamples, reliabilityCheck, checkedEvidence, EVIDENCE_NOTICES, buildQueries, groundedPlanSchema, groundPlan, reconcileGrounding, validateGroundedResponse, planRequirements, questionRequirements, passingTitleIds, verifiedExperts, expertCandidateQuery, rankExpertAuthors } from "./lib.js";
+import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, isTighterPlan, judgeTitles, titleSample, semanticQuery, semanticMembership, shapePapers, normaliseQuery, includeGroupsOf, cacheIsFresh, dailyCap, cleanTerm, cleanAIPlanTerms, reliabilitySamples, reliabilityCheck, checkedEvidence, EVIDENCE_NOTICES, buildQueries, groundedPlanSchema, groundPlan, reconcileGrounding, validateGroundedResponse, planRequirements, questionRequirements, passingTitleIds, verifiedExperts, expertCandidateQuery, rankExpertAuthors, openAlexUsage } from "./lib.js";
 import "../site/query-parser.js";
 import { COUNTRY_CODES, REGIONS, countryLabel } from "./countries.js";
 
@@ -159,14 +159,16 @@ export function createAIService({now,clock,locked,reserve,source}) {
     }
     const decision=selected?{question:selected.question,label:selected.label}:null;
     const key=await interpretationKey(input.sentence+(decision?"\nClarified: "+JSON.stringify(decision):""),year);
-    return locked(originalEnv.TMM,key,async()=>{
+    let sourceSession;
+    const result=await locked(originalEnv.TMM,key,async()=>{
       const session=sessionFor(originalEnv.TMM),env={...originalEnv,TMM:session.store};
+      sourceSession=session;
       const day=now().toISOString().slice(0,10),usageKey="ai:usage:"+day;
       const usage={neurons:0,measured:true,calls:0,byModel:{},stages:{}};
       let reservedUsage=false,retryLeft=1,replans={coverage:1,selfCheck:1},countedSearch=false,clarified=false;
       const controller=new AbortController(),end=clock()+90000,timer=setTimeout(()=>controller.abort(),90000);
       const blocked=reason=>({status:503,body:{error:"ai_unavailable",message:AI_LIMIT_MESSAGE,aiReason:reason,aiUsage:usage,understood:globalThis.TMM_QUERY_PARSER.parse(input.sentence,year)}});
-      const invokeReport=query=>report(query,env,session);
+      const invokeReport=query=>{session.sourceStage="report";return report(query,env,session);};
       const settleUsage=async()=>{
         if(!reservedUsage)return;
         await locked(env.TMM,usageKey,async()=>{
@@ -303,23 +305,26 @@ export function createAIService({now,clock,locked,reserve,source}) {
           if(!Number.isSafeInteger(count)||count<0||count>=cap)return false;
           await env.TMM.put(dayKey,JSON.stringify(count+1),{expirationTtl:172800});return true;
         });if(!admitted)return blocked("daily_ai_limit");countedSearch=true;
+        session.sourceStage="reliability";
         let check=await inspect(raw);
         if(check.lowPrecision){
           const revised=await plan(raw,check.titles);if(revised.clarification)return revised.clarification;
           if(compileAIPlan(raw,year).query.id!==compileAIPlan(revised.raw,year).query.id){
             const nextRequired=required;required=requirementsFor(revised.raw);
-            judgments.clear();const second=await inspect(revised.raw);
+            judgments.clear();session.sourceStage="tighteningReliability";const second=await inspect(revised.raw);
             if(second.total&&second.matched/second.total>check.matched/check.total){raw=revised.raw;finalSources=revised.sources;check=second;}
             else {required=nextRequired;judgments.clear();}
           }
         }
         const compiled=compileAIPlan(raw,year),result=await invokeReport(compiled.query);if(result.status!==200)return {...result,body:{...result.body,aiReason:"source_failed",aiUsage:usage}};
+        session.sourceStage="candidates";
         const citedBase=buildQueries(compiled.query,year).find(item=>item.id==="papers");
         const cited=await fetchSource({...citedBase,id:"citedCandidates",params:{...citedBase.params,per_page:"30"}},compiled.query);if(!Array.isArray(cited.results))throw new Error("Invalid cited candidates");
         let semantic=[];
         try{const response=await fetchSource(semanticQuery(compiled.query,input.sentence,year),compiled.query);if(!Array.isArray(response.results))throw new Error("Invalid semantic candidates");const rows=response.results.slice(0,30);if(rows.length){const membership=await fetchSource(semanticMembership(compiled.query,rows,year),compiled.query);if(!Array.isArray(membership.results))throw new Error("Invalid membership response");const allowed=new Set(membership.results.map(item=>item.id));semantic=rows.filter(item=>allowed.has(item.id));}}catch{ /* Cited candidates are still checked. */ }
         const candidates=[...new Map([...cited.results.slice(0,30),...semantic].filter(item=>/^https:\/\/openalex\.org\/W\d+$/.test(item.id||"")).map(item=>[item.id,item])).values()];
         const evidence=checkedEvidence(candidates,await judge(candidates));
+        session.sourceStage="experts";
         let ranked=session.expertRanking;
         if(!ranked){const descriptor=buildQueries(compiled.query,year,result.body.sourceQuality?.experts!=="all").find(item=>item.id==="experts");ranked=rankExpertAuthors(await fetchSource({...descriptor,id:"expertRanking"},compiled.query));}
         const expertQuery=expertCandidateQuery(compiled.query,ranked,year);
@@ -339,6 +344,9 @@ export function createAIService({now,clock,locked,reserve,source}) {
         });
         await settleUsage();}catch{ /* A held reservation expires at the daily reset; never refund unknown usage. */ }}
     });
+    result.body.openalexUsage=openAlexUsage(sourceSession?.openAlexAttempts||[]);
+    if(result.body.aiUsage)result.body.aiUsage.sourceCalls=result.body.openalexUsage.calls;
+    return result;
   }
   return {search,attach};
 }

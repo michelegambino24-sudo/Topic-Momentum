@@ -1,5 +1,5 @@
 import { createAIService } from "./ai.js";
-import { normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors } from "./lib.js";
+import { normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors, explicitOpenAlexUsd } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date(), timing = {}) {
@@ -89,17 +89,28 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                 const upstream = new URL("https://api.openalex.org/works");
                 upstream.search = new URLSearchParams(params).toString();
                 upstream.searchParams.set("api_key", env.OPENALEX_KEY);
-                let response;
+                let response, costRecord;
                 for (let attempt = 0; attempt <= 2; attempt++) {
                   stage = "pacing";
                   const start = () => pace(controller.signal, complex, () => {
                     if (controller.signal.aborted) throw new Error("Request cancelled");
                     if (session.requests >= MAX_SOURCE_REQUESTS) throw complexityError(429);
-                    session.requests++;
                     session.bump?.("source");
+                    session.requests++;
                     stage = "fetch";
                     // Count retries and fallbacks; never follow a credential-bearing redirect.
-                    return fetchSource(upstream, { signal: controller.signal, redirect: "manual" });
+                    costRecord={query:id,stage:session.sourceStage||"report",attempt:attempt+1,status:null,reportedUsd:null};
+                    (session.openAlexAttempts ||= []).push(costRecord);
+                    const record=costRecord;
+                    return Promise.resolve(fetchSource(upstream, {signal:controller.signal,redirect:"manual"})).then(response=>{
+                      record.status=response.status;
+                      // Only explicitly dollar-denominated fields may be called reported USD.
+                      record.headerUsd=explicitOpenAlexUsd(response.headers?.get?.("x-ratelimit-cost-usd"),null);
+                      record.reportedUsd=record.headerUsd;
+                      const signal=response.headers?.get?.("x-ratelimit-cost");
+                      if(signal!==null && signal!==undefined && signal.trim()!=="" && Number.isFinite(Number(signal)) && Number(signal)>=0)record.unitlessCostSignal=Number(signal);
+                      return response;
+                    });
                   });
                   response = await (id === "semanticPapers" ? paceSemantic(controller.signal, start) : start());
                   status = response.status;
@@ -121,7 +132,9 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                   throw new Error("Source unavailable");
                 }
                 stage = "response_parsing";
-                return [id, await response.json()];
+                const body=await response.json();
+                costRecord.reportedUsd=explicitOpenAlexUsd(costRecord.headerUsd,body?.meta?.cost_usd);
+                return [id,body];
               } catch (caught) {
                 if (dev) console.error("[OpenAlex]", {
                   query: id, status: status ?? "unavailable", stage,
