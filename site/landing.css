@@ -1,6 +1,7 @@
 /* Hallmark · v2.0.0 · genre: atmospheric · theme: project system (DESIGN.md, dark bento tokens, Newsreader + system) · signature: Research taking shape, a data-linked particle sculpture · job: try the tool */
 /* critique: one idea per screen (hero = geography, growth and expertise); explanation below in four short definitions; no window chrome, no eyebrows, no invented metrics; every number is saved OpenAlex data. */
 /* waive 62 (scripting off): the demo is built from saved data by script; with scripting off a noscript line links to the tool and every other section is static HTML. */
+/* waive 24b (demo steps): the requested 12px 14px padding keeps the 230px column compact without crowding its text. */
 
 :root{
   --landing-card-light:#C0D5A314;
@@ -24,12 +25,23 @@
 .landing-cta:focus-visible,.landing-replay:focus-visible,.example-card:focus-visible,.demo-finale a:focus-visible{outline:2px solid var(--text);outline-offset:3px;transition:none}
 
 /* The demo: the real product UI, no browser chrome. */
-.demo{min-width:0;display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid var(--border);border-radius:20px;background:var(--card)}
-.demo-steps{list-style:none;margin:0 0 4px;padding:0;display:grid;grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(0,1fr));gap:16px}
-.demo-steps li{display:flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--secondary);padding:8px 12px;border-radius:12px;border:1px solid var(--border);transition:color 240ms ease,border-color 240ms ease,background-color 240ms ease}
-.demo-steps span{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;background:var(--soft);color:var(--action);font-size:.75rem;font-weight:600}
+.demo-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.demo-steps{list-style:none;margin:0;padding:0;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:start}
+.demo-steps li{display:flex;align-items:flex-start;gap:8px;min-width:0;padding:12px 14px;border-radius:12px;border:1px solid var(--border);color:var(--secondary);transition:color 240ms var(--ease-out-strong),border-color 240ms var(--ease-out-strong),background-color 240ms var(--ease-out-strong)}
+.demo-steps li>div{min-width:0}
+.demo-steps span{display:grid;place-items:center;flex:none;width:20px;height:20px;border-radius:50%;background:var(--soft);color:var(--action);font-size:.6875rem;font-weight:600}
+.demo-steps strong{display:block;color:var(--text);font-size:.9375rem;font-weight:600;line-height:1.4}
+.demo-steps p{margin:4px 0 0;color:var(--secondary);font-size:.8125rem;line-height:1.5;text-wrap:pretty}
 .demo-steps li.is-active{color:var(--text);border-color:var(--action);background:var(--soft)}
 .demo-steps li.is-active span{background:var(--action);color:var(--page)}
+@media(min-width:1024px){
+  .demo-layout{grid-template-columns:230px minmax(0,1fr);gap:24px}
+  .demo-steps{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:600px){
+  .demo-steps{grid-template-columns:minmax(0,1fr)}
+}
+.demo{min-width:0;display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid var(--border);border-radius:20px;background:var(--card)}
 .demo-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px}
 .demo-input{min-height:52px;display:flex;align-items:center;padding:0 16px;border:1px solid var(--control-border);border-radius:12px;background:var(--page);font-size:1rem;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
 .demo-caret{display:inline-block;width:2px;height:1.25em;margin-left:2px;background:var(--action);vertical-align:middle}
@@ -108,7 +120,6 @@
   .landing main{padding:0 16px 48px}
   .landing-hero h1{font-size:2.375rem}
   .demo{padding:16px}
-  .demo-steps{grid-template-columns:1fr}
   .demo-search{grid-template-columns:1fr}
   .demo-button{min-height:44px}
   .demo-input{white-space:normal;padding:12px 16px}
@@ -130,12 +141,6 @@
 #particle-pause:focus-visible,.shape-controls button:focus-visible{outline:2px solid var(--action);outline-offset:3px;transition:none}
 .see-work{padding:32px 0 64px}
 .see-work h2{font-size:clamp(1.75rem,3vw,2.25rem);line-height:1.2;letter-spacing:-.015em;margin:0 0 24px}
-.demo-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:stretch}
-.demo-steps{margin:0;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto}
-.demo-steps li{padding:16px;align-items:flex-start}
-.demo-steps strong{display:block;font-size:1.0625rem;font-weight:600;color:var(--text);line-height:1.4}
-.demo-steps p{margin:4px 0 0;font-size:.9375rem;line-height:1.5;text-wrap:pretty}
-.demo-steps li.is-active{border-color:var(--action)}
 .demo-question{display:block;min-width:0;min-height:3em;width:100%}
 .demo-input{padding:12px 16px;align-items:flex-start}
 .demo-kpis span{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.5}
@@ -145,12 +150,6 @@
 @media(max-width:700px){
   .landing-hero{grid-template-columns:minmax(0,1fr)}
   .hero-visual{width:100%;max-width:480px;justify-self:center}
-  .demo-layout{grid-template-columns:minmax(0,1fr)}
-  .demo-steps{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto;gap:8px}
-  .demo-steps li{padding:12px 8px;display:block}
-  .demo-steps span{margin-bottom:8px}
-  .demo-steps strong{font-size:.8125rem}
-  .demo-steps p{font-size:.8125rem}
 }
 @media(prefers-reduced-motion:reduce){
   #particle-pause{display:none}
@@ -167,10 +166,3 @@
 .shape-controls button:disabled{color:var(--secondary);background:var(--soft);border-color:var(--border);cursor:default}
 #particle-pause[hidden]{display:none}
 
-@media(max-width:600px){
-  .demo-steps{grid-template-columns:minmax(0,1fr);gap:12px}
-  .demo-steps li{display:flex;gap:12px;padding:16px}
-  .demo-steps span{margin-bottom:0}
-  .demo-steps strong{font-size:1rem}
-  .demo-steps p{font-size:.9375rem}
-}
