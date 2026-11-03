@@ -310,3 +310,11 @@ test("AI plans never repeat a place as a keyword group and never invent an end y
   assert.equal(noPlace.includeGroups.length, 3);
   assert.equal(noPlace.years.to, 2020);
 });
+
+test("a single place keyword is dropped when the same place is already 'written in'", async () => {
+  const { tidyPlan } = await import("./ai.js");
+  const plan = { topic: "gamification", synonyms: [], excludeTerms: [],
+    includeGroups: [{ terms: ["pupils", "primary school"] }, { terms: ["saudi arabia"] }, { terms: ["Egypt"] }],
+    place: { codes: ["SA"], mode: "authored" }, years: { from: 2010, to: null } };
+  assert.deepEqual(tidyPlan(plan, 2026).includeGroups, [{ terms: ["pupils", "primary school"] }, { terms: ["Egypt"] }]);
+});

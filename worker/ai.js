@@ -26,7 +26,16 @@ export function tidyPlan(plan, year) {
   const countrySets = (globalThis.TMM_COUNTRY_GROUPS || []).map(country => JSON.stringify([...country.terms].sort()));
   const isPlaceGroup = group => group && (PLACE_PRESETS.has(group.preset) || Array.isArray(group.terms) && countrySets.includes(JSON.stringify([...group.terms].map(term => term.toLowerCase()).sort())));
   const hasPlace = Array.isArray(plan.place?.codes) && plan.place.codes.length > 0;
-  const includeGroups = hasPlace ? plan.includeGroups.filter(group => !isPlaceGroup(group)) : plan.includeGroups;
+  // Words that only name the chosen place(s): "saudi arabia", "saudi", "ksa" when place.codes has SA.
+  const placeWords = new Set();
+  if (hasPlace) for (const code of plan.place.codes) {
+    let name = "";
+    try { name = new Intl.DisplayNames(["en"], { type: "region" }).of(code).toLowerCase(); } catch {}
+    if (name) placeWords.add(name);
+    for (const country of globalThis.TMM_COUNTRY_GROUPS || []) if (name && country.terms.includes(name)) country.terms.forEach(term => placeWords.add(term));
+  }
+  const onlyNamesPlace = group => Array.isArray(group?.terms) && group.terms.length > 0 && group.terms.every(term => placeWords.has(String(term).trim().toLowerCase()));
+  const includeGroups = hasPlace ? plan.includeGroups.filter(group => !isPlaceGroup(group) && !onlyNamesPlace(group)) : plan.includeGroups;
   const years = plan.years && Number.isInteger(plan.years.to) && plan.years.to >= year ? { ...plan.years, to: null } : plan.years;
   return { ...plan, includeGroups, years };
 }
