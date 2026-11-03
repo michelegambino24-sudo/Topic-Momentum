@@ -955,31 +955,31 @@
       "text": "The research data source is unavailable. Try again later."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Write what you're looking for in plain words, like a question to a colleague. For example: \"epigenetics in pregnant women since 2020\" or \"inheritance law for children in the GCC\". We pick out the topic, who it's about (children, pregnancy, women, teenagers, students, older adults), places (GCC, Middle East or a country) and years (\"since 2020\", \"last 5 years\"). The chips under the box show what we understood: remove a wrong one with ×. Put an exact phrase in \"quotes\". Places and people match words in titles and abstracts, not where authors work."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Other words for the same topic. Papers that use any of them are counted too."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Each group must match. Within a group, any term can match. For example, inheritance + GCC + children. Terms can appear anywhere in the title or abstract; multi-word terms stay together as phrases."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Leave empty to include papers up to today."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "No papers found for this search. Try a broader topic or remove a detail."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Accelerating means 20% or more a year. Growing is 8 to 20%, Stable is 0 to 8%, Cooling means fewer papers each year."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Find a saved topic by name or synonym."
     },
     {
@@ -1003,19 +1003,19 @@
       "text": "This search is more complex, so it takes a little longer…"
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Add another group"
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Remove group"
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "These presets match words in titles and abstracts, not where the authors work."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "You can use up to three include groups. Remove a group to add another."
     },
     {
@@ -1031,7 +1031,7 @@
       "text": "Hover or focus a country for its exact count."
     },
     {
-      "file": "site/index.html",
+      "file": "site/app.html",
       "text": "Separate alternatives with commas."
     }
   ],

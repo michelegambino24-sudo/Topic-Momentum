@@ -9,33 +9,46 @@ import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, judgeTitle
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const data = fixture("ai-search"), date = new Date("2026-11-02T12:00:00Z");
+const payload=params=>JSON.parse(params.messages?.[1]?.content || params.prompt.split("<|im_start|>user\n")[1].split("\n/no_think")[0]);
 const clone = value => JSON.parse(JSON.stringify(value));
-const judgments = (matching, count = 25) => ({ onTopic: Array.from({ length: count }, (_, index) => index < matching) });
+// These orchestration fixtures isolate inference: each model element is attributed
+// to the original sentence. Separate grounding tests use narrow exact spans.
+const sourced=(plan,sentence)=>({plan,sources:["topic",...plan.synonyms.map((_,i)=>"synonyms."+i),...plan.includeGroups.map((_,i)=>"includeGroups."+i),...(plan.place.codes.length?["place"]:[]),...plan.excludeTerms.map((_,i)=>"excludeTerms."+i),"years.from",...(plan.years.to?["years.to"]:[])].map(path=>({path,source:sentence})),ambiguity:null});
+const questionPapers=()=>({results:fixture("papers").results.map(item=>({...item,display_name:"Gene editing in children: "+item.display_name}))});
+const judgments = (matching, count = 20) => ({ onTopic: Array.from({ length: count }, (_, index) => index < matching) });
 const post = (input = { sentence: data.sentence }, origin) => new Request("http://localhost/api/search", { method: "POST", headers: { "Content-Type": "application/json", ...(origin ? { Origin: origin } : {}) }, body: JSON.stringify(input) });
-function setup(replies = [data.plan, data.validJudgment], options = {}) {
+function setup(replies = [data.plan, judgments(18)], options = {}) {
   const kv = new MemoryKV(), calls = [], aiCalls = [];
   const starts = [];
   let time = 0;
   const env = { TMM: kv, OPENALEX_KEY: "fixture-only-not-a-credential", NEW_TOPICS_PER_DAY: "50", AI_SEARCHES_PER_DAY: "30", ALLOWED_ORIGIN: "https://sample.example",
     AI: { async run(model, params) {
       aiCalls.push({ model, params });
-      const value = replies.shift();
+      if(payload(params).task==="self-check")return {response:{ok:true},usage:{neurons:1}};
+      let value = replies.length ? replies.shift() : { onTopic: (payload(params).titles || []).map(() => true) };
       if (value instanceof Error) throw value;
       if (typeof value === "function") return value();
-      return { response: typeof value === "string" ? value : JSON.stringify(value) };
+      if(value?.topic)value=sourced(value,payload(params).sentence);
+      if (value?.onTopic) value={pass:value.onTopic.flatMap((pass,i)=>pass?[i+1]:[])};
+      return { response: typeof value === "string" ? value : JSON.stringify(value), usage:{neurons:1} };
     } }, ...options.env };
   const worker = createWorker(async url => {
     calls.push(new URL(url));
     starts.push(time);
     const p = url.searchParams, filter = p.get("filter") || "";
     if (options.source) { const override = options.source(url, calls.length); if (override) return override; }
-    if (p.has("search.semantic")) return Response.json(fixture("papers"));
+    if (p.has("search.semantic")) return Response.json(questionPapers());
     if (filter.includes("openalex_id:")) return Response.json({ results: fixture("papers").results.map(item => ({ id: item.id })) });
-    if (p.get("select") === "id,display_name") return Response.json({ results: (options.titles || data.titles).map((display_name, i) => ({ id: "https://openalex.org/W" + (10000 + i), display_name })) });
+    if (p.get("select") === "id,display_name") {
+      const all = (options.titles || data.titles.map(title=>"Gene editing in children: "+title)).slice(0, 20), half = Math.ceil(all.length / 2);
+      const early = /from_publication_date:(2010|2020)-01-01/.test(filter);
+      const base = [...filter.replace(/,(?:from|to)_publication_date:[^,]+/g, "")].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 10000, 0);
+      return Response.json({ results: (early ? all.slice(0, half) : all.slice(half)).map((display_name, i) => ({ id: "https://openalex.org/W" + (1000000 + base * 100 + (early ? 0 : 10) + i), display_name })) });
+    }
     const groups = { publication_year: "years", "authorships.author.id": "experts", "primary_topic.id": filter.includes("to_publication_date:2022") ? "early" : "late", "authorships.countries": "countries", "primary_location.source.id": "journals", "keywords.id": "keywords", "primary_topic.field.id": "field", "primary_topic.subfield.id": "subfields" };
     if (groups[p.get("group_by")]) return Response.json(fixture(groups[p.get("group_by")]));
     if (p.get("select") === "id") return Response.json(fixture(filter.includes("countries/sa") ? "gcc" : "uae"));
-    return Response.json(fixture("papers"));
+    return Response.json(questionPapers());
   }, () => date, { now: () => time, sleep: async ms => { time += ms; } });
   return { kv, env, calls, starts, aiCalls, worker, search: input => worker.fetch(post(input), env) };
 }
@@ -79,26 +92,26 @@ test("new filters have canonical suffixes, constrain every query/fallback and le
   assert.deepEqual(publicLibrary([{ id: query.id, parent: null, children: [] }, { id: "child", parent: query.id, children: [] }]), []);
 });
 
-test("valid AI search checks actual titles, preserves real counts and caches question-specific semantic ranking", async () => {
+test("valid AI search checks actual titles, preserves real counts and caches question-specific checked evidence", async () => {
   const app = setup();
   const response = await app.search(); assert.equal(response.status, 200);
   const result = await response.json();
   assert.equal(result.understanding.mode, "ai");
-  assert.deepEqual(result.understanding.check, { matched: 23, total: 25 });
+  assert.deepEqual(result.understanding.check, { matched: 18, total: 20, early: { matched: 10, total: 10 }, late: { matched: 8, total: 10 }, lowPrecision: false, trendDistorted: false });
   assert.equal(result.understanding.place.mode, "authored"); assert.equal(result.understanding.place.label, "GCC");
   assert.equal(result.id, compileAIPlan(data.plan, 2026).query.id);
-  assert.equal(result.papersKind, "semantic");
+  assert.equal(result.papersKind, "checked");
   const realTotal = fixture("years").group_by.filter(row => Number(row.key) >= 2020 && Number(row.key) <= 2026).reduce((sum, row) => sum + row.count, 0);
   assert.equal(result.kpis.total, realTotal);
-  assert.equal(app.calls.length, 17); assert.equal(app.aiCalls.length, 2);
+  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length, 4);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1"); assert.equal(app.kv.values.get("ai:count:2026-11-02"), "1");
-  assert.equal(app.kv.writes.length, 5);
+  assert.equal(app.kv.writes.length, 7);
   const core = JSON.parse(app.kv.values.get("v3:topic:" + result.id)).topic;
   assert(!core.understanding); assert(!core.papersKind);
   for (const call of app.aiCalls) {
-    assert.equal(call.model, AI_MODEL);
-    const sent = JSON.parse(call.params.messages[1].content);
-    assert(Object.keys(sent).every(key => ["sentence", "titles"].includes(key)));
+    assert([AI_MODEL,"@cf/qwen/qwen3-30b-a3b-fp8"].includes(call.model));
+    const sent = payload(call.params);
+    assert(Object.keys(sent).every(key => ["task", "sentence", "decision", "feedback", "baseline", "plan", "mismatches", "question", "required", "titles", "year"].includes(key)));
     assert(!JSON.stringify(call.params).includes(app.env.OPENALEX_KEY));
   }
   const semantic = app.calls.find(url => url.searchParams.has("search.semantic"));
@@ -108,19 +121,19 @@ test("valid AI search checks actual titles, preserves real counts and caches que
   assert(membership.searchParams.get("filter").includes(" NOT "));
   const repeated = await (await app.search()).json();
   assert.equal(repeated.id, result.id); assert.deepEqual(repeated.understanding.check, result.understanding.check);
-  assert.equal(app.calls.length, 17); assert.equal(app.aiCalls.length, 2); assert.equal(app.kv.writes.length, 5);
+  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length,4); assert.equal(app.kv.writes.length, 7);
 });
 
 test("place mode switches reuse cached interpretation without inference and preserve current edits", async () => {
   const app = setup();
   const first = await (await app.search()).json();
   const switched = await (await app.search({ sentence: data.sentence, mode: "mentions" })).json();
-  assert.equal(app.aiCalls.length, 2);
+  assert.equal(app.aiCalls.length,4);
   assert.equal(switched.understanding.place.mode, "mentions"); assert.equal(switched.understanding.check, null);
   assert(switched.id.includes("preset:gcc@1")); assert(!switched.id.includes("|authored:"));
   assert.equal(switched.includeGroups.length, 2); assert.equal(switched.excludeTerms.length, 1);
   const changed = await (await app.search({ sentence: data.sentence, mode: "authored", current: { name: "gene editing", synonyms: [], includeGroups: switched.includeGroups, excludeTerms: [], from: 2021, to: 2025 } })).json();
-  assert.equal(app.aiCalls.length, 2); assert.equal(changed.from, 2021); assert.equal(changed.to, 2025);
+  assert.equal(app.aiCalls.length,4); assert.equal(changed.from, 2021); assert.equal(changed.to, 2025);
   assert.equal(changed.excludeTerms, undefined); assert.deepEqual(changed.synonyms, []);
   assert(!changed.includeGroups); assert(changed.includeTerms.includes("children"));
   assert.deepEqual(changed.authoredCodes, first.authoredCodes);
@@ -129,49 +142,44 @@ test("place mode switches reuse cached interpretation without inference and pres
 
 test("one tightening keeps the higher share, retains original on ties and never loops", async () => {
   const tighter = clone(data.plan); tighter.synonyms = ["CRISPR"]; tighter.excludeTerms.push("unrelated mineral spectroscopy");
-  for (const [score, tightened] of [[23, true], [17, false], [10, false]]) {
-    const app = setup([data.plan, judgments(17), tighter, judgments(score)]);
+  for (const [score, tightened] of [[18, true], [12, false], [8, false]]) {
+    const app = setup([data.plan, judgments(12), tighter, judgments(score)]);
     const response = await app.search(); assert.equal(response.status, 200);
     const body = await response.json();
-    assert.equal(body.understanding.mode, "ai"); assert.equal(body.understanding.check.matched, tightened ? score : 17);
+    assert.equal(body.understanding.mode, "ai"); assert.equal(body.understanding.check.matched, tightened ? score : 12);
     assert.equal(body.synonyms.length, tightened ? 1 : 2);
-    assert.equal(app.aiCalls.length, 4); assert.equal(app.calls.length, 18);
+    assert.equal(app.aiCalls.length, 7); assert.equal(app.calls.length, 22);
     assert.equal(app.kv.values.get("count:2026-11-02"), "1");
-    const tighteningInput = JSON.parse(app.aiCalls[2].params.messages[1].content);
-    assert.deepEqual(Object.keys(tighteningInput), ["sentence", "titles"]);
+    const tighteningInput = payload(app.aiCalls[3].params);
+    assert.equal(tighteningInput.task,"plan"); assert(tighteningInput.plan && tighteningInput.mismatches);
   }
 });
 
 test("exactly 70 percent does not tighten; zero valid titles do not invent a percentage", async () => {
-  const boundary = setup([data.plan, judgments(7, 10)], { titles: data.titles.slice(0, 10) });
-  assert.deepEqual((await (await boundary.search()).json()).understanding.check, { matched: 7, total: 10 });
-  assert.equal(boundary.aiCalls.length, 2);
+  const boundary = setup([data.plan, judgments(7, 10)], { titles: data.titles.slice(0, 10).map(title=>"Gene editing in children: "+title) });
+  assert.deepEqual((await (await boundary.search()).json()).understanding.check, { matched: 7, total: 10, early: { matched: 5, total: 5 }, late: { matched: 2, total: 5 }, lowPrecision: false, trendDistorted: true });
+  assert.equal(boundary.aiCalls.length, 4);
   const empty = setup([data.plan], { titles: [] });
-  assert.deepEqual((await (await empty.search()).json()).understanding.check, { matched: 0, total: 0 });
-  assert.equal(empty.aiCalls.length, 1);
+  assert.deepEqual((await (await empty.search()).json()).understanding.check, { matched: 0, total: 0, early: { matched: 0, total: 0 }, late: { matched: 0, total: 0 }, lowPrecision: false, trendDistorted: false });
+  assert.equal(empty.aiCalls.length, 3);
 });
 
-test("invalid JSON, invalid plans, provider quota and timeouts use Quick mode without extra inference", async () => {
-  for (const reply of [data.invalidJSON, { ...data.plan, unexpected: true }, new Error(data.quotaError), () => new Promise(() => {})]) {
-    const app = setup([reply], { env: { AI_TIMEOUT_MS: "1" } });
-    const response = await app.search(); assert.equal(response.status, 200);
-    const body = await response.json(); assert.equal(body.understanding.mode, "quick");
-    assert.equal(app.aiCalls.length, 1); assert(app.calls.length <= 14);
-    assert.equal(app.kv.values.get("count:2026-11-02"), "1");
-    assert.equal([...app.kv.values.keys()].filter(key => key.startsWith("ai:search:")).length, 0);
+test("invalid JSON, invalid plans, quota and timeout stop after one retry with no unchecked results", async()=>{
+  for(const reply of [data.invalidJSON,{...data.plan,unexpected:true},new Error(data.quotaError),()=>new Promise(()=>{})]){
+    const app=setup([reply,reply],{env:{AI_TIMEOUT_MS:"1"}}),response=await app.search();assert.equal(response.status,503);
+    const body=await response.json();assert.equal(body.error,"ai_unavailable");assert(!body.papers);assert(!body.experts);assert(app.aiCalls.length>=1&&app.aiCalls.length<=2);assert.equal(app.calls.length,0);
+    assert(![...app.kv.values.keys()].some(key=>key.startsWith("ai:search:")));
   }
 });
 
-test("an AI failure after sampling reuses the reservation and shared request allowance", async () => {
-  const app = setup([data.plan, new Error(data.quotaError)]);
-  const body = await (await app.search()).json(); assert.equal(body.understanding.mode, "quick");
-  assert.equal(app.aiCalls.length, 2); assert.equal(app.calls.length, 15);
-  assert.equal(app.kv.values.get("count:2026-11-02"), "1"); assert.equal(app.kv.writes.length, 4);
+test("one failed relevance call retries with the same source reservation",async()=>{
+  const app=setup([data.plan,new Error(data.quotaError),judgments(18)]),body=await(await app.search()).json();
+  assert.equal(body.understanding.mode,"ai");assert.equal(app.aiCalls.length,5);assert.equal(app.calls.length,20);assert.equal(app.kv.values.get("count:2026-11-02"),"1");
 });
 
 test("AI cap and source cap are checked before inference; cached source reports still work", async () => {
   const cappedAI = setup(); cappedAI.kv.values.set("ai:count:2026-11-02", "30");
-  assert.equal((await (await cappedAI.search()).json()).understanding.mode, "quick");
+  assert.equal((await cappedAI.search()).status,503);
   assert.equal(cappedAI.aiCalls.length, 0);
   const cappedSource = setup(); cappedSource.kv.values.set("count:2026-11-02", "50");
   assert.equal((await cappedSource.search()).status, 429);
@@ -181,8 +189,8 @@ test("AI cap and source cap are checked before inference; cached source reports 
 test("semantic failures retain the fully filtered citation list and title evidence", async () => {
   const app = setup(undefined, { source: url => url.searchParams.has("search.semantic") ? new Response("unavailable", { status: 503 }) : null });
   const body = await (await app.search()).json();
-  assert.equal(body.understanding.mode, "ai"); assert.equal(body.understanding.check.matched, 23);
-  assert.equal(body.papersKind, "cited"); assert.equal(body.papers[0].title, fixture("papers").results[0].display_name);
+  assert.equal(body.understanding.mode, "ai"); assert.equal(body.understanding.check.matched, 18);
+  assert.equal(body.papersKind, "checked"); assert.equal(body.papers[0].title, questionPapers().results[0].display_name);
 });
 
 test("interpretation keys include year and preset versions; GET cache-only restoration makes no inference", async () => {
@@ -192,11 +200,11 @@ test("interpretation keys include year and preset versions; GET cache-only resto
   const params = queryParams(compileAIPlan(data.plan, 2026).query); params.set("cache", "only"); params.set("understanding", body.understanding.key);
   const restored = await (await app.worker.fetch(new Request("http://localhost/api/topic?" + params), app.env)).json();
   assert.deepEqual(restored.understanding.check, body.understanding.check);
-  assert.equal(app.calls.length, 17); assert.equal(app.aiCalls.length, 2); assert.equal(app.kv.writes.length, 5);
+  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length,4); assert.equal(app.kv.writes.length, 7);
   const record = JSON.parse(app.kv.values.get(body.understanding.key)); record.savedAt -= CACHE_MAX_AGE_MS;
   app.kv.values.set(body.understanding.key, JSON.stringify(record));
   const expired = await app.search({ sentence: data.sentence, mode: "mentions" });
-  assert.equal(expired.status, 400); assert.equal(app.aiCalls.length, 2);
+  assert.equal(expired.status, 400); assert.equal(app.aiCalls.length,4);
 });
 
 test("new endpoint keeps origin restrictions and exposes only POST JSON preflight", async () => {
@@ -220,15 +228,15 @@ test("sample and report retries share the same hard thirty-call ceiling and one 
   } });
   const response = await app.search();
   assert.equal(response.status, 429);
-  assert.equal(app.aiCalls.length, 2);
+  assert.equal(app.aiCalls.length, 3);
   assert.equal(app.calls.length, 30);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1");
-  assert.equal(app.kv.writes.length, 2);
+  assert.equal(app.kv.writes.length, 4);
   assert(![...app.kv.values.keys()].some(key => key.startsWith("v3:topic:") || key.startsWith("ai:search:")));
 });
 
-test("semantic membership keeps only cohort papers and preserves semantic order", async () => {
-  const papers = fixture("papers").results.slice().reverse();
+test("semantic membership constrains semantic candidates while cited matches are independently checked", async () => {
+  const papers = questionPapers().results.slice().reverse();
   const permitted = papers.slice(0, 1);
   const app = setup(undefined, { source: url => {
     if (url.searchParams.has("search.semantic")) return Response.json({ results: papers });
@@ -236,19 +244,18 @@ test("semantic membership keeps only cohort papers and preserves semantic order"
     return null;
   } });
   const result = await (await app.search()).json();
-  assert.equal(result.papersKind, "semantic"); assert.equal(result.papers.length, 1);
-  assert.equal(result.papers[0].title, permitted[0].display_name);
+  assert.equal(result.papersKind, "checked"); assert.equal(result.papers.length, fixture("papers").results.length);
+  assert.equal(result.papers[0].title, questionPapers().results[0].display_name);
   assert(app.calls.every(url => !url.searchParams.has("rerank")));
 });
 
-test("invalid tightening keeps the checked first plan, without a second sampling loop", async () => {
+test("invalid tightening re-plans once and clarifies rather than silently keeping a disputed plan", async () => {
   const wider = clone(data.plan); wider.years.from = 2010;
-  const app = setup([data.plan, judgments(10), wider]);
+  const app = setup([data.plan, judgments(10), wider, wider]);
   const result = await (await app.search()).json();
-  assert.equal(result.understanding.mode, "ai");
-  assert.equal(result.understanding.check.matched, 10);
-  assert.equal(app.aiCalls.length, 3);
-  assert.equal(app.calls.filter(url => url.searchParams.get("select") === "id,display_name").length, 1);
+  assert(result.clarification); assert(!result.papers);
+  assert.equal(app.aiCalls.length, 5);
+  assert.equal(app.calls.filter(url => url.searchParams.get("select") === "id,display_name").length, 2);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1");
 });
 
@@ -258,7 +265,7 @@ test("simultaneous identical questions coalesce within an isolate without duplic
   assert(responses.every(response => response.status === 200));
   const bodies = await Promise.all(responses.map(response => response.json()));
   assert(bodies.every(body => body.id === bodies[0].id));
-  assert.equal(app.aiCalls.length, 2); assert.equal(app.calls.length, 17); assert.equal(app.kv.writes.length, 5);
+  assert.equal(app.aiCalls.length,4); assert.equal(app.calls.length, 20); assert.equal(app.kv.writes.length, 7);
 });
 
 test("restored context for edited filters clears evidence but retains a switchable place", async () => {
@@ -269,13 +276,13 @@ test("restored context for edited filters clears evidence but retains a switchab
   const response = await app.worker.fetch(new Request("http://localhost/api/topic?" + params), app.env);
   assert.equal(response.status, 200);
   const body = await response.json(); assert.equal(body.understanding.check, null); assert.equal(body.understanding.place.mode, "authored");
-  assert.equal(app.aiCalls.length, 2);
+  assert.equal(app.aiCalls.length,4);
 });
 
-test("deploy configuration pins only the free model and the 50/30 caps", () => {
+test("deploy configuration pins only the free model and the 30/50 caps", () => {
   const configuration = readFileSync(new URL("./wrangler.toml", import.meta.url), "utf8");
-  assert.match(configuration, /NEW_TOPICS_PER_DAY = "50"/);
-  assert.match(configuration, /AI_SEARCHES_PER_DAY = "30"/);
+  assert.match(configuration, /NEW_TOPICS_PER_DAY = "30"/);
+  assert.match(configuration, /AI_SEARCHES_PER_DAY = "50"/);
   assert.match(configuration, /\[ai\]\s+binding = "AI"/);
   assert.match(configuration, /AI_MODEL = "@cf\/meta\/llama-3\.3-70b-instruct-fp8-fast"/);
 });
@@ -317,4 +324,163 @@ test("a single place keyword is dropped when the same place is already 'written 
     includeGroups: [{ terms: ["pupils", "primary school"] }, { terms: ["saudi arabia"] }, { terms: ["Egypt"] }],
     place: { codes: ["SA"], mode: "authored" }, years: { from: 2010, to: null } };
   assert.deepEqual(tidyPlan(plan, 2026).includeGroups, [{ terms: ["pupils", "primary school"] }, { terms: ["Egypt"] }]);
+});
+
+// Step 16 regressions: fixture title judgments are deliberately explicit, never network calls.
+test("canonicalization preserves broad user words and lets the planner choose expansions", async () => {
+  const { tidyPlan } = await import("./ai.js");
+
+  const failing = fixture("checked-evidence"), tidy = tidyPlan(failing.plan, 2026);
+  assert.deepEqual(tidy.synonyms, failing.plan.synonyms);
+  assert.deepEqual(tidy.includeGroups, failing.plan.includeGroups);
+  assert.deepEqual(tidyPlan({...failing.plan,includeGroups:[{terms:["attention","focus"]}]},2026).includeGroups,[{terms:["attention","focus"]}]);
+});
+
+test("tightening can replace group phrases and synonyms but never changes topic/place/years or drops populations", async () => {
+  const { tidyPlan } = await import("./ai.js");
+  const { isTighterPlan } = await import("./lib.js");
+  const initial = tidyPlan(fixture("checked-evidence").plan, 2026), candidate = clone(initial);
+  candidate.synonyms = ["social networking platforms"];
+  candidate.includeGroups[0].terms = ["sustained attention", "attention problems"];
+  candidate.excludeTerms = ["gambling marketing"];
+  assert.equal(isTighterPlan(initial, candidate, 2026), true);
+  for (const change of [p=>{p.topic="digital media"},p=>{p.place.codes=["AE"]},p=>{p.years.from=2020},p=>{p.includeGroups.pop()},p=>{p.includeGroups[1]={preset:"students"}}]) {
+    const unsafe = clone(candidate); change(unsafe); assert.equal(isTighterPlan(initial, unsafe, 2026), false);
+  }
+});
+
+test("the exact social-media/kids/attention failure never shows rejected papers or their experts, and warns about unreliable growth", async () => {
+  const failing = fixture("checked-evidence"), badRevision = clone(failing.plan); badRevision.years.from = 2020;
+  const app = setup([failing.plan, {onTopic:[true,true,true,true,false,false,false,false,false,false,true,true,true,true,true,true,true,true,true,false]}, failing.plan, {onTopic:failing.accepted}], { source: url => {
+    const p = url.searchParams;
+    if (p.has("sample")) return Response.json({results:p.get("filter").includes("from_publication_date:2010")?failing.early:failing.late});
+    if (p.has("search.semantic")) return Response.json({results:failing.candidates});
+    if (p.get("filter").includes("openalex_id:")) return Response.json({results:failing.candidates.map(({id})=>({id}))});
+    if (p.get("per_page")==="30" || p.get("per_page")==="50") return Response.json({results:failing.candidates});
+    if(p.get("group_by")==="authorships.author.id")return Response.json({group_by:[{key:"https://openalex.org/A780000001",key_display_name:"Relevant researcher",count:120},{key:"https://openalex.org/A780000002",key_display_name:"Gambling marketing researcher",count:150}]});
+    return null;
+  } });
+  const result = await (await app.search({sentence:failing.question})).json();
+  assert.equal(result.understanding.mode, "ai");
+  assert.equal(result.papersKind, "checked");
+  assert.equal(result.evidence.accepted, 2);
+  assert.equal(result.papers.length, 2);
+  for (const paper of result.papers) assert(!/COVID|vaccine|loneliness|gambling/i.test(paper.title));
+  assert.deepEqual(result.experts.map(({name,count})=>({name,count})),[{name:"Relevant researcher",count:120}]);
+  assert.equal(result.experts[0].openalexUrl, "https://openalex.org/A780000001");
+  assert.equal(result.understanding.check.matched, 13); assert.equal(result.understanding.check.total,20);
+  assert(result.understanding.check.lowPrecision); assert(result.understanding.check.trendDistorted);
+  assert(result.evidence.notices.includes("Few papers match this question exactly"));
+  assert(result.evidence.notices.includes("Many matching papers may be off-topic; narrow the search for reliable numbers"));
+  assert(result.evidence.notices.includes("The trend may be distorted by off-topic papers."));
+  assert.match(result.headline,/may be off-topic/);
+  const core = JSON.parse(app.kv.values.get("v3:topic:"+result.id)).topic;
+  assert.deepEqual(result.kpis,core.kpis); assert.deepEqual(result.years,core.years); assert.deepEqual(result.countries,core.countries);
+  assert(!core.evidence); assert(!core.understanding);
+  assert(app.calls.length<=30);
+  const cached=JSON.parse(app.kv.values.get(result.understanding.key));
+  assert(cached.budget.neurons<=600); assert(cached.budget.calls<=10);
+  const before=app.calls.length, aiBefore=app.aiCalls.length;
+  const again=await (await app.search({sentence:failing.question})).json();
+  assert.deepEqual(again.papers,result.papers); assert.deepEqual(again.experts,result.experts);
+  assert.equal(app.calls.length,before);assert.equal(app.aiCalls.length,aiBefore);
+});
+
+test("stratified sampling has disjoint year windows, seeds, exact thresholds and honest missing periods", async () => {
+  const { reliabilitySamples, reliabilityCheck } = await import("./lib.js");
+  const samples=reliabilitySamples(normaliseQuery("social media","","","",2010,2025,2026),2026,1234);
+  assert.equal(samples.length,2); assert(samples[0].params.filter.includes("to_publication_date:2017-12-31"));
+  assert(samples[1].params.filter.includes("from_publication_date:2018-01-01"));
+  assert(samples.every(item=>item.params.sample==="10" && item.params.seed==="1234" && !item.params.sort));
+  const exact=reliabilityCheck({matched:7,total:10},{matched:7,total:10});assert.equal(exact.lowPrecision,false);
+  assert.equal(reliabilityCheck({matched:3,total:4},{matched:2,total:4}).trendDistorted,false);
+  assert.equal(reliabilityCheck({matched:3,total:4},{matched:1,total:4}).trendDistorted,true);
+  assert.equal(reliabilityCheck({matched:0,total:0},{matched:0,total:0}).lowPrecision,false);
+  assert.equal(reliabilitySamples(normaliseQuery("topic","","","",2026,2026,2026),2026).length,1);
+});
+
+test("candidate relevance is batched by 25, deduped and sorted by citations with ten papers maximum", async () => {
+  const f=fixture("checked-evidence");
+  const papers=Array.from({length:60},(_,i)=>({...f.candidates[0],id:"https://openalex.org/W"+(790000000+i),display_name:"Social media and childhood attention "+i,cited_by_count:i}));
+  const app=setup([f.plan,judgments(20)], { source:url=>{
+    const p=url.searchParams;
+    if(p.has("sample")){const early=p.get("filter").includes("from_publication_date:2010");return Response.json({results:Array.from({length:10},(_,i)=>({id:"https://openalex.org/W"+(early?80000000+i:81000000+i),display_name:"Social media and childhood attention "+i}))});}
+    if(p.get("per_page")==="50")return Response.json({results:papers.slice(0,50)});
+    if(p.get("group_by")==="authorships.author.id")return Response.json({group_by:[{key:"https://openalex.org/A780000001",key_display_name:"Relevant researcher",count:600}]});
+    if(p.has("search.semantic"))return Response.json({results:papers.slice(30)});
+    if(p.get("filter").includes("openalex_id:"))return Response.json({results:papers.slice(30).map(({id})=>({id}))});
+    if(p.get("per_page")==="30")return Response.json({results:papers.slice(0,30)});
+    return null;
+  }});
+  const body=await (await app.search({sentence:f.question})).json();
+  assert.equal(body.evidence.candidates,60);assert.equal(body.evidence.accepted,60);assert.equal(body.papers.length,10);
+  assert.deepEqual(body.papers.map(p=>p.citations),[59,58,57,56,55,54,53,52,51,50]);
+  assert(app.aiCalls.filter(c=>payload(c.params).titles).every(c=>payload(c.params).titles.length<=25));
+  assert.equal(body.experts[0].count,600);
+});
+
+test("measured neuron ledger blocks at 9000 and refunds the in-flight reservation",async()=>{
+ const {AI_DAILY_CAP,AI_DAILY_NEURONS}=await import("./ai.js");assert(AI_DAILY_CAP>=40);assert.equal(AI_DAILY_NEURONS,9000);
+ const app=setup();app.kv.values.set("ai:usage:2026-11-02",JSON.stringify({used:9000,reserved:0}));
+ const response=await app.search();assert.equal(response.status,503);assert.equal((await response.json()).aiReason,"daily_neuron_limit");assert.equal(app.aiCalls.length,0);
+ const good=setup();const body=await(await good.search()).json(),ledger=JSON.parse(good.kv.values.get("ai:usage:2026-11-02"));
+ assert.equal(ledger.reserved,0);assert.equal(ledger.used,body.aiUsage.neurons);assert(body.aiUsage.measured);
+});
+
+test("a failed display check after one retry shows no unchecked lists and saves no evidence",async()=>{
+ const app=setup([data.plan,judgments(18),new Error("quota"),new Error("quota")]);
+ const response=await app.search(),body=await response.json();assert.equal(response.status,503);assert.equal(body.error,"ai_unavailable");assert(!body.papers);assert(!body.experts);
+ assert(![...app.kv.values.keys()].some(key=>key.startsWith("ai:search:")));
+});
+
+test("rejected papers cannot reappear through a fallback after checking fails",async()=>{
+ const app=setup([data.plan,judgments(18),new Error("quota"),new Error("quota")]);const response=await app.search();
+ assert.equal(response.status,503);assert(!((await response.json()).papers));
+});
+
+test("changed candidate titles are checked anew even if their source ID appeared in a sample", async () => {
+  const papers=questionPapers().results;
+  const app=setup([data.plan,judgments(20),{onTopic:[true,false,false]}],{source:url=>{
+    const p=url.searchParams;
+    if(p.has("sample")) {
+      const early=p.get("filter").includes("from_publication_date:2020");
+      return Response.json({results:Array.from({length:10},(_,i)=>({id:early&&i===0?papers[0].id:"https://openalex.org/W"+(early?8000000+i:9000000+i),display_name:"Gene editing in children original sample "+i}))});
+    }
+    return null;
+  }});
+  // The two display candidates must both be reviewed despite one reused ID.
+  app.env.AI.run=async(_model,params)=>{
+    const titles=payload(params).titles;
+    if(payload(params).task==="self-check")return{response:{ok:true},usage:{neurons:1}};
+    if(!titles)return{response:sourced(data.plan,data.sentence),usage:{neurons:1}};
+    if(titles.length===20)return{response:JSON.stringify({pass:Array.from({length:20},(_,i)=>i+1)}),usage:{neurons:1}};
+    assert.equal(titles.length,2);return{response:JSON.stringify({pass:[2]}),usage:{neurons:1}};
+  };
+  const result=await (await app.search()).json();
+  assert.equal(result.papersKind,"checked");assert.equal(result.papers.length,1);
+  assert.equal(result.papers[0].title,papers[1].display_name);
+});
+
+test("reordered AND groups are valid tightenings and corrupt cached evidence earns no checked claim", async () => {
+  const { tidyPlan }=await import("./ai.js"), { isTighterPlan }=await import("./lib.js");
+  const first=tidyPlan(fixture("checked-evidence").plan,2026), revised=clone(first);
+  revised.includeGroups.reverse();assert.equal(isTighterPlan(first,revised,2026),true);
+  const app=setup(), initial=await (await app.search()).json();
+  const record=JSON.parse(app.kv.values.get(initial.understanding.key));record.check.early.matched=999;
+  app.kv.values.set(initial.understanding.key,JSON.stringify(record));
+  const params=queryParams(compileAIPlan(data.plan,2026).query);params.set("understanding",initial.understanding.key);params.set("cache","only");
+  const restored=await (await app.worker.fetch(new Request("http://localhost/api/topic?"+params),app.env)).json();
+  assert.equal(restored.understanding.mode,"unavailable");assert(!restored.understanding.check);assert.notEqual(restored.papersKind,"checked");
+});
+
+test("the original 613-neuron/eight-attempt dashboard case no longer blocks checked searches",async()=>{
+  const f=fixture("checked-evidence");
+  const app=setup([f.plan,judgments(20)],{source:url=>{
+    if(!url.searchParams.has("sample"))return null;
+    const early=url.searchParams.get("filter").includes("from_publication_date:2010");
+    return Response.json({results:Array.from({length:10},(_,i)=>({id:"https://openalex.org/W"+(early?9010000+i:9020000+i),display_name:"Social media use and attention span in children"}))});
+  }});
+  app.kv.values.set("ai:count:2026-11-02","8");app.kv.values.set("ai:usage:2026-11-02",JSON.stringify({used:613,reserved:0}));
+  const response=await app.search({sentence:f.question});assert.equal(response.status,200);const body=await response.json();assert.equal(body.understanding.mode,"ai");
+  assert.equal(app.kv.values.get("ai:count:2026-11-02"),"9");assert(JSON.parse(app.kv.values.get("ai:usage:2026-11-02")).used<9000);
 });

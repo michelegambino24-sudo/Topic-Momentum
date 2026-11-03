@@ -540,3 +540,35 @@ AI only interprets searches and labels title relevance. Publication counts, samp
 - This place mode could not be applied. Check the search details and try again.
 - Use valid excluded terms and country codes, then try again.
 - Send a POST request with your search sentence.
+
+## Step 16 — Checked evidence
+
+This section supersedes the step-15 paper-heading and checking copy.
+
+- Checked paper heading: **Key papers**. Subline: **Checked by AI for this question · sorted by citations**.
+- Unchecked paper heading: **Most cited matching papers · not checked**.
+- Expert heading remains **Leading experts**. Checked subline: **Most active in the checked papers**. Quick subline: **Most active overall · not checked**.
+- Reliability: **Checked: X of Y sample papers on-topic.** Then earlier/later shares, or unavailable for an empty period. This is a small title-only review, not full-text verification or proof of precision across the entire result set.
+- Fewer than three relevant candidates: **Few papers match this question exactly**. **Try a more specific research phrase, population or year range.**
+- Overall below 70%: **Many matching papers may be off-topic; narrow the search for reliable numbers**.
+- Earlier/later shares differ by more than 25 points: **The trend may be distorted by off-topic papers.**
+- Soft headline: **These counts match the search terms, but many papers may be off-topic. Narrow the search before drawing conclusions.**
+- Failed display review: **Evidence checking could not finish. These lists have not been checked.**
+- Candidate-title checks decide only which papers/experts to show. Counts, chart, growth and countries remain unadjusted OpenAlex measurements. “Most active” counts accepted candidate papers once per author; it does not mean highest quality or most papers worldwide.
+
+## Step 16 corrections — verified field experts and no unchecked fallback
+
+This section supersedes the earlier step-16 Quick-mode and subset-count labels.
+
+- Expert subline: **Most active in this field · checked by AI**. Counts are real OpenAlex overall counts for the plan, not appearances in a small checked candidate set. Each author must have a passing matching-paper title.
+- Too few verified authors: **Not enough checked experts for this question**. Retain the existing refine suggestion and never pad the list.
+- AI unavailable/limited after one retry: **Today's AI checks are used up. They reset at 01:00 (Rome time). Saved reports and the Library still work.** No unchecked paper or expert list appears.
+- Unverified saved-report paper subline: **Run a question to check its papers.** Expert subline: **Run a question to check its experts.** Counts, chart and Library still open normally; no Quick-mode label or reliability claim.
+- Exact canonical eval questions, the actual 70B/Qwen neuron measurements and the live negative-title gate are saved separately from editable demo questions. Code preserves each requested concept/population/place before counting and lists all required parts for judging.
+
+
+## Step 16 clarification
+
+- Ask at most one short ambiguity question before source searching, with 2–3 concrete choices. Choice labels name the intended search; do not expose model/schema details.
+- If coverage or self-check still fails after its bounded repair, use **Please rephrase your question.** followed by the short missing requirement/problem. Do not show unchecked results or invented options.
+- Clarification choices do not consume a checked-search allowance. AI usage is still budgeted. Editing the question clears the old choices.

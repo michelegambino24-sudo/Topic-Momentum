@@ -1,0 +1,259 @@
+{
+  "question": "social media, kids, attention",
+  "plan": {
+    "topic": "social media",
+    "synonyms": [
+      "online",
+      "digital",
+      "social networking"
+    ],
+    "includeGroups": [
+      {
+        "terms": [
+          "attention",
+          "concentration",
+          "focus",
+          "attention span",
+          "inattention",
+          "ADHD"
+        ]
+      },
+      {
+        "terms": [
+          "kids",
+          "young children",
+          "toddlers"
+        ]
+      }
+    ],
+    "place": {
+      "codes": [],
+      "mode": "mentions"
+    },
+    "excludeTerms": [],
+    "years": {
+      "from": 2010,
+      "to": null
+    }
+  },
+  "candidates": [
+    {
+      "id": "https://openalex.org/W780000001",
+      "display_name": "Social media use and sustained attention in children",
+      "publication_year": 2024,
+      "cited_by_count": 600,
+      "doi": null,
+      "authorships": [
+        {
+          "author": {
+            "id": "https://openalex.org/A780000001",
+            "display_name": "Relevant researcher"
+          }
+        },
+        {
+          "author": {
+            "id": "https://openalex.org/A780000001",
+            "display_name": "Relevant researcher"
+          }
+        }
+      ],
+      "primary_location": {
+        "source": {
+          "display_name": "Fixture research journal"
+        }
+      }
+    },
+    {
+      "id": "https://openalex.org/W780000002",
+      "display_name": "Social networking and inattention in early childhood",
+      "publication_year": 2024,
+      "cited_by_count": 500,
+      "doi": null,
+      "authorships": [
+        {
+          "author": {
+            "id": "https://openalex.org/A780000001",
+            "display_name": "Relevant researcher"
+          }
+        }
+      ],
+      "primary_location": {
+        "source": {
+          "display_name": "Fixture research journal"
+        }
+      }
+    },
+    {
+      "id": "https://openalex.org/W780000003",
+      "display_name": "COVID-19 vaccine hesitancy and social media engagement",
+      "publication_year": 2024,
+      "cited_by_count": 400,
+      "doi": null,
+      "authorships": [
+        {
+          "author": {
+            "id": "https://openalex.org/A780000002",
+            "display_name": "Gambling marketing researcher"
+          }
+        }
+      ],
+      "primary_location": {
+        "source": {
+          "display_name": "Fixture research journal"
+        }
+      }
+    },
+    {
+      "id": "https://openalex.org/W780000004",
+      "display_name": "Loneliness among children using social media during COVID-19",
+      "publication_year": 2024,
+      "cited_by_count": 300,
+      "doi": null,
+      "authorships": [
+        {
+          "author": {
+            "id": "https://openalex.org/A780000002",
+            "display_name": "Gambling marketing researcher"
+          }
+        }
+      ],
+      "primary_location": {
+        "source": {
+          "display_name": "Fixture research journal"
+        }
+      }
+    },
+    {
+      "id": "https://openalex.org/W780000005",
+      "display_name": "Gambling marketing and digital media advertising",
+      "publication_year": 2024,
+      "cited_by_count": 200,
+      "doi": null,
+      "authorships": [
+        {
+          "author": {
+            "id": "https://openalex.org/A780000002",
+            "display_name": "Gambling marketing researcher"
+          }
+        }
+      ],
+      "primary_location": {
+        "source": {
+          "display_name": "Fixture research journal"
+        }
+      }
+    },
+    {
+      "id": "https://openalex.org/W780000006",
+      "display_name": "The role of concentration in online vaccine misinformation",
+      "publication_year": 2024,
+      "cited_by_count": 100,
+      "doi": null,
+      "authorships": [
+        {
+          "author": {
+            "id": "https://openalex.org/A780000002",
+            "display_name": "Gambling marketing researcher"
+          }
+        }
+      ],
+      "primary_location": {
+        "source": {
+          "display_name": "Fixture research journal"
+        }
+      }
+    }
+  ],
+  "accepted": [
+    true,
+    true,
+    false,
+    false,
+    false,
+    false
+  ],
+  "early": [
+    {
+      "id": "https://openalex.org/W781000001",
+      "display_name": "Social media and attention span in young children"
+    },
+    {
+      "id": "https://openalex.org/W781000002",
+      "display_name": "Social media and attention span in young children"
+    },
+    {
+      "id": "https://openalex.org/W781000003",
+      "display_name": "Social media and attention span in young children"
+    },
+    {
+      "id": "https://openalex.org/W781000004",
+      "display_name": "Social media and attention span in young children"
+    },
+    {
+      "id": "https://openalex.org/W781000005",
+      "display_name": "COVID-19 vaccine attitudes on social media"
+    },
+    {
+      "id": "https://openalex.org/W781000006",
+      "display_name": "COVID-19 vaccine attitudes on social media"
+    },
+    {
+      "id": "https://openalex.org/W781000007",
+      "display_name": "COVID-19 vaccine attitudes on social media"
+    },
+    {
+      "id": "https://openalex.org/W781000008",
+      "display_name": "COVID-19 vaccine attitudes on social media"
+    },
+    {
+      "id": "https://openalex.org/W781000009",
+      "display_name": "COVID-19 vaccine attitudes on social media"
+    },
+    {
+      "id": "https://openalex.org/W781000010",
+      "display_name": "COVID-19 vaccine attitudes on social media"
+    }
+  ],
+  "late": [
+    {
+      "id": "https://openalex.org/W782000001",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000002",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000003",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000004",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000005",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000006",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000007",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000008",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000009",
+      "display_name": "Social media and childhood inattention"
+    },
+    {
+      "id": "https://openalex.org/W782000010",
+      "display_name": "Loneliness on social media"
+    }
+  ]
+}

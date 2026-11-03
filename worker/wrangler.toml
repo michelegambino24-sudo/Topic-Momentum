@@ -5,12 +5,15 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGIN = "https://michelegambino24-sudo.github.io"
-NEW_TOPICS_PER_DAY = "50"
-AI_SEARCHES_PER_DAY = "30"
+NEW_TOPICS_PER_DAY = "30"
+AI_SEARCHES_PER_DAY = "50"
 AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-# Up to 12 s per AI step, 28 s for all AI steps (the site waits 45 s).
+AI_JUDGE_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
+# 70B planning; Qwen judging uses verified no-thinking JSON.
+# Daily usage is settled to measured neurons, never a fixed estimate per attempt.
+# 9000 neurons/day, 600 in flight per search; 50 admitted attempts/day.
 AI_TIMEOUT_MS = "12000"
-AI_PREPARATION_MS = "28000"
+AI_PREPARATION_MS = "90000"
 
 [[kv_namespaces]]
 binding = "TMM"

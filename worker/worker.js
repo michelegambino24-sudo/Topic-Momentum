@@ -1,5 +1,5 @@
 import { createAIService } from "./ai.js";
-import { normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS } from "./lib.js";
+import { normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date(), timing = {}) {
@@ -67,7 +67,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
     });
   }
   async function reserveTopic(env, date) {
-    const cap = dailyCap(env.NEW_TOPICS_PER_DAY);
+    const cap = Math.min(30, dailyCap(env.NEW_TOPICS_PER_DAY));
     const countKey = "count:" + date.toISOString().slice(0, 10);
           return await locked(env.TMM, countKey, async () => {
             const count = await env.TMM.get(countKey, "json") ?? 0;
@@ -238,7 +238,9 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
               results = await Promise.all(pending);
             }
             results.push(...await Promise.all(fallbackQueries(query, date.getUTCFullYear(), Object.fromEntries(results)).map(requestSource)));
-            const topic = { ...shapeTopic(query, Object.fromEntries(results), date), ...(query.parent ? { parent: query.parent } : {}) };
+            const responses=Object.fromEntries(results);
+            session.expertRanking=rankExpertAuthors(responses.expertsAll || responses.experts);
+            const topic = { ...shapeTopic(query, responses, date), ...(query.parent ? { parent: query.parent } : {}) };
             try {
               // Fresh for seven days; retain stale fallback reports for at most sixty days.
               await env.TMM.put(key, JSON.stringify({ savedAt: date.getTime(), topic }), { expirationTtl: REPORT_RETENTION_SECONDS });

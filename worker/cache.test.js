@@ -63,11 +63,11 @@ test("freshness ends at exactly seven days and refreshing keeps existing childre
   assert.deepEqual(index.find((entry) => entry.id === parent.id).children, [parent.id + "|primary_topic:T123"]);
 });
 
-test("default cap admits attempt 50, blocks attempt 51, and still serves fresh and expired reports", async () => {
+test("default cap admits attempt 30, blocks attempt 31, and still serves fresh and expired reports", async () => {
   const app = setup();
-  app.kv.values.set("count:2026-10-31", "49");
+  app.kv.values.set("count:2026-10-31", "29");
   const topic = await (await app.search()).json();
-  assert.equal(app.kv.values.get("count:2026-10-31"), "50");
+  assert.equal(app.kv.values.get("count:2026-10-31"), "30");
   const blocked = await app.search(req("other moss"));
   assert.equal(blocked.status, 429);
   assert.deepEqual(await blocked.json(), { error: "daily_limit", message: "Daily limit reached. Try again tomorrow or browse the Library." });

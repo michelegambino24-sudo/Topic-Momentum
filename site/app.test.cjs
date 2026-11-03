@@ -179,7 +179,7 @@ test("Refine chips retain full accessible names, ignore repeated activation and 
   assert.equal(app.get("refine-bar").hidden, false);
   assert.equal(app.get("refine-chips").hidden, true);
   assert.match(source("styles.css"), /\.refine-chips\{[^}]*flex-wrap:nowrap[^}]*overflow-x:auto/);
-  assert(source("index.html").indexOf('id="refine-bar"') < source("index.html").indexOf('id="report-content"'));
+  assert(source("app.html").indexOf('id="refine-bar"') < source("app.html").indexOf('id="report-content"'));
 });
 
 test("a failed refinement leaves the displayed report and next ordinary search unrestricted", async () => {
@@ -202,7 +202,7 @@ test("a failed refinement leaves the displayed report and next ordinary search u
 test("expert and country expansion reveals every record in place without another request", async () => {
   let data, calls = 0;
   const app = setup(async () => { calls++; return { ok: true, json: async () => data }; });
-  data = report(app);
+  data = { ...report(app), papersKind:"checked", evidence:{version:3,accepted:8,candidates:10,notices:[]},understanding:{mode:"ai",check:{matched:20,total:20}} };
   data.experts = Array.from({ length: 8 }, (_, i) => ({ name: "Expert " + i, count: 20 - i, openalexUrl: "https://openalex.org/A" + (100 + i) }));
   data.countries = Array.from({ length: 9 }, (_, i) => ({ name: "Country " + i, count: 30 - i, code: "ZZ", gcc: false }));
   app.submit(); await settle();
@@ -334,7 +334,7 @@ test("quick-fill years clear To without searching and invalid ranges show plain 
     assert(app.get("status").textContent.includes(message));
     assert.equal(app.get("from-input").disabled, false);
   }
-  assert(source("index.html").includes('data-range-preset="2024"'));
+  assert(source("app.html").includes('data-range-preset="2024"'));
 });
 
 test("bounded ranges keep both years across report links, exploration, My library, restoration and CSV", async () => {
@@ -774,7 +774,7 @@ test("zero results hide report sections, and a later successful search restores 
   assert.equal(app.get("no-results").hidden, false);
   assert.equal(app.get("report-content").hidden, true);
   assert.equal(app.get("status").hidden, true);
-  assert(source("index.html").includes("No papers found for this search. Try a broader topic or remove a detail."));
+  assert(source("app.html").includes("No papers found for this search. Try a broader topic or remove a detail."));
   data.kpis.total = 1;
   app.submit();
   await settle();
@@ -896,7 +896,7 @@ test("suggested terms remain in More options and legacy exploration keeps parent
   app.submit();
   await settle();
   assert.match(app.get("suggested-synonyms").innerHTML, /data-suggest="genetics"/);
-  assert(!source("index.html").includes('id="explore-next"'));
+  assert(!source("app.html").includes('id="explore-next"'));
   app.click({ nextTerm: "genetics" });
   await settle();
   assert.equal(calls[1].searchParams.get("q"), "Parent Topic genetics");
@@ -915,7 +915,7 @@ test("suggested terms remain in More options and legacy exploration keeps parent
 test("paper and citation counts use singular and plural wording", async () => {
   let data;
   const app = setup(async () => ({ ok: true, json: async () => data }));
-  data = report(app);
+  data = { ...report(app), papersKind:"checked", evidence:{version:3,accepted:8,candidates:10,notices:[]},understanding:{mode:"ai",check:{matched:20,total:20}} };
   data.years = [{ year: 2025, count: 1 }, { year: 2026, count: 2 }];
   data.subtopics = [{ name: "One", late: 1, growth: 0 }, { name: "Two", late: 2, growth: 0 }];
   data.regionalCounts = { uae: 1, gcc: 2 };
@@ -994,7 +994,7 @@ test("personal main topics and sub-topics remain independent cards after removal
 test("all four ranked lists default to five and expand without changing the report", async () => {
   let data;
   const app = setup(async () => ({ ok: true, json: async () => data }));
-  data = report(app);
+  data = { ...report(app), papersKind:"checked", evidence:{version:3,accepted:8,candidates:10,notices:[]},understanding:{mode:"ai",check:{matched:20,total:20}} };
   data.journals = Array.from({length: 7}, (_, i) => ({name: "Journal " + i, count: 10-i}));
   data.papers = Array.from({length: 7}, (_, i) => ({title: "Paper " + i, citations: 100-i, authors: "Author A", journal: "Journal A", year: 2025, url: ""}));
   app.submit(); await settle();
@@ -1070,7 +1070,7 @@ test("saving bounded reports stores only their complete-year spark and its year 
 });
 
 test("tooltips use the approved exact copy and natural period phrases", async () => {
-  const html=source('index.html');
+  const html=source('app.html');
   for(const text of [
     'Write what you\'re looking for in plain words, like a question to a colleague. For example: \"epigenetics in pregnant women since 2020\" or \"inheritance law for children in the GCC\". We pick out the topic, who it\'s about (children, pregnancy, women, teenagers, students, older adults), places (GCC, Middle East or a country) and years (\"since 2020\", \"last 5 years\"). The chips under the box show what we understood: remove a wrong one with ×. Put an exact phrase in \"quotes\". Places and people match words in titles and abstracts, not where authors work.',
     'Other words for the same topic. Papers that use any of them are counted too.',
@@ -1209,7 +1209,7 @@ test("New topic and chart help use exact approved text and remain independently 
  data={...report(app),from:2020,to:null,kpis:{...report(app).kpis,growth:.3,growthLabel:'Growth 2020–2025'},years:[{year:2020,count:12},{year:2025,count:2571}]};app.submit();await settle();
  const kpis=app.get('kpis').innerHTML;
  assert(kpis.includes('aria-label="About New topic"'));assert(kpis.includes('This topic started from very few papers, so a yearly percentage would be misleading. We show the real counts instead.'));assert(kpis.includes('With fewer than three full years, we use the last five complete years instead.'));
- assert(source('index.html').includes('Papers published each year. The current year isn’t over, so its line is dashed.'));
+ assert(source('app.html').includes('Papers published each year. The current year isn’t over, so its line is dashed.'));
 });
 
 test("restored bounded reports repair the fallback, headline and existing personal summary",async()=>{
@@ -1418,6 +1418,17 @@ test("understood removals and Advanced edits change the draft without reparsing 
   app.submit(); await settle();
   assert.equal(calls.length, 1);
   assert.match(app.get("status").textContent, /Add a research topic/);
+  let requested;
+  app.context.fetch = async url => {
+    requested = new URL(url).searchParams;
+    return { ok: true, json: async () => report(app) };
+  };
+  app.get("topic-input").value = "fixture topic";
+  app.get("topic-input").listeners.input();
+  app.submit(); await settle(); await settle();
+  assert.equal(requested.get("q"), "fixture topic");
+  assert.equal(requested.get("include"), null);
+  assert.equal(app.get("report-stage").hidden, false);
 });
 
 test("old structured reports and links are hydrated without reparsing words that look like sentence syntax", async () => {
@@ -1518,7 +1529,7 @@ test("group overflow is explained; oversized custom identities and invalid years
 });
 
 test("sentence controls have accessible removals and flow layout; all five rotating placeholders are exact", () => {
-  const html = source("index.html"), css = source("styles.css"), script = source("app.js");
+  const html = source("app.html"), css = source("styles.css"), script = source("app.js");
   assert(html.includes('<summary>Advanced</summary>'));
   assert(!html.includes('<summary>More options</summary>'));
   assert(html.indexOf('id="understood-chips"') < html.indexOf('id="search-options"'));
@@ -1603,7 +1614,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
     }
     const responses = Object.fromEntries(lib.buildQueries(query, 2026).map(({ id }) => [id, fixture(id)]));
     const report = lib.shapeTopic(query, responses, new Date("2026-11-02"));
-    return { ok: true, json: async () => ({ ...report, papersKind: fresh ? "semantic" : "cited", understanding: { mode: "ai", key, sentence: ai.sentence, place, check: query.id === initial.query.id ? { matched: 23, total: 25 } : null, changed: query.id !== initial.query.id } }) };
+    return { ok: true, json: async () => ({ ...report, papersKind: fresh ? "checked" : "cited", evidence: fresh ? { version:3, accepted: 5, candidates: 10, notices: [] } : undefined, understanding: { mode: "ai", key, sentence: ai.sentence, place, check: query.id === initial.query.id ? { matched: 23, total: 25 } : null, changed: query.id !== initial.query.id } }) };
   };
   const app = setup(fetch, null, "#search", null, true);
   app.get("topic-input").value = ai.sentence; app.get("topic-input").listeners.input();
@@ -1614,7 +1625,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
   assert.match(app.get("understanding-line").textContent, /Checked: 23 of 25 sample papers on-topic/);
   assert.match(app.get("understanding-line").textContent, /written in GCC/);
   assert.match(app.get("understood-chips").innerHTML, /Written in GCC/);
-  assert.equal(app.get("papers-heading").textContent, "Most relevant papers");
+  assert.equal(app.get("papers-heading").textContent, "Key papers");
   const original = app.context.location.hash;
   assert.equal(new URLSearchParams(original.slice(1)).get("understanding"), key);
   assert.equal(new URLSearchParams(original.slice(1)).get("authored"), "AE,BH,KW,OM,QA,SA");
@@ -1649,7 +1660,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
   assert.equal(calls.filter(call => call.options.method === "POST").length, posts);
 });
 
-test("Quick mode bypasses no data checks and shows no fabricated AI title judgment", async () => {
+test("legacy unverified data shows no unchecked lists or Quick-mode UI", async () => {
   let seed;
   const app = setup(async (url, options) => {
     assert.equal(new URL(url).pathname, "/api/search");
@@ -1659,10 +1670,10 @@ test("Quick mode bypasses no data checks and shows no fabricated AI title judgme
   seed = report(app);
   app.get("topic-input").value = "Tell me about gene editing"; app.get("topic-input").listeners.input(); app.submit();
   await settle();
-  assert.match(app.get("understanding-line").textContent, /Quick mode/);
+  assert.match(app.get("understanding-line").textContent, /AI checks unavailable/);
   assert(!app.get("understanding-line").textContent.includes("Checked:"));
   assert(!app.get("understood-chips").innerHTML.includes("data-place-toggle"));
-  assert.equal(app.get("papers-heading").textContent, "Most cited papers");
+  assert.equal(app.get("papers-heading").textContent, "Key papers");
 });
 
 test("Narrow down suppresses repeated topic plurals in both the readout and the submitted search", async () => {
@@ -1925,4 +1936,80 @@ test("removing or editing an over-limit group clears its stale validation messag
   app.get("include-input").listeners.input();
   assert.equal(app.get("include-error").hidden,true);
   assert.equal(app.get("status").hidden,true);
+});
+
+test("landing try buttons open an empty search without restoring filters or overwriting the saved report", async () => {
+  const seed = setup(() => assert.fail("No request expected"));
+  const saved = JSON.stringify({ ...report(seed), synonyms: ["alternate"], includeTerms: ["child"], from: 2023 });
+  const app = setup(() => assert.fail("Fresh search must not request data"), saved, "#new");
+  assert.equal(app.get("topic-input").value, "");
+  assert.equal(app.get("synonyms-input").value, "");
+  assert.equal(app.get("include-input").value, "");
+  assert.equal(app.get("from-input").value, "2010");
+  assert.equal(app.get("to-input").value, "");
+  assert.equal(app.get("search-options").open, false);
+  assert.equal(app.get("report-stage").hidden, true);
+  assert.equal(app.context.location.hash, "#new");
+  assert.equal(app.stored.get("topic-momentum:last-topic"), saved);
+  app.submit(); await settle();
+  assert.match(app.get("status").textContent, /Add a research topic/);
+  const html = source("index.html");
+  assert.match(html, /href="app.html#new">Try it out/);
+  assert.match(html, /href="app.html#new">Now try your own question/);
+});
+
+test("checked evidence labels, low precision and trend warnings survive rendering and offline restoration", async () => {
+  let data;
+  const app=setup(async()=>({ok:true,json:async()=>data}),null,"#search",null,true);
+  data={...report(app),papersKind:"checked",evidence:{version:3,accepted:2,candidates:6,notices:["Few papers match this question exactly","Many matching papers may be off-topic; narrow the search for reliable numbers","The trend may be distorted by off-topic papers."]},
+    understanding:{mode:"ai",key:"ai:search:v1:"+"b".repeat(64),sentence:"social media, kids, attention",check:{matched:13,total:20,early:{matched:4,total:10},late:{matched:9,total:10},lowPrecision:true,trendDistorted:true}}};
+  app.get("topic-input").value="social media, kids, attention";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+  assert.equal(app.get("papers-heading").textContent,"Key papers");
+  assert.equal(app.get("papers-source-note").textContent,"Checked by AI for this question · sorted by citations");
+  assert.equal(app.get("experts-check-note").textContent,"Most active in this field · checked by AI");
+  assert.match(app.get("understanding-line").textContent,/Checked: 13 of 20/);
+  assert.match(app.get("understanding-line").textContent,/Earlier: 40%; later: 90%/);
+  assert.equal(app.get("evidence-notice").hidden,false);
+  assert.match(app.get("evidence-notice").textContent,/Few papers match/);assert.match(app.get("evidence-notice").textContent,/trend may be distorted/);
+  assert.match(app.get("headline").textContent,/may be off-topic/);
+  const restored=setup(()=>assert.fail("No network"),app.stored.get("topic-momentum:last-topic"));
+  assert.equal(restored.get("papers-heading").textContent,"Key papers");assert.match(restored.get("headline").textContent,/may be off-topic/);
+});
+
+test("legacy semantic reports never show unverified papers or experts", () => {
+  const seed=setup(()=>assert.fail("No network"));
+  const legacy={...report(seed),papersKind:"semantic",understanding:{mode:"ai",check:{matched:23,total:25}}};
+  const app=setup(()=>assert.fail("No network"),JSON.stringify(legacy));
+  assert.equal(app.get("papers-heading").textContent,"Key papers");
+  assert.equal(app.get("experts-check-note").textContent,"Run a question to check its experts.");
+  assert(!app.get("understanding-line").textContent.includes("Checked:"));assert.equal(app.get("evidence-notice").hidden,true);
+});
+
+for(const question of ["social media, kids, attention","Is children’s mental health a growing field in the Middle East, and who’s leading it?","Does gamification help primary school pupils learn mathematics?","How is research on CRISPR for sickle cell disease growing?","What research links air pollution to asthma in children?","How does sleep affect memory in teenagers?","Which researchers study epigenetics during pregnancy?","How is research on battery recycling developing since 2020?"]) test("exact eval question shows the reset notice and no unchecked report when AI is unavailable: "+question,async()=>{
+  const message="Today's AI checks are used up. They reset at 01:00 (Rome time). Saved reports and the Library still work.";
+  const seed=setup(()=>assert.fail("No requests"));
+  const app=setup(async()=>({ok:false,status:503,json:async()=>({error:"ai_unavailable",message,aiReason:"daily_ai_limit"})}),JSON.stringify(report(seed)),"#search",null,true);
+  app.get("topic-input").value=question;app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+  assert.equal(app.get("status").textContent,message);assert.equal(app.get("report-stage").hidden,true);
+  assert(!app.get("papers").innerHTML.includes('<article'));assert(!app.get("experts").innerHTML.includes('class="rank-name"'));
+  assert(!app.get("understanding-line").textContent.includes("Quick mode"));
+});
+
+
+test("clarification shows one escaped question with native buttons, and submits only the stored choice",async()=>{
+ const requests=[],question="solar energy in Georgia",key="ai:clarify:v1:11111111-1111-4111-8111-111111111111";
+ const app=setup(async(_url,options)=>{
+  requests.push(JSON.parse(options.body));
+  return {ok:true,json:async()=>({clarification:{key,question:'Which Georgia <country>?',options:[{label:'The country & region'},{label:'The US state'}]},aiReason:"clarification"})};
+ },null,"#search",null,true);
+ app.get("topic-input").value=question;app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+ assert.equal(requests.length,1);assert.equal(app.get("search-clarification").hidden,false);assert.equal(app.get("report-stage").hidden,true);
+ assert.match(app.get("search-clarification").innerHTML,/Which Georgia &lt;country&gt;/);assert.match(app.get("search-clarification").innerHTML,/type="button" data-clarify="0"/);assert.match(app.get("search-clarification").innerHTML,/The country &amp; region/);
+ assert.equal(app.get("status").hidden,true);
+ app.click({clarify:"1"});await settle();await settle();
+ assert.deepEqual(requests[1],{sentence:question,clarification:{key,option:1}});assert(!requests[1].plan);
+ app.get("topic-input").value="a new topic";app.get("topic-input").listeners.input();assert.equal(app.get("search-clarification").hidden,true);
+ const before=requests.length;app.click({clarify:"0"});await settle();assert.equal(requests.length,before);
+ const html=source("app.html");assert.match(html,/id="search-clarification"[^>]*role="group"[^>]*aria-labelledby="clarification-question"/);
+ const css=source("styles.css");assert.match(css,/search-clarification button\{min-height:44px/);assert.match(css,/search-clarification button:focus-visible/);
 });

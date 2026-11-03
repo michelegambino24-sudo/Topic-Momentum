@@ -149,7 +149,7 @@ main topic in Library. Opening a saved variant uses the cache.
 
 ### Start locally
 
-Open `site/index.html` from your PC, or serve it on localhost. It automatically
+Open `site/app.html` (the tool; `site/index.html` is the landing page) from your PC, or serve it on localhost. It automatically
 uses `http://127.0.0.1:8787`. To start the local Worker:
 
 ```powershell

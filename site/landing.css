@@ -1,0 +1,176 @@
+/* Hallmark · v2.0.0 · genre: atmospheric · theme: project system (DESIGN.md, dark bento tokens, Newsreader + system) · signature: Research taking shape, a data-linked particle sculpture · job: try the tool */
+/* critique: one idea per screen (hero = geography, growth and expertise); explanation below in four short definitions; no window chrome, no eyebrows, no invented metrics; every number is saved OpenAlex data. */
+/* waive 62 (scripting off): the demo is built from saved data by script; with scripting off a noscript line links to the tool and every other section is static HTML. */
+
+:root{
+  --landing-card-light:#C0D5A314;
+  --ease-out-strong:cubic-bezier(.23,1,.32,1);
+  --ease-in-out-strong:cubic-bezier(.77,0,.175,1);
+}
+
+.landing main{max-width:1384px;margin:0 auto;padding:0 32px 72px}
+.landing .topbar nav a{font-weight:500}
+
+/* Hero: copy on the left, research taking shape on the right. */
+.landing-hero{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:56px;align-items:center;padding:56px 0 72px}
+.hero-copy{min-width:0}
+.landing-hero h1{font-size:clamp(2.5rem,4.6vw,4rem);line-height:1.05;letter-spacing:-.02em;margin:0 0 20px;text-wrap:balance;overflow-wrap:break-word;min-width:0}
+.landing-lede{color:var(--secondary);font-size:1.1875rem;line-height:1.55;max-width:34ch;margin:0 0 32px;text-wrap:pretty}
+.landing-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.landing-cta{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 32px;border-radius:12px;font-size:1.0625rem;font-weight:600;text-decoration:none;transition:transform 160ms var(--ease-out-strong),background-color 160ms ease}
+.landing-replay{background:var(--clear);border:1px solid var(--control-border);color:var(--text);min-height:52px;border-radius:12px;padding:0 24px;font-weight:500;transition:transform 160ms var(--ease-out-strong),background-color 160ms ease}
+.landing-replay:hover{background:var(--soft)}
+.landing-cta:active,.landing-replay:active,.example-card:active{transform:scale(.97)}
+.landing-cta:focus-visible,.landing-replay:focus-visible,.example-card:focus-visible,.demo-finale a:focus-visible{outline:2px solid var(--text);outline-offset:3px;transition:none}
+
+/* The demo: the real product UI, no browser chrome. */
+.demo{min-width:0;display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid var(--border);border-radius:20px;background:var(--card)}
+.demo-steps{list-style:none;margin:0 0 4px;padding:0;display:grid;grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(0,1fr));gap:16px}
+.demo-steps li{display:flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--secondary);padding:8px 12px;border-radius:12px;border:1px solid var(--border);transition:color 240ms ease,border-color 240ms ease,background-color 240ms ease}
+.demo-steps span{display:grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;background:var(--soft);color:var(--action);font-size:.75rem;font-weight:600}
+.demo-steps li.is-active{color:var(--text);border-color:var(--action);background:var(--soft)}
+.demo-steps li.is-active span{background:var(--action);color:var(--page)}
+.demo-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px}
+.demo-input{min-height:52px;display:flex;align-items:center;padding:0 16px;border:1px solid var(--control-border);border-radius:12px;background:var(--page);font-size:1rem;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.demo-caret{display:inline-block;width:2px;height:1.25em;margin-left:2px;background:var(--action);vertical-align:middle}
+.is-done .demo-caret{display:none}
+.demo-button{display:grid;place-items:center;padding:0 20px;border-radius:12px;background:var(--action);color:var(--page);font-weight:600;font-size:.875rem;transition:transform 120ms var(--ease-out-strong)}
+.press .demo-button{transform:scale(.96)}
+.demo-chips{display:flex;flex-wrap:wrap;gap:8px;min-height:30px}
+.demo-chip{display:inline-flex;align-items:center;padding:4px 12px;border:1px solid var(--control-border);border-radius:999px;font-size:.8125rem;white-space:nowrap;transition:opacity 220ms var(--ease-out-strong),transform 220ms var(--ease-out-strong)}
+.demo-loading{display:none;gap:8px}
+.demo-loading span{height:64px;border-radius:12px;background:linear-gradient(90deg,var(--soft),var(--border),var(--soft));background-size:200% 100%;}
+.demo-report{display:flex;flex-direction:column;gap:12px;transition:opacity 360ms var(--ease-out-strong),transform 360ms var(--ease-out-strong)}
+.demo-title{margin:0;font-family:var(--font-display);font-size:1.625rem;line-height:1.15;letter-spacing:-.01em}
+.demo-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.demo-kpis div{padding:12px 0;min-width:0}
+.demo-kpis span{display:block;font-size:.75rem;color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.demo-kpis strong{display:block;font-family:var(--font-display);font-weight:400;font-size:1.625rem;font-variant-numeric:tabular-nums;margin-top:2px}
+.demo-chart svg{display:block;width:100%;height:auto}
+.demo-line{fill:none;stroke:var(--chart);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.demo-partial{stroke-dasharray:5 5;opacity:.7}
+.demo-area{fill:var(--chart);opacity:.12}
+.demo-axis text{fill:var(--secondary);font-size:12px}
+.demo-insights{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.demo-insights li{display:flex;gap:12px;align-items:baseline;padding:12px 0;border-top:1px solid var(--border);font-size:.9375rem;line-height:1.45;transition:opacity 300ms var(--ease-out-strong),transform 300ms var(--ease-out-strong)}
+.demo-insights span{flex:none;min-width:96px;font-size:.8125rem;color:var(--secondary)}
+.demo-finale{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:4px;transition:opacity 360ms var(--ease-out-strong),transform 360ms var(--ease-out-strong)}
+.demo-finale .primary{display:inline-flex;align-items:center;min-height:48px;padding:0 24px;border-radius:12px;text-decoration:none;font-weight:600}
+.demo-open{color:var(--text);font-size:.9375rem}
+.demo-noscript{margin:0;color:var(--secondary)}
+
+/* Hidden states apply only while the script is playing, so the finished result is the default. */
+.is-playing:not(.show-chips) .demo-chips{visibility:hidden}
+.is-playing .demo-chip:not(.is-in){opacity:0;transform:translateY(6px)}
+.is-playing.show-loading .demo-loading{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.is-playing:not(.show-report) .demo-report{opacity:0;transform:translateY(10px)}
+.is-playing .demo-line:not(.demo-partial){stroke-dasharray:1;stroke-dashoffset:1}
+.is-playing.show-report .demo-line:not(.demo-partial){stroke-dashoffset:0;transition:stroke-dashoffset 1200ms var(--ease-in-out-strong) 200ms}
+.is-playing:not(.show-report) .demo-partial,.is-playing:not(.show-report) .demo-area{opacity:0}
+.is-playing.show-report .demo-partial{transition:opacity 300ms ease-out 1400ms}
+.is-playing.show-report .demo-area{transition:opacity 500ms ease-out 1200ms}
+.is-playing .demo-insights li:not(.is-in){opacity:0;transform:translateX(-8px)}
+.is-playing:not(.show-finale) .demo-finale{opacity:0;transform:translateY(6px);pointer-events:none}
+
+/* Explanation: four short definitions, one idea. */
+.explain{padding:64px 0;border-top:1px solid var(--border)}
+.explain h2,.landing-examples h2{font-size:clamp(1.75rem,3vw,2.25rem);line-height:1.15;letter-spacing:-.015em;margin:0 0 12px;text-wrap:balance}
+.explain-intro{color:var(--secondary);font-size:1.0625rem;line-height:1.6;max-width:60ch;margin:0 0 32px}
+.explain-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:0;border-top:1px solid var(--border)}
+.explain-grid div{padding:24px 24px 24px 0;min-width:0}
+.explain-grid div+div{padding-left:24px;border-left:1px solid var(--border)}
+.explain-grid dt{font-family:var(--font-display);font-size:1.25rem;line-height:1.25;margin-bottom:8px}
+.explain-grid dd{margin:0;color:var(--secondary);font-size:1rem;line-height:1.55}
+.explain-note{margin:24px 0 0;font-size:.9375rem;color:var(--secondary);max-width:70ch}
+
+/* Ready-made reports, with a soft light that follows the pointer. */
+.landing-examples{padding:64px 0 0;border-top:1px solid var(--border)}
+.landing-examples h2{margin-bottom:24px}
+.example-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.example-card{position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:24px;border:1px solid var(--border);border-radius:16px;background:var(--soft);color:var(--text);text-decoration:none;transition:border-color 200ms ease,transform 160ms var(--ease-out-strong)}
+.example-card::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(240px circle at var(--x,50%) var(--y,50%),var(--landing-card-light),var(--clear) 70%);opacity:0;transition:opacity 200ms ease}
+.example-card:hover{border-color:var(--control-border)}
+.example-card:hover::after{opacity:1}
+.example-card strong{font-family:var(--font-display);font-size:1.3125rem;font-weight:600;line-height:1.25}
+.example-card span{color:var(--secondary);font-size:.9375rem}
+.example-card em{margin-top:12px;font-style:normal;color:var(--action);font-size:.9375rem;font-weight:600}
+.landing footer{max-width:1384px}
+
+@media(max-width:1000px){
+  .landing-hero{grid-template-columns:1fr;gap:32px;padding:40px 0 56px}
+  .landing-lede{max-width:46ch}
+  .explain-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .explain-grid div:nth-child(3){padding-left:0;border-left:0}
+  .explain-grid div:nth-child(n+3){border-top:1px solid var(--border)}
+  .example-grid{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .landing main{padding:0 16px 48px}
+  .landing-hero h1{font-size:2.375rem}
+  .demo{padding:16px}
+  .demo-steps{grid-template-columns:1fr}
+  .demo-search{grid-template-columns:1fr}
+  .demo-button{min-height:44px}
+  .demo-input{white-space:normal;padding:12px 16px}
+  .demo-kpis strong{font-size:1.25rem}
+  .demo-insights li{flex-direction:column;gap:2px}
+  .explain-grid{grid-template-columns:1fr}
+  .explain-grid div,.explain-grid div+div{padding:20px 0;border-left:0}
+  .explain-grid div+div{border-top:1px solid var(--border)}
+}
+@media(prefers-reduced-motion:reduce){
+  .landing *{transition:none!important;animation:none!important}
+}
+/* Research taking shape: a canvas stage independent of report surfaces. */
+.hero-visual{position:relative;min-width:0;margin:0}
+.particle-stage{aspect-ratio:1 / 1;max-height:480px}
+.hero-visual canvas{display:block;width:100%;height:100%}
+.hero-visual figcaption{color:var(--secondary);font-size:.875rem;line-height:1.5;min-height:3em;margin:12px 0 0;text-align:center;text-wrap:pretty}
+#particle-pause{display:block;margin:8px auto 0;background:var(--clear);color:var(--text);border:1px solid var(--control-border);font-size:.8125rem}
+#particle-pause:focus-visible,.shape-controls button:focus-visible{outline:2px solid var(--action);outline-offset:3px;transition:none}
+.see-work{padding:32px 0 64px}
+.see-work h2{font-size:clamp(1.75rem,3vw,2.25rem);line-height:1.2;letter-spacing:-.015em;margin:0 0 24px}
+.demo-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:stretch}
+.demo-steps{margin:0;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto}
+.demo-steps li{padding:16px;align-items:flex-start}
+.demo-steps strong{display:block;font-size:1.0625rem;font-weight:600;color:var(--text);line-height:1.4}
+.demo-steps p{margin:4px 0 0;font-size:.9375rem;line-height:1.5;text-wrap:pretty}
+.demo-steps li.is-active{border-color:var(--action)}
+.demo-question{display:block;min-width:0;min-height:3em;width:100%}
+.demo-input{padding:12px 16px;align-items:flex-start}
+.demo-kpis span{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.5}
+@media(max-width:1000px){
+  .landing-hero{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+}
+@media(max-width:700px){
+  .landing-hero{grid-template-columns:minmax(0,1fr)}
+  .hero-visual{width:100%;max-width:480px;justify-self:center}
+  .demo-layout{grid-template-columns:minmax(0,1fr)}
+  .demo-steps{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto;gap:8px}
+  .demo-steps li{padding:12px 8px;display:block}
+  .demo-steps span{margin-bottom:8px}
+  .demo-steps strong{font-size:.8125rem}
+  .demo-steps p{font-size:.8125rem}
+}
+@media(prefers-reduced-motion:reduce){
+  #particle-pause{display:none}
+  .landing :active{transform:none}
+}
+
+/* Keep the demo evidence flat within its one report surface. */
+
+@media(hover:hover) and (pointer:fine){.landing-replay:hover{background:var(--soft)}}
+
+.shape-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px}
+.shape-controls button{min-height:44px;min-width:44px;padding:8px 4px;font-size:.875rem;font-weight:400;color:var(--secondary);background:var(--clear);border:1px solid var(--border)}
+.shape-controls button[aria-pressed=true]{color:var(--page);background:var(--action);border-color:var(--action)}
+.shape-controls button:disabled{color:var(--secondary);background:var(--soft);border-color:var(--border);cursor:default}
+#particle-pause[hidden]{display:none}
+
+@media(max-width:600px){
+  .demo-steps{grid-template-columns:minmax(0,1fr);gap:12px}
+  .demo-steps li{display:flex;gap:12px;padding:16px}
+  .demo-steps span{margin-bottom:0}
+  .demo-steps strong{font-size:1rem}
+  .demo-steps p{font-size:.9375rem}
+}

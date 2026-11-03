@@ -1,0 +1,16 @@
+{
+  "created": "2026-11-03T18:53:39.517Z",
+  "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+  "question": "Does gamification help primary school pupils learn mathematics?",
+  "titles": [
+    "Perceptions of Students for Gamification Approach: Kahoot as a Case Study",
+    "A novel approach to learning music and piano based on mixed reality and gamification",
+    "Gamification and mathematics learning among primary school pupils: a randomized study"
+  ],
+  "pass": [
+    3
+  ],
+  "neurons": 1.0568945407867432,
+  "thinkingDisabled": true,
+  "jsonVerified": true
+}

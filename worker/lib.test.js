@@ -328,7 +328,7 @@ test("cache freshness rejects missing and future timestamps and uses the precise
   assert(!cacheIsFresh({ savedAt }, savedAt - 1));
   assert(!cacheIsFresh({}, savedAt));
   assert(!cacheIsFresh({ savedAt: "not a timestamp" }, savedAt));
-  assert.equal(dailyCap(), 50);
+  assert.equal(dailyCap(), 30);
   assert.equal(dailyCap("0"), 0);
   for (const value of [null, "", "-1", "1.5", "1e3", "wrong", Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => dailyCap(value));
 });

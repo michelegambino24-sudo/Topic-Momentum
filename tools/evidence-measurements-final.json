@@ -1,0 +1,1236 @@
+{
+  "created": "2026-11-03T18:55:12.706Z",
+  "planningModel": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "judgingModel": "@cf/qwen/qwen3-30b-a3b-fp8",
+  "method": "Full final Worker with live AI and authenticated OpenAlex; isolated in-memory KV; normal per-search and free-neuron limits; no fixture judgments; Middle East row replaced by the later full-pipeline recheck after removing a duplicate place group.",
+  "baselineNeurons": 3470,
+  "totalMeasuredNeurons": 657.8673859834671,
+  "maxSearchNeurons": 110.73683071136475,
+  "ledger": {
+    "used": 4167.316534280777,
+    "reserved": 0
+  },
+  "searches": [
+    {
+      "question": "social media, kids, attention",
+      "mode": "ai",
+      "neurons": 110.73683071136475,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 110.73683071136475,
+        "measured": true,
+        "calls": 8,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 98.0008544921875,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 12.735976219177246
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "social media",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "adhd",
+            "attention problems",
+            "attention span",
+            "inattention"
+          ],
+          [
+            "child",
+            "childhood",
+            "children",
+            "early childhood",
+            "infant",
+            "kindergarten",
+            "pediatric",
+            "preschool",
+            "toddler"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 0,
+        "total": 20,
+        "early": {
+          "matched": 0,
+          "total": 10
+        },
+        "late": {
+          "matched": 0,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Few papers match this question exactly",
+        "Not enough checked experts for this question",
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [],
+      "experts": [],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 33.658599853515625
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 32.99832534790039
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.2432541847229004
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 31.343929290771484
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.7467870712280273
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.916165828704834
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.2114028930664062
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.6183662414550781
+        }
+      ]
+    },
+    {
+      "question": "Is children’s mental health a growing field in the Middle East, and who’s leading it?",
+      "mode": "ai",
+      "neurons": 89.61750531196594,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 89.61750531196594,
+        "measured": true,
+        "calls": 8,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 65.40154266357422,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 24.215962648391724
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "mental health",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "child",
+            "childhood",
+            "children",
+            "early childhood",
+            "infant",
+            "kindergarten",
+            "pediatric",
+            "preschool",
+            "toddler"
+          ],
+          [
+            "bahrain",
+            "bahraini",
+            "egypt",
+            "egyptian",
+            "emirati",
+            "gulf states",
+            "iran",
+            "iranian",
+            "iraq",
+            "iraqi",
+            "israel",
+            "israeli",
+            "jordanian",
+            "ksa",
+            "kuwait",
+            "kuwaiti",
+            "lebanese",
+            "lebanon",
+            "middle east",
+            "middle eastern",
+            "oman",
+            "omani",
+            "palestine",
+            "palestinian",
+            "qatar",
+            "qatari",
+            "saudi",
+            "saudi arabia",
+            "saudi arabian",
+            "syria",
+            "syrian",
+            "turkish",
+            "türkiye",
+            "uae",
+            "united arab emirates",
+            "yemen",
+            "yemeni"
+          ]
+        ],
+        "place": {
+          "codes": [
+            "AE",
+            "BH",
+            "EG",
+            "IL",
+            "IQ",
+            "IR",
+            "JO",
+            "KW",
+            "LB",
+            "OM",
+            "PS",
+            "QA",
+            "SA",
+            "SY",
+            "TR",
+            "YE"
+          ],
+          "mode": "mentions",
+          "label": "Middle East",
+          "terms": [
+            "middle east",
+            "middle eastern",
+            "gulf states",
+            "bahrain",
+            "bahraini",
+            "egypt",
+            "egyptian",
+            "iran",
+            "iranian",
+            "iraq",
+            "iraqi",
+            "israel",
+            "israeli",
+            "jordanian",
+            "kuwait",
+            "kuwaiti",
+            "lebanon",
+            "lebanese",
+            "oman",
+            "omani",
+            "palestine",
+            "palestinian",
+            "qatar",
+            "qatari",
+            "saudi arabia",
+            "saudi",
+            "saudi arabian",
+            "ksa",
+            "syria",
+            "syrian",
+            "türkiye",
+            "turkish",
+            "united arab emirates",
+            "uae",
+            "emirati",
+            "yemen",
+            "yemeni"
+          ]
+        },
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 1,
+        "total": 20,
+        "early": {
+          "matched": 1,
+          "total": 10
+        },
+        "late": {
+          "matched": 0,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "A systematic review on the mental health of children and adolescents in areas of armed conflict in the Middle East",
+          "year": 2011,
+          "citations": 314,
+          "url": "https://doi.org/10.1111/j.1365-2214.2011.01246.x"
+        },
+        {
+          "title": "The educational and mental health needs of Syrian refugee children",
+          "year": 2015,
+          "citations": 280,
+          "url": "https://openalex.org/W2601253655"
+        },
+        {
+          "title": "Child and Adolescent Mental Health Care in Iran: Current Status and Future Directions.",
+          "year": 2016,
+          "citations": 31,
+          "url": "https://openalex.org/W2555022308"
+        },
+        {
+          "title": "Child and adolescent psychiatry training and services in the Middle East region: a current status assessment",
+          "year": 2019,
+          "citations": 28,
+          "url": "https://doi.org/10.1007/s00787-019-01360-2"
+        },
+        {
+          "title": "Developing a National Strategy for Child and Adolescent Mental Health in Palestine",
+          "year": 2023,
+          "citations": 13,
+          "url": "https://doi.org/10.1192/bjo.2023.264"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Souheil R. Hallit",
+          "count": 18,
+          "url": "https://openalex.org/A5058939165"
+        },
+        {
+          "name": "Elie Georges Karam",
+          "count": 17,
+          "url": "https://openalex.org/A5073750953"
+        },
+        {
+          "name": "Michael Pluess",
+          "count": 16,
+          "url": "https://openalex.org/A5031550800"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 35.463523864746094
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.681877374649048
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 29.938018798828125
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.992957353591919
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.03216028213501
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.1725809574127197
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.932386875152588
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.4039998054504395
+        }
+      ]
+    },
+    {
+      "question": "Does gamification help primary school pupils learn mathematics?",
+      "mode": "ai",
+      "neurons": 79.86724996566772,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 79.86724996566772,
+        "measured": true,
+        "calls": 7,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 63.95501708984375,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 15.912232875823975
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "gamification",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "math",
+            "mathematical",
+            "mathematics",
+            "maths"
+          ],
+          [
+            "elementary school",
+            "elementary students",
+            "grade school",
+            "primary pupils",
+            "primary school"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 3,
+        "total": 19,
+        "early": {
+          "matched": 3,
+          "total": 9
+        },
+        "late": {
+          "matched": 0,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": true
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers",
+        "The trend may be distorted by off-topic papers."
+      ],
+      "papers": [
+        {
+          "title": "Gamification in Primary School Mathematics Teaching",
+          "year": 2023,
+          "citations": 8,
+          "url": "https://doi.org/10.54097/ehss.v22i.12493"
+        },
+        {
+          "title": "Effects of Self-Adaptive Approach of Iterative Game Based Learning on Performance and Satisfaction of Elementary School Students in Mathematics: An Action Research Field Experiment",
+          "year": 2025,
+          "citations": 6,
+          "url": "https://doi.org/10.1007/s42979-025-04071-5"
+        },
+        {
+          "title": "Levels, stickers, and strategies: how gamified math tasks foster elementary student engagement",
+          "year": 2026,
+          "citations": 5,
+          "url": "https://doi.org/10.1007/s10639-025-13866-1"
+        },
+        {
+          "title": "Gamification in Primary School Mathematics Education",
+          "year": 2023,
+          "citations": 4,
+          "url": "https://doi.org/10.54097/ehss.v22i.12468"
+        },
+        {
+          "title": "The impact of gamification on achievement in mathematics among primary school pupils with hearing impairment",
+          "year": 2024,
+          "citations": 4,
+          "url": "https://doi.org/10.1080/2331186x.2024.2432100"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Zilong Pan",
+          "count": 2,
+          "url": "https://openalex.org/A5050927864"
+        },
+        {
+          "name": "Arif Mahya Fanny",
+          "count": 1,
+          "url": "https://openalex.org/A5000761059"
+        },
+        {
+          "name": "Lubna Ali Mohammed",
+          "count": 1,
+          "url": "https://openalex.org/A5003574096"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 30.391311645507812
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.1940438747406006
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 33.56370544433594
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.183964729309082
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.38564395904541
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.260565757751465
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.888014554977417
+        }
+      ]
+    },
+    {
+      "question": "How is research on CRISPR for sickle cell disease growing?",
+      "mode": "ai",
+      "neurons": 81.4143785238266,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 81.4143785238266,
+        "measured": true,
+        "calls": 9,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 51.864023208618164,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 29.550355315208435
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "crispr",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "sickle cell anemia",
+            "sickle cell disease"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 4,
+        "total": 20,
+        "early": {
+          "matched": 2,
+          "total": 10
+        },
+        "late": {
+          "matched": 2,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "CRISPR-Cas9 Gene Editing for Sickle Cell Disease and β-Thalassemia",
+          "year": 2020,
+          "citations": 1965,
+          "url": "https://doi.org/10.1056/nejmoa2031054"
+        },
+        {
+          "title": "Genome editing using CRISPR-Cas9 to create the HPFH genotype in HSPCs: An approach for treating sickle cell disease and β-thalassemia",
+          "year": 2016,
+          "citations": 190,
+          "url": "https://doi.org/10.1073/pnas.1612075113"
+        },
+        {
+          "title": "CRISPR-Cas9 Editing of the HBG1 and HBG2 Promoters to Treat Sickle Cell Disease",
+          "year": 2023,
+          "citations": 183,
+          "url": "https://doi.org/10.1056/nejmoa2215643"
+        },
+        {
+          "title": "CRISPR/Cas9 in the treatment of sickle cell disease (SCD) and its comparison with traditional treatment approaches: a review",
+          "year": 2024,
+          "citations": 19,
+          "url": "https://doi.org/10.1097/ms9.0000000000002478"
+        },
+        {
+          "title": "Sickle Cell Disease Approvals Include First CRISPR Gene Editing Therapy",
+          "year": 2024,
+          "citations": 13,
+          "url": "https://doi.org/10.1001/jama.2023.26113"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Haydar Frangoul",
+          "count": 19,
+          "url": "https://openalex.org/A5021909393"
+        },
+        {
+          "name": "Akshay Sharma",
+          "count": 17,
+          "url": "https://openalex.org/A5068720519"
+        },
+        {
+          "name": "Franco Locatelli",
+          "count": 16,
+          "url": "https://openalex.org/A5022712318"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 22.851896286010742
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.2597126960754395
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 29.012126922607422
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.8556424379348755
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 6.1843671798706055
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.998696327209473
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.6197888851165771
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 6.32215690612793
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.309990882873535
+        }
+      ]
+    },
+    {
+      "question": "What research links air pollution to asthma in children?",
+      "mode": "ai",
+      "neurons": 81.452507853508,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 81.452507853508,
+        "measured": true,
+        "calls": 9,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 55.95589256286621,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 25.496615290641785
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "air pollution",
+        "synonyms": [
+          "air quality"
+        ],
+        "includeGroups": [
+          [
+            "asthma"
+          ],
+          [
+            "child",
+            "childhood",
+            "children",
+            "early childhood",
+            "infant",
+            "kindergarten",
+            "pediatric",
+            "preschool",
+            "toddler"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [
+          "climate change",
+          "food allergy",
+          "pregnancy",
+          "racism"
+        ],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 1,
+        "total": 20,
+        "early": {
+          "matched": 0,
+          "total": 10
+        },
+        "late": {
+          "matched": 1,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "Exposure to traffic-related air pollution and risk of development of childhood asthma: A systematic review and meta-analysis",
+          "year": 2016,
+          "citations": 815,
+          "url": "https://doi.org/10.1016/j.envint.2016.11.012"
+        },
+        {
+          "title": "Childhood Incident Asthma and Traffic-Related Air Pollution at Home and School",
+          "year": 2010,
+          "citations": 578,
+          "url": "https://doi.org/10.1289/ehp.0901232"
+        },
+        {
+          "title": "The influence of childhood traffic‐related air pollution exposure on asthma, allergy and sensitization: a systematic review and a meta‐analysis of birth cohort studies",
+          "year": 2014,
+          "citations": 480,
+          "url": "https://doi.org/10.1111/all.12561"
+        },
+        {
+          "title": "Effect of outdoor air pollution on asthma exacerbations in children and adults: Systematic review and multilevel meta-analysis",
+          "year": 2017,
+          "citations": 450,
+          "url": "https://doi.org/10.1371/journal.pone.0174050"
+        },
+        {
+          "title": "Long-term exposure to close-proximity air pollution and asthma and allergies in urban children",
+          "year": 2010,
+          "citations": 311,
+          "url": "https://doi.org/10.1183/09031936.00116109"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Erik Melén",
+          "count": 13,
+          "url": "https://openalex.org/A5049025189"
+        },
+        {
+          "name": "Olena Gruzieva",
+          "count": 12,
+          "url": "https://openalex.org/A5066222984"
+        },
+        {
+          "name": "Kees de Hoogh",
+          "count": 10,
+          "url": "https://openalex.org/A5051637261"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 30.23984146118164
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.5721921920776367
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 25.71605110168457
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.8817299604415894
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.243349075317383
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.258028507232666
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.442394733428955
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.133876800537109
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.9650440216064453
+        }
+      ]
+    },
+    {
+      "question": "How does sleep affect memory in teenagers?",
+      "mode": "ai",
+      "neurons": 77.49303817749023,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 77.49303817749023,
+        "measured": true,
+        "calls": 8,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 57.35856246948242,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 20.134475708007812
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "sleep",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "memory",
+            "recall",
+            "working memory"
+          ],
+          [
+            "adolescent",
+            "adolescents",
+            "teen",
+            "teenager",
+            "teenagers",
+            "teens"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 4,
+        "total": 20,
+        "early": {
+          "matched": 0,
+          "total": 10
+        },
+        "late": {
+          "matched": 4,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": true
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers",
+        "The trend may be distorted by off-topic papers."
+      ],
+      "papers": [
+        {
+          "title": "Sleep and memory in healthy children and adolescents – A critical review",
+          "year": 2010,
+          "citations": 277,
+          "url": "https://doi.org/10.1016/j.smrv.2009.10.006"
+        },
+        {
+          "title": "Sleep Improves Memory: The Effect of Sleep on Long Term Memory in Early Adolescence",
+          "year": 2012,
+          "citations": 76,
+          "url": "https://doi.org/10.1371/journal.pone.0042191"
+        },
+        {
+          "title": "Sleep electroencephalogram (EEG) oscillations and associated memory processing during childhood and early adolescence.",
+          "year": 2022,
+          "citations": 22,
+          "url": "https://doi.org/10.1037/dev0001487"
+        },
+        {
+          "title": "No effect of targeted memory reactivation during sleep on retention of vocabulary in adolescents",
+          "year": 2020,
+          "citations": 14,
+          "url": "https://doi.org/10.1038/s41598-020-61183-z"
+        },
+        {
+          "title": "Association between free-living sleep and memory and attention in healthy adolescents",
+          "year": 2020,
+          "citations": 9,
+          "url": "https://doi.org/10.1038/s41598-020-73774-x"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Ju Lynn Ong",
+          "count": 6,
+          "url": "https://openalex.org/A5090401556"
+        },
+        {
+          "name": "Michael W.L. Chee",
+          "count": 6,
+          "url": "https://openalex.org/A5102945746"
+        },
+        {
+          "name": "Jared Saletin",
+          "count": 5,
+          "url": "https://openalex.org/A5013743861"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 29.30541229248047
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.645118236541748
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 28.053150177001953
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.599867820739746
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.8433823585510254
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.791444778442383
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.644145965576172
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 2.6105165481567383
+        }
+      ]
+    },
+    {
+      "question": "Which researchers study epigenetics during pregnancy?",
+      "mode": "ai",
+      "neurons": 93.86155474185944,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 93.86155474185944,
+        "measured": true,
+        "calls": 9,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 65.99241256713867,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 27.869142174720764
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "epigenetics",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "antenatal",
+            "expectant mothers",
+            "gestation",
+            "gestational",
+            "maternal",
+            "pregnancy",
+            "pregnant",
+            "prenatal"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 4,
+        "total": 20,
+        "early": {
+          "matched": 1,
+          "total": 10
+        },
+        "late": {
+          "matched": 3,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "DNA Methylation in Newborns and Maternal Smoking in Pregnancy: Genome-wide Consortium Meta-analysis",
+          "year": 2016,
+          "citations": 886,
+          "url": "https://doi.org/10.1016/j.ajhg.2016.02.019"
+        },
+        {
+          "title": "Lifestyle, Pregnancy and Epigenetic Effects",
+          "year": 2015,
+          "citations": 128,
+          "url": "https://doi.org/10.2217/epi.14.71"
+        },
+        {
+          "title": "Epigenetic regulation of human placental function and pregnancy outcome: considerations for causal inference",
+          "year": 2015,
+          "citations": 126,
+          "url": "https://doi.org/10.1016/j.ajog.2015.07.011"
+        },
+        {
+          "title": "The Redistribution of Reproductive Responsibility: On the Epigenetics of “Environment” in Prenatal Interventions",
+          "year": 2018,
+          "citations": 117,
+          "url": "https://doi.org/10.1111/maq.12424"
+        },
+        {
+          "title": "Prenatal and Perinatal Environmental Influences on the Human Fetal and Placental Epigenome",
+          "year": 2012,
+          "citations": 92,
+          "url": "https://doi.org/10.1038/clpt.2012.141"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Janine F. Felix",
+          "count": 41,
+          "url": "https://openalex.org/A5044611532"
+        },
+        {
+          "name": "Andrés Cárdenas",
+          "count": 34,
+          "url": "https://openalex.org/A5074833807"
+        },
+        {
+          "name": "Rebecca C. Fry",
+          "count": 34,
+          "url": "https://openalex.org/A5080112312"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 36.23358917236328
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.3848137855529785
+        },
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 29.75882339477539
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 1.0947211980819702
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 3.5795440673828125
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.567637920379639
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 2.256676435470581
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.498388767242432
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.487360000610352
+        }
+      ]
+    },
+    {
+      "question": "How is research on battery recycling developing since 2020?",
+      "mode": "ai",
+      "neurons": 43.424320697784424,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 43.424320697784424,
+        "measured": true,
+        "calls": 6,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 18.82831573486328,
+          "@cf/qwen/qwen3-30b-a3b-fp8": 24.596004962921143
+        },
+        "sourceCalls": 18
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "battery recycling",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2020,
+        "to": null
+      },
+      "checked": {
+        "matched": 15,
+        "total": 20,
+        "early": {
+          "matched": 9,
+          "total": 10
+        },
+        "late": {
+          "matched": 6,
+          "total": 10
+        },
+        "lowPrecision": false,
+        "trendDistorted": true
+      },
+      "notices": [
+        "The trend may be distorted by off-topic papers."
+      ],
+      "papers": [
+        {
+          "title": "Sustainable Recycling Technology for Li-Ion Batteries and Beyond: Challenges and Future Prospects",
+          "year": 2020,
+          "citations": 2043,
+          "url": "https://doi.org/10.1021/acs.chemrev.9b00535"
+        },
+        {
+          "title": "Pyrometallurgical options for recycling spent lithium-ion batteries: A comprehensive review",
+          "year": 2021,
+          "citations": 1061,
+          "url": "https://doi.org/10.1016/j.jpowsour.2021.229622"
+        },
+        {
+          "title": "Recycling of Lithium‐Ion Batteries—Current State of the Art, Circular Economy, and Next Generation Recycling",
+          "year": 2022,
+          "citations": 808,
+          "url": "https://doi.org/10.1002/aenm.202102917"
+        },
+        {
+          "title": "A review of recycling spent lithium-ion battery cathode materials using hydrometallurgical treatments",
+          "year": 2021,
+          "citations": 554,
+          "url": "https://doi.org/10.1016/j.est.2020.102217"
+        },
+        {
+          "title": "Toward Direct Regeneration of Spent Lithium-Ion Batteries: A Next-Generation Recycling Method",
+          "year": 2024,
+          "citations": 508,
+          "url": "https://doi.org/10.1021/acs.chemrev.3c00884"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Mari Lundström",
+          "count": 16,
+          "url": "https://openalex.org/A5002178549"
+        },
+        {
+          "name": "Guangmin Zhou",
+          "count": 16,
+          "url": "https://openalex.org/A5028227545"
+        },
+        {
+          "name": "Zheng Liang",
+          "count": 13,
+          "url": "https://openalex.org/A5027442022"
+        }
+      ],
+      "actualModelCalls": [
+        {
+          "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "neurons": 18.82831573486328
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.862448692321777
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.17288875579834
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.144216537475586
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 5.943889141082764
+        },
+        {
+          "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "neurons": 4.472561836242676
+        }
+      ]
+    }
+  ],
+  "supersededRuns": [
+    {
+      "question": "Is children’s mental health a growing field in the Middle East, and who’s leading it?",
+      "neurons": 129.06665360927582,
+      "reason": "Removed redundant Middle East include group; replaced below with the complete rechecked search."
+    }
+  ],
+  "meanSearchNeurons": 82.23342324793339,
+  "aiSearchesPerDay": 50,
+  "projectedAtMeasuredWorst": 5536.841535568237,
+  "neuronBudgetPerDay": 9000,
+  "updated": "2026-11-03T19:03:11.535Z",
+  "accountUsageBaselineAfterMeasurements": 4260,
+  "earlierMeasurementHistory": [
+    {
+      "formerFile": "tools/evidence-measurements-70b-probe.json",
+      "totalMeasuredNeurons": 29.697952270507812,
+      "questions": 1,
+      "description": "Superseded diagnostic measurement; usage remains accounted for in the daily baseline."
+    },
+    {
+      "formerFile": "tools/evidence-measurements-70b-probe2.json",
+      "totalMeasuredNeurons": 29.697952270507812,
+      "questions": 1,
+      "description": "Superseded diagnostic measurement; usage remains accounted for in the daily baseline."
+    },
+    {
+      "formerFile": "tools/evidence-measurements-70b-probe3.json",
+      "totalMeasuredNeurons": 124.58015966415405,
+      "questions": 1,
+      "description": "Superseded diagnostic measurement; usage remains accounted for in the daily baseline."
+    },
+    {
+      "formerFile": "tools/evidence-measurements-70b.json",
+      "totalMeasuredNeurons": 1555.6414771080017,
+      "questions": 8,
+      "description": "Superseded diagnostic measurement; usage remains accounted for in the daily baseline."
+    },
+    {
+      "formerFile": "tools/evidence-measurements-middle-east-recheck.json",
+      "totalMeasuredNeurons": 89.61750531196594,
+      "questions": 1,
+      "description": "Superseded diagnostic measurement; usage remains accounted for in the daily baseline."
+    }
+  ]
+}

@@ -82,6 +82,7 @@
   }
   function parse(sentence, currentYear, { refinement = false, currentTopic = "" } = {}) {
     if (!Number.isInteger(currentYear)) throw new Error("Supply the current year.");
+    if (!refinement) { const parts=questionParts(sentence,currentYear); if(parts.recognized)return parsedQuestion(parts,currentYear); }
     // "children's lungs" → "lungs in children", so the group word and the focus word are both kept.
     const original = String(sentence).replace(/[’‘]/g, "'")
       .replace(/\b(children|kids|infants|women|adolescents|teenagers|teens|students|mothers)'s?\s+([\p{L}-]+)/giu, "$2 in $1");
@@ -193,5 +194,55 @@
     const noChange = from === current.from && to === current.to && JSON.stringify(groups.map(key)) === JSON.stringify((current.includeGroups || []).map(key));
     return { ...current, includeGroups: groups, from, to, ignored, errors: [...new Set(errors)], note: notes(ignored), noChange };
   }
-  globalThis.TMM_QUERY_PARSER = Object.freeze({ parse, merge, countries, people, focusTerms, key });
+  // Shared question analysis for the deterministic parser, plan coverage and title judge.
+  // Only question scaffolding is discarded; concepts survive even when a model omits them.
+  const PRIMARY_SCHOOL = ["primary school", "elementary school", "primary pupils", "elementary students", "grade school"];
+  const SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning related how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving increasing bigger before fast field fields topic topics area areas domain domains help helps learn learning leading lead know evidence relationship relationships affect affects effect effects impact impacts during used applied treat treating disease written authored".split(" "));
+  function questionParts(sentence, currentYear) {
+    const text = String(sentence).replace(/[’‘]/g,"'").replace(/\bchildrens\b/gi,"children").replace(/\bwho's\b/gi,"who is").replace(/\b(children|kids|women|teens|teenagers|students)'s?\b/gi,"$1");
+    let rest = text.replace(/\b(?:excluding|exclude|except|without)\b[\s\S]*$/i, "");
+    const population = [];
+    const addPopulation = (label, terms, pattern, preset = null) => {
+      const position=rest.search(pattern);
+      if (position<0) return;
+      rest = rest.replace(pattern, match=>" ".repeat(match.length));
+      population.push({label,terms:[...terms],preset,position});
+    };
+    addPopulation("Primary school pupils",PRIMARY_SCHOOL,/\b(?:primary school(?: pupils| students| children)?|elementary(?: school)?(?: pupils| students| children)?|primary pupils|grade school)\b/gi);
+    addPopulation("Children 0–9",presets.children.terms,/\b(?:young children|early childhood|children|kids|child|toddlers?|preschoolers?|preschool|infants?)\b/gi,"children");
+    addPopulation("Adolescents",presets.adolescents.terms,/\b(?:teens?|teenagers?|adolescents?)\b/gi,"adolescents");
+    addPopulation("Pregnancy",presets.pregnancy.terms,/\b(?:pregnant women|pregnant woman|during pregnancy|pregnancy|pregnant|prenatal|antenatal)\b/gi,"pregnancy");
+    addPopulation("Older adults",presets.olderAdults.terms,/\b(?:older adults?|elderly|older people)\b/gi,"olderAdults");
+    addPopulation("Women",presets.women.terms,/\b(?:women|woman)\b/gi,"women");
+    if (!population.some(item=>item.preset==="children" || item.label==="Primary school pupils")) addPopulation("Students",presets.students.terms,/\b(?:(?:university|college) students|students)\b/gi,"students");
+    const place = [];
+    for (const [preset, pattern] of [["middleEast",/\b(?:middle east|mena|arab world)\b/gi],["gcc",/\b(?:gulf cooperation council|gulf countries|gulf|gcc)\b/gi]]) {
+      if (pattern.test(rest)) { place.push({preset,label:presets[preset].label,terms:[...presets[preset].terms]});rest=rest.replace(pattern," "); }
+    }
+    for (const country of countries) {
+      const pattern=new RegExp("\\b(?:in|from|within|written in|authored in)\\s+(?:the\\s+)?("+country.terms.map(escapeRE).join("|")+")\\b","gi");
+      if(pattern.test(rest)){place.push({label:country.label,terms:[...country.terms]});rest=rest.replace(pattern," ");}
+    }
+    let from=2010,to=null,explicitRange=false;
+    rest=rest.replace(/\b(?:since|from|after)\s+(\d{4})\b/gi,(match,year)=>{from=+year+(/^after/i.test(match)?1:0);explicitRange=true;return " ";});
+    rest=rest.replace(/\bbetween\s+(\d{4})\s+and\s+(\d{4})\b/gi,(_,a,b)=>{from=+a;to=+b;explicitRange=true;return " ";});
+    rest=rest.replace(/\b(?:excluding|exclude|except|without)\b[\s\S]*$/i,"");
+    // Structural connectors create AND concepts, unlike alternatives inside a concept.
+    const chunks=rest.split(/[,;?]|\b(?:for|to|during|help|helps|links|affect|affects|and)\b/gi);
+    const concepts=chunks.map(chunk=>clean(chunk).split(/\s+/).filter(word=>!SCAFFOLD.has(word.toLowerCase().replace(/[^\p{L}\p{N}]/gu,""))).join(" ").replace(/[^\p{L}\p{N}\s-]/gu," ").trim()).filter(Boolean);
+    const recognized=/^\s*(?:how\b|what\s+research\b|which\s+researchers\b|does\b|is\b[\s\S]*\bgrowing\b)/i.test(text) || /^\s*childrens\b/i.test(sentence);
+    return {question:String(sentence),concepts:[...new Set(concepts)],population,place,from,to,explicitRange,recognized};
+  }
+  function parsedQuestion(parts,year) {
+    const groups=[];
+    for(const item of parts.population)groups.push({kind:"people",label:item.label,terms:item.terms,position:item.position});
+    for(const item of parts.place)groups.push({kind:"place",label:item.label,terms:item.terms,position:parts.question.toLowerCase().indexOf(item.label.toLowerCase())});
+    for(const concept of parts.concepts.slice(1))groups.push({kind:"focus",label:concept,terms:[concept.toLowerCase()],position:parts.question.toLowerCase().indexOf(concept.toLowerCase())});
+    groups.sort((a,b)=>a.position-b.position);
+    const rangeError=validateRange(parts.from,parts.to,year);
+    const overflow=groups.length>3;
+    return {topic:parts.concepts[0] || "",synonyms:[],includeGroups:groups.slice(0,3).map(item=>item.terms),groups:groups.slice(0,3),from:parts.from,to:parts.to,explicitRange:parts.explicitRange,spans:[],ignored:overflow?groups.slice(3).map(item=>item.label):[],errors:[...(!parts.concepts.length?["Add a research topic, then try again."]:[]),...(rangeError?[rangeError]:[])],note:overflow?"This question has more than three required groups. Narrow it before searching.":""};
+  }
+
+  globalThis.TMM_QUERY_PARSER = Object.freeze({ parse, merge, countries, people, focusTerms, key, questionParts, PRIMARY_SCHOOL });
 })();

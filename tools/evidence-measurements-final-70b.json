@@ -1,0 +1,719 @@
+{
+  "created": "2026-11-03T18:49:10.543Z",
+  "method": "Full final Worker in temporary Cloudflare preview, real AI usage and authenticated OpenAlex, ordinary caps unchanged",
+  "searches": [
+    {
+      "question": "social media, kids, attention",
+      "mode": "ai",
+      "neurons": 179.72854614257812,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 179.72854614257812,
+        "measured": true,
+        "calls": 8,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 179.72854614257812
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "social media",
+        "synonyms": [
+          "digital media",
+          "online platforms",
+          "social networking"
+        ],
+        "includeGroups": [
+          [
+            "adhd",
+            "attention problems",
+            "attention span",
+            "inattention"
+          ],
+          [
+            "child",
+            "childhood",
+            "children",
+            "early childhood",
+            "infant",
+            "kindergarten",
+            "pediatric",
+            "preschool",
+            "toddler"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [
+          "agriculture",
+          "architecture",
+          "dinosaurs",
+          "dna methylation",
+          "driving",
+          "psychiatric drugs"
+        ],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 1,
+        "total": 20,
+        "early": {
+          "matched": 0,
+          "total": 10
+        },
+        "late": {
+          "matched": 1,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Few papers match this question exactly",
+        "Not enough checked experts for this question",
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [],
+      "experts": []
+    },
+    {
+      "question": "Is children’s mental health a growing field in the Middle East, and who’s leading it?",
+      "mode": "ai",
+      "neurons": 155.14019680023193,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 155.14019680023193,
+        "measured": true,
+        "calls": 7,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 155.14019680023193
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "mental health",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "middle east"
+          ],
+          [
+            "child",
+            "childhood",
+            "children",
+            "early childhood",
+            "infant",
+            "kindergarten",
+            "pediatric",
+            "preschool",
+            "toddler"
+          ],
+          [
+            "bahrain",
+            "bahraini",
+            "egypt",
+            "egyptian",
+            "emirati",
+            "gulf states",
+            "iran",
+            "iranian",
+            "iraq",
+            "iraqi",
+            "israel",
+            "israeli",
+            "jordanian",
+            "ksa",
+            "kuwait",
+            "kuwaiti",
+            "lebanese",
+            "lebanon",
+            "middle east",
+            "middle eastern",
+            "oman",
+            "omani",
+            "palestine",
+            "palestinian",
+            "qatar",
+            "qatari",
+            "saudi",
+            "saudi arabia",
+            "saudi arabian",
+            "syria",
+            "syrian",
+            "turkish",
+            "türkiye",
+            "uae",
+            "united arab emirates",
+            "yemen",
+            "yemeni"
+          ]
+        ],
+        "place": {
+          "codes": [
+            "AE",
+            "BH",
+            "EG",
+            "IL",
+            "IQ",
+            "IR",
+            "JO",
+            "KW",
+            "LB",
+            "OM",
+            "PS",
+            "QA",
+            "SA",
+            "SY",
+            "TR",
+            "YE"
+          ],
+          "mode": "mentions",
+          "label": "Middle East",
+          "terms": [
+            "middle east",
+            "middle eastern",
+            "gulf states",
+            "bahrain",
+            "bahraini",
+            "egypt",
+            "egyptian",
+            "iran",
+            "iranian",
+            "iraq",
+            "iraqi",
+            "israel",
+            "israeli",
+            "jordanian",
+            "kuwait",
+            "kuwaiti",
+            "lebanon",
+            "lebanese",
+            "oman",
+            "omani",
+            "palestine",
+            "palestinian",
+            "qatar",
+            "qatari",
+            "saudi arabia",
+            "saudi",
+            "saudi arabian",
+            "ksa",
+            "syria",
+            "syrian",
+            "türkiye",
+            "turkish",
+            "united arab emirates",
+            "uae",
+            "emirati",
+            "yemen",
+            "yemeni"
+          ]
+        },
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 2,
+        "total": 20,
+        "early": {
+          "matched": 1,
+          "total": 10
+        },
+        "late": {
+          "matched": 1,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Not enough checked experts for this question",
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "A systematic review on the mental health of children and adolescents in areas of armed conflict in the Middle East",
+          "year": 2011,
+          "citations": 314,
+          "url": "https://doi.org/10.1111/j.1365-2214.2011.01246.x"
+        },
+        {
+          "title": "Mental Health in Syrian Refugee Children Resettling in the United States: War Trauma, Migration, and the Role of Parental Stress",
+          "year": 2018,
+          "citations": 85,
+          "url": "https://doi.org/10.1016/j.jaac.2018.01.013"
+        },
+        {
+          "title": "Child and adolescent psychiatry training and services in the Middle East region: a current status assessment",
+          "year": 2019,
+          "citations": 28,
+          "url": "https://doi.org/10.1007/s00787-019-01360-2"
+        },
+        {
+          "title": "JOURNEY OF BUILDING MENTAL HEALTH SERVICES FOR CHILDREN, ADOLESCENTS, AND WOMEN IN QATAR",
+          "year": 2023,
+          "citations": 0,
+          "url": "https://doi.org/10.1016/j.jaac.2023.09.002"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Muhammad Waqar Azeem",
+          "count": 3,
+          "url": "https://openalex.org/A5100641255"
+        },
+        {
+          "name": "Ahsan Nazeer",
+          "count": 2,
+          "url": "https://openalex.org/A5050661659"
+        }
+      ]
+    },
+    {
+      "question": "Does gamification help primary school pupils learn mathematics?",
+      "mode": "ai",
+      "neurons": 149.53445053100586,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 149.53445053100586,
+        "measured": true,
+        "calls": 6,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 149.53445053100586
+        },
+        "sourceCalls": 7
+      },
+      "aiNotUsedReason": null,
+      "cached": true,
+      "plan": {
+        "topic": "gamification",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "math",
+            "mathematical",
+            "mathematics",
+            "maths"
+          ],
+          [
+            "elementary school",
+            "elementary students",
+            "grade school",
+            "primary pupils",
+            "primary school"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 5,
+        "total": 19,
+        "early": {
+          "matched": 3,
+          "total": 9
+        },
+        "late": {
+          "matched": 2,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "Gamification in Primary School Mathematics Teaching",
+          "year": 2023,
+          "citations": 8,
+          "url": "https://doi.org/10.54097/ehss.v22i.12493"
+        },
+        {
+          "title": "Effects of Self-Adaptive Approach of Iterative Game Based Learning on Performance and Satisfaction of Elementary School Students in Mathematics: An Action Research Field Experiment",
+          "year": 2025,
+          "citations": 6,
+          "url": "https://doi.org/10.1007/s42979-025-04071-5"
+        },
+        {
+          "title": "Levels, stickers, and strategies: how gamified math tasks foster elementary student engagement",
+          "year": 2026,
+          "citations": 5,
+          "url": "https://doi.org/10.1007/s10639-025-13866-1"
+        },
+        {
+          "title": "Gamification in Primary School Mathematics Education",
+          "year": 2023,
+          "citations": 4,
+          "url": "https://doi.org/10.54097/ehss.v22i.12468"
+        },
+        {
+          "title": "The impact of gamification on achievement in mathematics among primary school pupils with hearing impairment",
+          "year": 2024,
+          "citations": 4,
+          "url": "https://doi.org/10.1080/2331186x.2024.2432100"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Zilong Pan",
+          "count": 2,
+          "url": "https://openalex.org/A5050927864"
+        },
+        {
+          "name": "Arif Mahya Fanny",
+          "count": 1,
+          "url": "https://openalex.org/A5000761059"
+        },
+        {
+          "name": "Lubna Ali Mohammed",
+          "count": 1,
+          "url": "https://openalex.org/A5003574096"
+        }
+      ]
+    },
+    {
+      "question": "How is research on CRISPR for sickle cell disease growing?",
+      "mode": "ai",
+      "neurons": 230.39818000793457,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 230.39818000793457,
+        "measured": true,
+        "calls": 9,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 230.39818000793457
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "crispr",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "sickle cell anemia",
+            "sickle cell disease"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 2,
+        "total": 20,
+        "early": {
+          "matched": 2,
+          "total": 10
+        },
+        "late": {
+          "matched": 0,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "CRISPR-Cas9 Gene Editing for Sickle Cell Disease and β-Thalassemia",
+          "year": 2020,
+          "citations": 1965,
+          "url": "https://doi.org/10.1056/nejmoa2031054"
+        },
+        {
+          "title": "Genome editing using CRISPR-Cas9 to create the HPFH genotype in HSPCs: An approach for treating sickle cell disease and β-thalassemia",
+          "year": 2016,
+          "citations": 190,
+          "url": "https://doi.org/10.1073/pnas.1612075113"
+        },
+        {
+          "title": "CRISPR-Cas9 Editing of the HBG1 and HBG2 Promoters to Treat Sickle Cell Disease",
+          "year": 2023,
+          "citations": 183,
+          "url": "https://doi.org/10.1056/nejmoa2215643"
+        },
+        {
+          "title": "CRISPR/Cas9 in the treatment of sickle cell disease (SCD) and its comparison with traditional treatment approaches: a review",
+          "year": 2024,
+          "citations": 19,
+          "url": "https://doi.org/10.1097/ms9.0000000000002478"
+        },
+        {
+          "title": "Sickle Cell Disease Approvals Include First CRISPR Gene Editing Therapy",
+          "year": 2024,
+          "citations": 13,
+          "url": "https://doi.org/10.1001/jama.2023.26113"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Haydar Frangoul",
+          "count": 19,
+          "url": "https://openalex.org/A5021909393"
+        },
+        {
+          "name": "Akshay Sharma",
+          "count": 17,
+          "url": "https://openalex.org/A5068720519"
+        },
+        {
+          "name": "Franco Locatelli",
+          "count": 16,
+          "url": "https://openalex.org/A5022712318"
+        }
+      ]
+    },
+    {
+      "question": "What research links air pollution to asthma in children?",
+      "mode": "ai",
+      "neurons": 213.29254627227783,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 213.29254627227783,
+        "measured": true,
+        "calls": 9,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 213.29254627227783
+        },
+        "sourceCalls": 20
+      },
+      "aiNotUsedReason": null,
+      "cached": false,
+      "plan": {
+        "topic": "air pollution",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "asthma"
+          ],
+          [
+            "child",
+            "childhood",
+            "children",
+            "early childhood",
+            "infant",
+            "kindergarten",
+            "pediatric",
+            "preschool",
+            "toddler"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 3,
+        "total": 20,
+        "early": {
+          "matched": 3,
+          "total": 10
+        },
+        "late": {
+          "matched": 0,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": true
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers",
+        "The trend may be distorted by off-topic papers."
+      ],
+      "papers": [
+        {
+          "title": "Exposure to traffic-related air pollution and risk of development of childhood asthma: A systematic review and meta-analysis",
+          "year": 2016,
+          "citations": 815,
+          "url": "https://doi.org/10.1016/j.envint.2016.11.012"
+        },
+        {
+          "title": "Childhood Incident Asthma and Traffic-Related Air Pollution at Home and School",
+          "year": 2010,
+          "citations": 578,
+          "url": "https://doi.org/10.1289/ehp.0901232"
+        },
+        {
+          "title": "The influence of childhood traffic‐related air pollution exposure on asthma, allergy and sensitization: a systematic review and a meta‐analysis of birth cohort studies",
+          "year": 2014,
+          "citations": 480,
+          "url": "https://doi.org/10.1111/all.12561"
+        },
+        {
+          "title": "Effect of outdoor air pollution on asthma exacerbations in children and adults: Systematic review and multilevel meta-analysis",
+          "year": 2017,
+          "citations": 450,
+          "url": "https://doi.org/10.1371/journal.pone.0174050"
+        },
+        {
+          "title": "Prenatal Particulate Air Pollution and Asthma Onset in Urban Children. Identifying Sensitive Windows and Sex Differences",
+          "year": 2015,
+          "citations": 315,
+          "url": "https://doi.org/10.1164/rccm.201504-0658oc"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Gurjit K. Khurana Hershey",
+          "count": 14,
+          "url": "https://openalex.org/A5023724713"
+        },
+        {
+          "name": "Erik Melén",
+          "count": 13,
+          "url": "https://openalex.org/A5049025189"
+        },
+        {
+          "name": "Kees de Hoogh",
+          "count": 13,
+          "url": "https://openalex.org/A5051637261"
+        }
+      ]
+    },
+    {
+      "question": "How does sleep affect memory in teenagers?",
+      "mode": "ai",
+      "neurons": 186.45639324188232,
+      "measured": true,
+      "aiUsage": {
+        "neurons": 186.45639324188232,
+        "measured": true,
+        "calls": 9,
+        "byModel": {
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 186.45639324188232
+        },
+        "sourceCalls": 9
+      },
+      "aiNotUsedReason": null,
+      "cached": true,
+      "plan": {
+        "topic": "sleep",
+        "synonyms": [],
+        "includeGroups": [
+          [
+            "memory",
+            "recall",
+            "working memory"
+          ],
+          [
+            "adolescent",
+            "adolescents",
+            "teen",
+            "teenager",
+            "teenagers",
+            "teens"
+          ]
+        ],
+        "place": null,
+        "authoredCodes": [],
+        "exclusions": [],
+        "from": 2010,
+        "to": null
+      },
+      "checked": {
+        "matched": 0,
+        "total": 20,
+        "early": {
+          "matched": 0,
+          "total": 10
+        },
+        "late": {
+          "matched": 0,
+          "total": 10
+        },
+        "lowPrecision": true,
+        "trendDistorted": false
+      },
+      "notices": [
+        "Many matching papers may be off-topic; narrow the search for reliable numbers"
+      ],
+      "papers": [
+        {
+          "title": "Sleep and memory in healthy children and adolescents – A critical review",
+          "year": 2010,
+          "citations": 277,
+          "url": "https://doi.org/10.1016/j.smrv.2009.10.006"
+        },
+        {
+          "title": "Sleep Problems Across Development: A Pathway to Adolescent Risk Taking Through Working Memory",
+          "year": 2014,
+          "citations": 116,
+          "url": "https://doi.org/10.1007/s10964-014-0179-7"
+        },
+        {
+          "title": "Sleep restriction over several days does not affect long-term recall of declarative and procedural memories in adolescents",
+          "year": 2011,
+          "citations": 85,
+          "url": "https://doi.org/10.1016/j.sleep.2010.07.017"
+        },
+        {
+          "title": "Sleep Improves Memory: The Effect of Sleep on Long Term Memory in Early Adolescence",
+          "year": 2012,
+          "citations": 76,
+          "url": "https://doi.org/10.1371/journal.pone.0042191"
+        },
+        {
+          "title": "Sleep electroencephalogram (EEG) oscillations and associated memory processing during childhood and early adolescence.",
+          "year": 2022,
+          "citations": 22,
+          "url": "https://doi.org/10.1037/dev0001487"
+        }
+      ],
+      "experts": [
+        {
+          "name": "Ju Lynn Ong",
+          "count": 6,
+          "url": "https://openalex.org/A5090401556"
+        },
+        {
+          "name": "Michael W.L. Chee",
+          "count": 6,
+          "url": "https://openalex.org/A5102945746"
+        },
+        {
+          "name": "Jared Saletin",
+          "count": 5,
+          "url": "https://openalex.org/A5013743861"
+        }
+      ]
+    },
+    {
+      "question": "Which researchers study epigenetics during pregnancy?",
+      "status": 429,
+      "error": "Daily limit reached. Try again tomorrow or browse the Library.",
+      "neurons": 0,
+      "measured": true,
+      "aiNotUsedReason": "source_limit",
+      "plan": null
+    },
+    {
+      "question": "How is research on battery recycling developing since 2020?",
+      "status": 429,
+      "error": "Daily limit reached. Try again tomorrow or browse the Library.",
+      "neurons": 0,
+      "measured": true,
+      "aiNotUsedReason": "source_limit",
+      "plan": null
+    }
+  ]
+}

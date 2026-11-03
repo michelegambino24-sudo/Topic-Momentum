@@ -1,0 +1,1893 @@
+[
+  {
+    "question": "social media, kids, attention",
+    "expected": {
+      "topic": [
+        "social media",
+        "social networking"
+      ],
+      "groups": [
+        "attention"
+      ],
+      "clarification": {
+        "pattern": "age|kids|child|young",
+        "answer": 0
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "social media",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "attention span",
+              "inattention"
+            ]
+          },
+          {
+            "preset": "children"
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "social media"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "attention"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "kids"
+        }
+      ],
+      "ambiguity": {
+        "question": "Which age range do you mean by kids?",
+        "options": [
+          {
+            "label": "Children under ten",
+            "plan": {
+              "topic": "social media",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "terms": [
+                    "attention span",
+                    "inattention"
+                  ]
+                },
+                {
+                  "preset": "children"
+                }
+              ],
+              "place": {
+                "codes": [],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "social media"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "attention"
+              },
+              {
+                "path": "includeGroups.1",
+                "source": "kids"
+              }
+            ]
+          },
+          {
+            "label": "Adolescents",
+            "plan": {
+              "topic": "social media",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "terms": [
+                    "attention span",
+                    "inattention"
+                  ]
+                },
+                {
+                  "preset": "adolescents"
+                }
+              ],
+              "place": {
+                "codes": [],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "social media"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "attention"
+              },
+              {
+                "path": "includeGroups.1",
+                "source": "kids"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "Is children’s mental health a growing field in the Middle East, and who’s leading it?",
+    "expected": {
+      "topic": [
+        "mental health"
+      ],
+      "groups": [
+        "children"
+      ],
+      "region": "middleEast",
+      "clarification": {
+        "pattern": "mention|author|written|where|countr",
+        "answer": 0
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "mental health",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "preset": "children"
+          }
+        ],
+        "place": {
+          "codes": [
+            "AE",
+            "SA",
+            "EG"
+          ],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "mental health"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "children’s"
+        },
+        {
+          "path": "place",
+          "source": "Middle East"
+        }
+      ],
+      "ambiguity": {
+        "question": "Should papers mention Middle East, or be written there?",
+        "options": [
+          {
+            "label": "Mentions Middle East",
+            "plan": {
+              "topic": "mental health",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "preset": "children"
+                }
+              ],
+              "place": {
+                "codes": [
+                  "AE",
+                  "SA",
+                  "EG"
+                ],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "mental health"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "children’s"
+              },
+              {
+                "path": "place",
+                "source": "Middle East"
+              }
+            ]
+          },
+          {
+            "label": "Written in Middle East",
+            "plan": {
+              "topic": "mental health",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "preset": "children"
+                }
+              ],
+              "place": {
+                "codes": [
+                  "AE",
+                  "SA",
+                  "EG"
+                ],
+                "mode": "authored"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "mental health"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "children’s"
+              },
+              {
+                "path": "place",
+                "source": "Middle East"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "Does gamification help primary school pupils learn mathematics?",
+    "expected": {
+      "topic": [
+        "gamification"
+      ],
+      "groups": [
+        "mathematics",
+        "primary"
+      ],
+      "forbiddenPapers": [
+        "Perceptions of Students for Gamification Approach: Kahoot as a Case Study",
+        "A novel approach to learning music and piano based on mixed reality and gamification"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "gamification",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "primary school",
+              "elementary school",
+              "primary pupils",
+              "elementary students",
+              "grade school"
+            ]
+          },
+          {
+            "terms": [
+              "mathematics",
+              "math",
+              "maths"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "gamification"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "primary school pupils"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "mathematics"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "How is research on CRISPR for sickle cell disease growing?",
+    "expected": {
+      "topic": [
+        "crispr",
+        "gene editing"
+      ],
+      "groups": [
+        "sickle cell"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "CRISPR",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "sickle cell"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "CRISPR"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "sickle cell disease"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "What research links air pollution to asthma in children?",
+    "expected": {
+      "topic": [
+        "air pollution"
+      ],
+      "groups": [
+        "asthma",
+        "children"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "air pollution",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "asthma"
+            ]
+          },
+          {
+            "preset": "children"
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "air pollution"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "asthma"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "children"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "How does sleep affect memory in teenagers?",
+    "expected": {
+      "topic": [
+        "sleep"
+      ],
+      "groups": [
+        "memory",
+        "adolescents"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "sleep",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "memory",
+              "recall"
+            ]
+          },
+          {
+            "preset": "adolescents"
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "sleep"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "affect memory"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "teenagers"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Which researchers study epigenetics during pregnancy?",
+    "expected": {
+      "topic": [
+        "epigenetics"
+      ],
+      "groups": [
+        "pregnancy"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "epigenetics",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "preset": "pregnancy"
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "epigenetics"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "pregnancy"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "How is research on battery recycling developing since 2020?",
+    "expected": {
+      "topic": [
+        "battery recycling"
+      ],
+      "from": 2020
+    },
+    "mock": {
+      "plan": {
+        "topic": "battery recycling",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2020,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "battery recycling"
+        },
+        {
+          "path": "years.from",
+          "source": "2020"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "How is solar energy research growing in Georgia?",
+    "expected": {
+      "clarification": {
+        "pattern": "georgia|country|state"
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "solar energy",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [
+            "GE"
+          ],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "solar energy"
+        },
+        {
+          "path": "place",
+          "source": "Georgia"
+        }
+      ],
+      "ambiguity": {
+        "question": "Which Georgia do you mean?",
+        "options": [
+          {
+            "label": "Georgia the country",
+            "plan": {
+              "topic": "solar energy",
+              "synonyms": [],
+              "includeGroups": [],
+              "place": {
+                "codes": [
+                  "GE"
+                ],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "solar energy"
+              },
+              {
+                "path": "place",
+                "source": "Georgia"
+              }
+            ]
+          },
+          {
+            "label": "Georgia the US state",
+            "plan": {
+              "topic": "solar energy",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "terms": [
+                    "Georgia state",
+                    "US state of Georgia"
+                  ]
+                }
+              ],
+              "place": {
+                "codes": [],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "solar energy"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "Georgia"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "What research studies water security in Jordan?",
+    "expected": {
+      "clarification": {
+        "pattern": "jordan|country|river|person"
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "water security",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [
+            "JO"
+          ],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "water security"
+        },
+        {
+          "path": "place",
+          "source": "Jordan"
+        }
+      ],
+      "ambiguity": {
+        "question": "Do you mean Jordan the country or the Jordan River?",
+        "options": [
+          {
+            "label": "Jordan the country",
+            "plan": {
+              "topic": "water security",
+              "synonyms": [],
+              "includeGroups": [],
+              "place": {
+                "codes": [
+                  "JO"
+                ],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "water security"
+              },
+              {
+                "path": "place",
+                "source": "Jordan"
+              }
+            ]
+          },
+          {
+            "label": "Jordan River",
+            "plan": {
+              "topic": "water security",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "terms": [
+                    "Jordan River"
+                  ]
+                }
+              ],
+              "place": {
+                "codes": [],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "water security"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "Jordan"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "Malaria research in Guinea",
+    "expected": {
+      "clarification": {
+        "pattern": "guinea|country|place"
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "malaria",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [
+            "GN"
+          ],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Malaria"
+        },
+        {
+          "path": "place",
+          "source": "Guinea"
+        }
+      ],
+      "ambiguity": {
+        "question": "Which Guinea do you mean?",
+        "options": [
+          {
+            "label": "Guinea",
+            "plan": {
+              "topic": "malaria",
+              "synonyms": [],
+              "includeGroups": [],
+              "place": {
+                "codes": [
+                  "GN"
+                ],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "Malaria"
+              },
+              {
+                "path": "place",
+                "source": "Guinea"
+              }
+            ]
+          },
+          {
+            "label": "Guinea-Bissau",
+            "plan": {
+              "topic": "malaria",
+              "synonyms": [],
+              "includeGroups": [],
+              "place": {
+                "codes": [
+                  "GW"
+                ],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "Malaria"
+              },
+              {
+                "path": "place",
+                "source": "Guinea"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "ASD in adolescents",
+    "expected": {
+      "clarification": {
+        "pattern": "asd|autism|septal"
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "autism spectrum disorder",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "preset": "adolescents"
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "ASD"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "adolescents"
+        }
+      ],
+      "ambiguity": {
+        "question": "What does ASD mean here?",
+        "options": [
+          {
+            "label": "Autism spectrum disorder",
+            "plan": {
+              "topic": "autism spectrum disorder",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "preset": "adolescents"
+                }
+              ],
+              "place": {
+                "codes": [],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "ASD"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "adolescents"
+              }
+            ]
+          },
+          {
+            "label": "Atrial septal defect",
+            "plan": {
+              "topic": "atrial septal defect",
+              "synonyms": [],
+              "includeGroups": [
+                {
+                  "preset": "adolescents"
+                }
+              ],
+              "place": {
+                "codes": [],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "ASD"
+              },
+              {
+                "path": "includeGroups.0",
+                "source": "adolescents"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "AI in education",
+    "expected": {
+      "topic": [
+        "artificial intelligence"
+      ],
+      "groups": [
+        "education"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "artificial intelligence",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "education"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "AI"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "education"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "IVF success in women over 40",
+    "expected": {
+      "topic": [
+        "ivf",
+        "in vitro fertil"
+      ],
+      "groups": [
+        "40",
+        "women"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "IVF success",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "women over 40",
+              "advanced maternal age"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "IVF success"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "women over 40"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "perovskite solar cells stability",
+    "expected": {
+      "topic": [
+        "perovskite"
+      ],
+      "groups": [
+        "stability"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "perovskite solar cells",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "stability"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "perovskite solar cells"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "stability"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "battery recyling since 2021",
+    "expected": {
+      "topic": [
+        "battery recycling"
+      ],
+      "from": 2021
+    },
+    "mock": {
+      "plan": {
+        "topic": "battery recycling",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2021,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "battery recyling"
+        },
+        {
+          "path": "years.from",
+          "source": "2021"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "inflation inequality",
+    "expected": {
+      "topic": [
+        "inflation"
+      ],
+      "groups": [
+        "inequality"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "inflation",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "inequality"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "inflation"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "inequality"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "How do interest rates affect housing affordability?",
+    "expected": {
+      "topic": [
+        "interest rate"
+      ],
+      "groups": [
+        "housing affordability"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "interest rates",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "housing affordability"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "interest rates"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "affect housing affordability"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Green bonds and renewable energy investment since 2018",
+    "expected": {
+      "topic": [
+        "green bond"
+      ],
+      "groups": [
+        "renewable energy"
+      ],
+      "from": 2018
+    },
+    "mock": {
+      "plan": {
+        "topic": "green bonds",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "renewable energy investment"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2018,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Green bonds"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "renewable energy investment"
+        },
+        {
+          "path": "years.from",
+          "source": "2018"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Cybersecurity in small businesses",
+    "expected": {
+      "topic": [
+        "cybersecurity",
+        "cyber security"
+      ],
+      "groups": [
+        "small business"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "cybersecurity",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "small businesses",
+              "small enterprises"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Cybersecurity"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "small businesses"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Quantum computing for logistics optimization",
+    "expected": {
+      "topic": [
+        "quantum computing"
+      ],
+      "groups": [
+        "logistics"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "quantum computing",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "logistics optimization"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Quantum computing"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "logistics optimization"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Does peer feedback improve writing in secondary schools?",
+    "expected": {
+      "topic": [
+        "peer feedback"
+      ],
+      "groups": [
+        "writing",
+        "secondary"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "peer feedback",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "writing"
+            ]
+          },
+          {
+            "terms": [
+              "secondary schools"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "peer feedback"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "improve writing"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "secondary schools"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Teacher burnout in rural schools",
+    "expected": {
+      "topic": [
+        "teacher burnout"
+      ],
+      "groups": [
+        "rural"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "teacher burnout",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "rural schools"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Teacher burnout"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "rural schools"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Energy storage without lithium",
+    "expected": {
+      "topic": [
+        "energy storage"
+      ],
+      "exclusions": [
+        "lithium"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "energy storage",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [
+          "lithium"
+        ],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Energy storage"
+        },
+        {
+          "path": "excludeTerms.0",
+          "source": "lithium"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Wind turbine noise and wildlife",
+    "expected": {
+      "topic": [
+        "wind turbine"
+      ],
+      "groups": [
+        "noise",
+        "wildlife"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "wind turbine",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "noise"
+            ]
+          },
+          {
+            "terms": [
+              "wildlife"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Wind turbine"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "noise"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "wildlife"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Remote work and productivity in software teams",
+    "expected": {
+      "topic": [
+        "remote work"
+      ],
+      "groups": [
+        "productivity",
+        "software"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "remote work",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "productivity"
+            ]
+          },
+          {
+            "terms": [
+              "software teams"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Remote work"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "productivity"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "software teams"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "How is research on ocean microplastics evolving since 2015?",
+    "expected": {
+      "topic": [
+        "microplastic"
+      ],
+      "groups": [
+        "ocean"
+      ],
+      "from": 2015
+    },
+    "mock": {
+      "plan": {
+        "topic": "microplastics",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "ocean"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2015,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "microplastics"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "ocean"
+        },
+        {
+          "path": "years.from",
+          "source": "2015"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Inheritance law in the GCC",
+    "expected": {
+      "topic": [
+        "inheritance law"
+      ],
+      "region": "gcc",
+      "clarification": {
+        "pattern": "mention|author|written|where|countr",
+        "answer": 0
+      }
+    },
+    "mock": {
+      "plan": {
+        "topic": "inheritance law",
+        "synonyms": [],
+        "includeGroups": [],
+        "place": {
+          "codes": [
+            "AE",
+            "BH",
+            "KW",
+            "OM",
+            "QA",
+            "SA"
+          ],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Inheritance law"
+        },
+        {
+          "path": "place",
+          "source": "GCC"
+        }
+      ],
+      "ambiguity": {
+        "question": "Should papers mention GCC, or be written there?",
+        "options": [
+          {
+            "label": "Mentions GCC",
+            "plan": {
+              "topic": "inheritance law",
+              "synonyms": [],
+              "includeGroups": [],
+              "place": {
+                "codes": [
+                  "AE",
+                  "BH",
+                  "KW",
+                  "OM",
+                  "QA",
+                  "SA"
+                ],
+                "mode": "mentions"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "Inheritance law"
+              },
+              {
+                "path": "place",
+                "source": "GCC"
+              }
+            ]
+          },
+          {
+            "label": "Written in GCC",
+            "plan": {
+              "topic": "inheritance law",
+              "synonyms": [],
+              "includeGroups": [],
+              "place": {
+                "codes": [
+                  "AE",
+                  "BH",
+                  "KW",
+                  "OM",
+                  "QA",
+                  "SA"
+                ],
+                "mode": "authored"
+              },
+              "excludeTerms": [],
+              "years": {
+                "from": 2010,
+                "to": null
+              }
+            },
+            "sources": [
+              {
+                "path": "topic",
+                "source": "Inheritance law"
+              },
+              {
+                "path": "place",
+                "source": "GCC"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "question": "Machine learning for fraud detection in banking",
+    "expected": {
+      "topic": [
+        "machine learning"
+      ],
+      "groups": [
+        "fraud",
+        "bank"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "machine learning",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "terms": [
+              "fraud detection"
+            ]
+          },
+          {
+            "terms": [
+              "banking"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "Machine learning"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "fraud detection"
+        },
+        {
+          "path": "includeGroups.1",
+          "source": "banking"
+        }
+      ],
+      "ambiguity": null
+    }
+  },
+  {
+    "question": "Childrens mental helth",
+    "expected": {
+      "topic": [
+        "mental health"
+      ],
+      "groups": [
+        "children"
+      ]
+    },
+    "mock": {
+      "plan": {
+        "topic": "mental health",
+        "synonyms": [],
+        "includeGroups": [
+          {
+            "preset": "children"
+          }
+        ],
+        "place": {
+          "codes": [],
+          "mode": "mentions"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "mental helth"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "Childrens"
+        }
+      ],
+      "ambiguity": null
+    }
+  }
+]

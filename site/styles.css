@@ -514,3 +514,12 @@ footer{color:var(--secondary)}
 .place-chip{display:inline-flex;max-width:100%;align-items:stretch}
 .place-chip>.chip:first-child{border-radius:6px 0 0 6px;text-align:left;overflow-wrap:anywhere}
 .place-chip>.place-remove{border-radius:0 6px 6px 0;border-left:0;min-width:36px}
+
+/* Checked evidence warnings use the existing accessible text tokens. */
+.evidence-notice{color:var(--text);border-left:2px solid var(--action);padding:8px 12px;margin:12px 0;font-size:.9375rem;line-height:1.5;max-width:72ch;text-wrap:pretty}
+
+/* One question, with native keyboard-accessible choices before a source search. */
+.search-clarification{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-block:12px;line-height:1.5}
+.search-clarification[hidden]{display:none}
+.search-clarification button{min-height:44px;padding:8px 14px;white-space:normal;text-align:left}
+.search-clarification button:focus-visible{outline:2px solid var(--action);outline-offset:3px}

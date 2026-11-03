@@ -7,6 +7,7 @@
   const reports = new Map();
   let requestVersion = 0;
   let requestController;
+  let pendingClarification = null;
   const storageKey = "topic-momentum:last-topic";
   const myLibraryKey = "topic-momentum:my-library";
   let myLibrary = [];
@@ -670,6 +671,7 @@
     return new Set(synonyms.map(clean).filter((term) => term && term !== topic)).size + normaliseGroups(include).reduce((sum, group) => sum + group.length, 0);
   }
   function presentReport(report) {
+    if (report.understanding?.check && (report.evidence?.version !== 3 || report.papersKind !== "checked")) report = { ...report, understanding: { ...report.understanding, mode: "unavailable", check: null } };
     report = repairBoundedGrowth(report);
     const terms = groupsOf(report);
     const name = terms.length || report.period || report.from !== undefined ? baseTitle(report) + includeSuffix(terms) + (report.selectedSubfield ? `, ${report.selectedSubfield.name} papers` : "") + (report.period || report.from !== undefined ? ` · ${rangeLabel(reportRange(report))}` : "") : report.name;
@@ -693,6 +695,7 @@
       if (report.regionalCounts?.uae === 0) sentence = sentence.replace("from the GCC (0 from the UAE).", "from the GCC, none from the UAE.");
       sentence = sentence.replace(/([+−-]?)(\d+(?:\.\d+)?)%/g, (_, sign, value) => percent((sign === "-" || sign === "−" ? -1 : 1) * Number(value) / 100));
     }
+    if (report.understanding?.check?.lowPrecision) sentence = "These counts match the search terms, but many papers may be off-topic. Narrow the search before drawing conclusions.";
     return { ...report, name, ...(sentence ? { headline: sentence } : {}), ...(report.journals ? { journals: report.journals.map((item) => ({...item, name: normalJournalName(item.name)})) } : {}), ...(report.papers ? { papers: report.papers.map((item) => ({...item, journal: normalJournalName(item.journal)})) } : {}) };
   }
 
@@ -736,10 +739,12 @@
   }
 
   function renderRankings() {
+    const evidenceReady=topic.evidence?.version===3 && topic.papersKind==="checked" && topic.understanding?.mode==="ai" && topic.understanding?.check;
+    const expertRows=evidenceReady?topic.experts:[],paperRows=evidenceReady?topic.papers:[];
     const named = (items) => (items || []).filter((item) => String(item?.name || "").trim());
-    const experts = named(topic.experts), journals = named(topic.journals);
-    $("experts").innerHTML = !experts.length ? `<li class="rank-empty">Too few papers to rank experts yet.</li>` : experts.slice(0, expertsExpanded ? undefined : 5).map((item) => `<li><span class="rank-name">${item.openalexUrl ? `<a href="${escape(item.openalexUrl)}" target="_blank" rel="noopener noreferrer">${escape(item.name)}</a>` : escape(item.name)}</span><span class="number">${number(item.count)}</span>${rankBar(item.count, experts)}</li>`).join("");
-    $("experts-toggle").hidden = topic.experts.length <= 5;
+    const experts = named(expertRows), journals = named(topic.journals);
+    $("experts").innerHTML = !experts.length ? `<li class="rank-empty">${evidenceReady ? "No experts passed the question check." : "Run a question to check its experts."}</li>` : experts.slice(0, expertsExpanded ? undefined : 5).map((item) => `<li><span class="rank-name">${item.openalexUrl ? `<a href="${escape(item.openalexUrl)}" target="_blank" rel="noopener noreferrer">${escape(item.name)}</a>` : escape(item.name)}</span><span class="number">${number(item.count)}</span>${rankBar(item.count, experts)}</li>`).join("");
+    $("experts-toggle").hidden = expertRows.length <= 5;
     $("experts-toggle").textContent = expertsExpanded ? "Show less" : "Show all";
     $("experts-toggle").setAttribute("aria-expanded", String(expertsExpanded));
     const maxCountry = Math.max(1, ...topic.countries.map((item) => item.count));
@@ -748,8 +753,8 @@
     $("countries-toggle").textContent = countriesExpanded ? "Show less" : "Show all";
     $("countries-toggle").setAttribute("aria-expanded", String(countriesExpanded));
     $("journals").innerHTML = !journals.length ? `<li class="rank-empty">Too few papers to rank journals yet.</li>` : journals.slice(0, journalsExpanded ? undefined : 5).map((item) => `<li><span class="rank-name">${escape(item.name)}</span><span class="number">${number(item.count)}</span>${rankBar(item.count, journals)}</li>`).join("");
-    $("papers").innerHTML = topic.papers.slice(0, papersExpanded ? undefined : 5).map((item) => `<article class="paper"><div class="paper-heading"><h3>${item.url ? `<a href="${escape(item.url)}" target="_blank" rel="noopener noreferrer">${escape(item.title)}</a>` : escape(item.title)}</h3><span class="number citations">${number(item.citations)} ${item.citations === 1 ? "citation" : "citations"}</span></div><p class="paper-meta">${escape(item.authors)}, ${escape(item.journal)}, ${item.year}</p></article>`).join("");
-    for (const [id, items, expanded] of [["journals-toggle", topic.journals, journalsExpanded], ["papers-toggle", topic.papers, papersExpanded]]) {
+    $("papers").innerHTML = paperRows.slice(0, papersExpanded ? undefined : 5).map((item) => `<article class="paper"><div class="paper-heading"><h3>${item.url ? `<a href="${escape(item.url)}" target="_blank" rel="noopener noreferrer">${escape(item.title)}</a>` : escape(item.title)}</h3><span class="number citations">${number(item.citations)} ${item.citations === 1 ? "citation" : "citations"}</span></div><p class="paper-meta">${escape(item.authors)}, ${escape(item.journal)}, ${item.year}</p></article>`).join("");
+    for (const [id, items, expanded] of [["journals-toggle", topic.journals, journalsExpanded], ["papers-toggle", paperRows, papersExpanded]]) {
       $(id).hidden = items.length <= 5;
       $(id).textContent = expanded ? "Show less" : "Show all";
       $(id).setAttribute("aria-expanded", String(expanded));
@@ -788,15 +793,20 @@
     if (context?.place) parts.push(`${context.place.mode === "authored" ? "written in" : "mentioning"} ${context.place.label}`);
     else if (activeAuthored.length) parts.push("written in " + (topic.authoredLabel || activeAuthored.join(", ")));
     if (activeExclusions.length) parts.push("excluded " + (context?.labels?.exclusions || activeExclusions).join(", "));
-    if (context?.mode === "quick") parts.push("Quick mode");
+    if (context?.mode === "unavailable" || context?.mode === "quick") parts.push("AI checks unavailable.");
     else if (context?.check) {
       const { matched, total } = context.check;
       parts.push(total ? `Checked: ${matched} of ${total} sample papers on-topic${matched / total < .7 ? " (low match)" : ""}.` : "No sample titles available to check.");
     } else parts.push("Search changed; not checked.");
+    if (context?.check?.early && context?.check?.late) {
+      const share = period => period.total ? Math.round(period.matched / period.total * 100) + "%" : "unavailable";
+      parts.push("Earlier: " + share(context.check.early) + "; later: " + share(context.check.late));
+    }
     $("understanding-line").textContent = parts.join(" · ");
   }
 
   function renderTopic() {
+    $("report-stage").hidden = false;
     if (presentationEnabled) finishReportMotion();
     closeHelp();
     $("report-source").textContent = isSample ? "Sample data" : "";
@@ -854,8 +864,20 @@
     if (topic.sourceQuality?.experts === "core") $("experts-note").textContent += " Only papers in journals on the Leiden Ranking core list are counted.";
     $("journals-note").textContent = topic.sourceQuality?.journals === "core" ? "Journals that published the most papers on this topic. Only journals on the Leiden Ranking core list are counted." : "Journals that published the most papers on this topic. Preprint servers are excluded.";
     const citedPeriod = topic.from === undefined && !topic.period ? "since 2022" : period;
-    $("papers-heading").textContent = topic.papersKind === "semantic" ? "Most relevant papers" : "Most cited papers";
-    $("papers-period").textContent = topic.papersKind === "semantic" ? "Papers ranked by relevance to your question, checked against the report filters." : `The papers other researchers cite most, published ${citedPeriod}.`;
+    const checked = !isSample && topic.evidence?.version === 3 && topic.papersKind === "checked" && topic.understanding?.mode === "ai" && topic.understanding?.check;
+    $("papers-heading").textContent = "Key papers";
+    $("papers-source-note").hidden = false;
+    $("papers-source-note").textContent = checked ? "Checked by AI for this question · sorted by citations" : "Run a question to check its papers.";
+    $("papers-period").textContent = checked ? "AI checked candidate titles against your question. Only direct matches are shown, sorted by citations. This is not a full-text review or an exhaustive ranking of all research." : `The papers other researchers cite most, published ${citedPeriod}.`;
+    if (!isSample) {
+      $("experts-check-note").hidden = false;
+      $("experts-check-note").textContent = checked ? "Most active in this field · checked by AI" : "Run a question to check its experts.";
+      if (checked) { $("experts-source-note").hidden = true; $("experts-note").textContent = "Authors ranked by their real OpenAlex paper counts for this field. Each shown author has at least one matching paper whose title passed the question check."; }
+    }
+    $("experts-check-note").hidden = isSample;
+    const notices = checked ? (topic.evidence?.notices || []) : [];
+    $("evidence-notice").hidden = !notices.length;
+    $("evidence-notice").textContent = notices.join(" ") + (checked && (topic.evidence?.accepted < 3 || topic.experts.length < 3) ? " Try a more specific research phrase, population or year range." : "");
     const countsOnly = topic.subtopicWindow?.countsOnly ?? (topic.period === 2025);
     const subtopics = topic.subtopics.filter((item) => Number.isFinite(item.late) && (Number.isFinite(item.growth) || item.growth === null));
     // Older reports encode a zero earlier half as null growth.
@@ -1131,6 +1153,7 @@
   }
 
   function setLoading(loading) {
+    if (loading) $("report-stage").hidden = false;
     busy = loading;
     setPresentationLoading(loading);
     renderSaveState();
@@ -1155,6 +1178,22 @@
     $("data-notice").textContent = !isLibrary && isSample ? "Fictional research and illustrative numbers." : "Data from OpenAlex. Searches are cached anonymously to keep the tool free.";
     if (isLibrary) { if (loadReport) loadLibrary(); else renderLibrary(); }
     if (!loadReport) return;
+    if (location.hash === "#new") {
+      if (busy) { requestController?.abort(); requestVersion++; setLoading(false); }
+      $("status").hidden = true;
+      $("topic-input").value = ""; $("synonyms-input").value = "";
+      $("from-input").value = "2010"; $("to-input").value = "";
+      setIncludeGroups([]);
+      activeSubfield = ""; activeExclusions = []; activeAuthored = []; activeUnderstandingKey = "";
+      draftPlace = null; manualDraft = false;
+      draftTopic = ""; sentenceText = ""; draftErrors = []; draftNote = ""; draftLabels = []; showDraftFrom = false;
+      syncOptions(true); renderSynonyms(); renderUnderstood();
+      $("report-stage").hidden = true;
+      $("report-source").textContent = ""; $("report-freshness").textContent = "";
+      $("data-notice").textContent = "Data from OpenAlex. Searches are cached anonymously to keep the tool free.";
+      return;
+    }
+    $("report-stage").hidden = false;
     const params = new URLSearchParams(location.hash.slice(1));
     if (!params.has("topic")) {
       if (busy) { requestController?.abort(); requestVersion++; setLoading(false); $("status").hidden = true; }
@@ -1209,13 +1248,15 @@
     // Keep the original single-group request serialization, including preset order.
     include = normalizedInclude.length === 1 ? [groupsOf(include).find(group => normaliseGroups([group]).length).map(term => term.trim()).filter(Boolean)] : normalizedInclude;
     }
+    $("search-clarification").hidden = true;
+    pendingClarification = null;
     setLoading(true);
     vanishQuery();
     const version = ++requestVersion;
     notify(useAI ? "Understanding and checking your search…" : queryOperatorCount(name, terms, include) > 5 ? "This search is more complex, so it takes a little longer…" : "Loading research data…", true);
     const controller = new AbortController();
     requestController = controller;
-    const timeout = setTimeout(() => controller.abort(), useAI ? 45000 : 30000);
+    const timeout = setTimeout(() => controller.abort(), useAI ? 110000 : 30000);
     try {
       const url = new URL(window.WORKER_URL.replace(/\/$/, "") + (useAI ? "/api/search" : "/api/topic"));
       url.searchParams.set("q", name.trim());
@@ -1237,15 +1278,24 @@
       const current = options.mode ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored, subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
       if (useAI) url.search = "";
       let response;
-      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:options.sentence, ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
+      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:options.sentence, ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
       catch { throw new Error(connectionError()); }
       let data;
       try { data = await response.json(); }
       catch { throw new Error("The data service returned an unreadable report. Try again later."); }
       if (!response.ok) {
-        throw new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later.");
+        throw Object.assign(new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later."), { code: data.error });
       }
       if (version !== requestVersion) return;
+      if (useAI && data.clarification) {
+        pendingClarification = {sentence:options.sentence, ...data.clarification};
+        $("report-stage").hidden = true;
+        $("search-clarification").innerHTML = '<span id="clarification-question">'+escape(data.clarification.question)+'</span>' + (data.clarification.options || []).map((option,index)=>'<button type="button" data-clarify="'+index+'">'+escape(option.label)+'</button>').join("");
+        $("search-clarification").hidden = false;
+        clearTimeout(noticeTimer); $("status").hidden = true;
+        if (!data.clarification.options?.length) $("topic-input").focus();
+        return;
+      }
       if (!useAI && include.length > 1 && window.TMM_PRESET_IDENTITIES.encode(normaliseGroups(groupsOf(data))) !== window.TMM_PRESET_IDENTITIES.encode(include)) throw new Error("The data service did not retain every include group. Update the Worker and try again.");
       if (!useAI && subfield && data.subfieldId !== subfield) throw new Error("The data service did not retain the subfield. Update the Worker and try again.");
       topic = presentReport({ ...data, searchTerms: useAI ? data.searchTerms : { name: name.trim(), synonyms: terms, ...includeFields(groupsOf(data)) } });
@@ -1261,7 +1311,7 @@
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
       else if (saved) notify("Research data loaded.");
-    } catch (error) { if (version === requestVersion) notify(error.message || "The data service returned an unreadable report. Try again later.", true); }
+    } catch (error) { if (version === requestVersion) { if(error.code === "ai_unavailable") $("report-stage").hidden = true; notify(error.message || "The data service returned an unreadable report. Try again later.", true); } }
     finally {
       clearTimeout(timeout);
       if (version === requestVersion) setLoading(false);
@@ -1284,6 +1334,7 @@
     search(draftTopic, synonyms());
   });
   $("topic-input").addEventListener("input", () => {
+    $("search-clarification").hidden = true; pendingClarification = null;
     previewSentence(true);
   });
   $("narrow-input").addEventListener("input", () => { if (!busy) previewNarrow(); });
@@ -1389,6 +1440,14 @@
     if (!button) { closeHelp(); return; }
     if (button.dataset.help !== undefined) { openHelp(button); return; }
     closeHelp();
+    if (button.dataset.clarify !== undefined) {
+      if (busy || !pendingClarification || $("topic-input").value !== pendingClarification.sentence) return;
+      const pending=pendingClarification,index=Number(button.dataset.clarify);
+      if (!Number.isInteger(index) || !pending.options[index] || !pending.key) return;
+      search(undefined, undefined, null, false, false, undefined, undefined, undefined, undefined, null,
+        {sentence:pending.sentence,clarification:{key:pending.key,option:index}});
+      return;
+    }
     if (button.dataset.spellWord !== undefined) {
       if (busy) return;
       $("topic-input").value = window.TMM_SPELL.apply($("topic-input").value, button.dataset.spellWord, button.dataset.spellTo);
@@ -1537,7 +1596,7 @@
     }
   } catch { topic = window.SAMPLE_TOPIC; isSample = true; }
   renderTopic();
-  if (!isSample) {
+  if (!isSample && location.hash !== "#new") {
     rememberReport(myLibrary.some((entry) => entry.id === topic.id));
     if (!location.hash || location.hash === "#search") history.replaceState(null, "", reportHash(topic, cacheOnlyView));
   }

@@ -201,7 +201,14 @@ export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) 
 }
 export function isTighterPlan(initial, candidate, year) {
   const a = compileAIPlan(initial, year), b = compileAIPlan(candidate, year);
-  return a.query.name === b.query.name && a.query.from === b.query.from && a.query.to === b.query.to && initial.place.mode === candidate.place.mode && JSON.stringify([...initial.place.codes].sort()) === JSON.stringify([...candidate.place.codes].sort()) && includeGroupIdentity(includeGroupsOf(a.query)) === includeGroupIdentity(includeGroupsOf(b.query)) && b.query.synonyms.every(term => a.query.synonyms.includes(term)) && (a.query.excludeTerms || []).every(term => b.query.excludeTerms?.includes(term));
+  // Phrase replacements cannot be proved narrower lexically: re-sampling decides
+  // whether they improve precision. Never remove an AND constraint or population.
+  return a.query.name === b.query.name && a.query.from === b.query.from && a.query.to === b.query.to
+    && initial.place.mode === candidate.place.mode
+    && JSON.stringify([...initial.place.codes].sort()) === JSON.stringify([...candidate.place.codes].sort())
+    && initial.includeGroups.length === candidate.includeGroups.length
+    && JSON.stringify(initial.includeGroups.filter(group => group.preset).map(group => group.preset).sort()) === JSON.stringify(candidate.includeGroups.filter(group => group.preset).map(group => group.preset).sort())
+    && (a.query.excludeTerms || []).every(term => b.query.excludeTerms?.includes(term));
 }
 export function judgeTitles(raw, size) {
   if (!exactObject(raw, ["onTopic"]) || !Array.isArray(raw.onTopic) || raw.onTopic.length !== size || !raw.onTopic.every(value => typeof value === "boolean")) throw new Error("Invalid title judgments");
@@ -212,15 +219,14 @@ export function titleSample(query, year) {
   return { id: "checkTitles", params: { filter: papers.params.filter.replace(",type:article|review", ""), per_page: "25", select: "id,display_name", sort: "relevance_score:desc" } };
 }
 export function semanticQuery(query, sentence, year) {
-  const papers = buildQueries(query, year).find(item => item.id === "papers");
-  const [, nonText = ""] = papers.params.filter.split(/\),(.*)/s);
-  return { id: "semanticPapers", params: { "search.semantic": sentence, filter: nonText, per_page: "25", select: papers.params.select } };
+  // Membership enforces lexical, geography and other unsupported vector filters.
+  return { id: "semanticPapers", params: { "search.semantic": sentence, filter: "publication_year:" + query.from + "-" + (query.to ?? year) + ",type:article|review", per_page: "30", select: "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location" } };
 }
 export function semanticMembership(query, candidates, year) {
   const ids = [...new Set(candidates.map(item => item.id).filter(id => /^https:\/\/openalex\.org\/W\d+$/.test(id)))];
   if (!ids.length) throw new Error("No semantic candidates");
   const papers = buildQueries(query, year).find(item => item.id === "papers");
-  return { id: "semanticMembership", params: { filter: papers.params.filter + ",openalex_id:" + ids.map(id => id.split("/").at(-1)).join("|"), per_page: "25", select: "id" } };
+  return { id: "semanticMembership", params: { filter: papers.params.filter + ",openalex_id:" + ids.map(id => id.split("/").at(-1)).join("|"), per_page: "30", select: "id" } };
 }
 
 export function queryParams(query) {
@@ -298,7 +304,7 @@ export function cacheIsFresh(record, time) {
   return Number.isFinite(record?.savedAt) && age >= 0 && age < CACHE_MAX_AGE_MS;
 }
 
-export function dailyCap(value = 50) {
+export function dailyCap(value = 30) {
   if (!/^(0|[1-9][0-9]*)$/.test(String(value)) || !Number.isSafeInteger(Number(value))) throw new Error("Invalid daily cap");
   return Number(value);
 }
@@ -595,7 +601,7 @@ export function presentReport(report) {
   }
 
   return { ...report, name, ...(report.kpis && Array.isArray(report.years) ? { refinements: refinementCandidates(report) } : {}),
-    ...(typeof report.headline === "string" ? { headline: report.kpis && report.from !== undefined && Array.isArray(report.years)
+    ...(typeof report.headline === "string" ? { headline: report.understanding?.check?.lowPrecision ? "These counts match the search terms, but many papers may be off-topic. Narrow the search before drawing conclusions." : report.kpis && report.from !== undefined && Array.isArray(report.years)
       ? headline(reportLabel(report.headlineName || baseName, terms), { ...report.kpis, ...growthWindow(report) }, Math.max(report.from, Math.min(report.to ?? Number(report.updated.slice(0, 4)) - 1, Number(report.updated.slice(0, 4)) - 1)), report.regionalCounts, report.kpis.total, report, terms)
       : legacyHeadline } : {}),
     ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, ...includeFields(terms) }) } : {}) };
@@ -719,4 +725,127 @@ export function publicLibrary(index) {
   const visible = index.filter((item) => !hidden.has(item.id));
   const ids = new Set(visible.map((item) => item.id));
   return visible.map((item) => ({ ...item, children: (item.children || []).filter((id) => ids.has(id)) }));
+}
+
+// Step 16: one vocabulary and pure evidence logic shared by orchestration/tests.
+export function cleanAIPlanTerms(plan) {
+  // Canonicalization must never discard a word because it looks generic.
+  return {...plan, includeGroups: [...new Map(plan.includeGroups.map(group => [JSON.stringify(group), group])).values()]};
+}
+export function reliabilitySamples(query, year, seed = 1) {
+  const end = query.to ?? year, split = query.from + Math.floor((end - query.from + 1) / 2);
+  const base = buildQueries(query, year).find(item => item.id === "papers");
+  const withoutDates = base.params.filter.replace(/,(?:from|to)_publication_date:[^,]+/g, "").replace(",type:article|review", "");
+  return [["early", query.from, split - 1], ["late", split, end]].filter(([, from, to]) => from <= to).map(([period, from, to]) => ({
+    id: "check" + period, period, params: { filter: withoutDates + `,from_publication_date:${from}-01-01,to_publication_date:${to}-12-31`, sample: "10", seed: String(seed), per_page: "10", select: "id,display_name" }
+  }));
+}
+export function reliabilityCheck(early, late) {
+  const matched = early.matched + late.matched, total = early.total + late.total;
+  const lowPrecision = total > 0 && matched / total < .7;
+  const trendDistorted = early.total > 0 && late.total > 0 && Math.abs(early.matched / early.total - late.matched / late.total) > .25 + Number.EPSILON;
+  return { matched, total, early, late, lowPrecision, trendDistorted };
+}
+export const EVIDENCE_NOTICES = {
+  few: "Few papers match this question exactly",
+  low: "Many matching papers may be off-topic; narrow the search for reliable numbers",
+  trend: "The trend may be distorted by off-topic papers."
+};
+export function checkedEvidence(candidates, judgments) {
+  const accepted = candidates.filter((_, i) => judgments[i] === true);
+  return { papers: accepted.slice().sort((a, b) => b.cited_by_count - a.cited_by_count || a.id.localeCompare(b.id)).slice(0, 10).flatMap(item => shapePapers({ results: [item] })),
+    experts: [], accepted: accepted.length, candidates: candidates.length };
+}
+
+// Question-grounded plans: model output may refine terms, never erase an intent.
+export function questionRequirements(sentence, year) {
+  const parts = globalThis.TMM_QUERY_PARSER.questionParts(sentence, year);
+  return { topic: parts.concepts[0] || "", focus: parts.concepts.slice(1), population: parts.population.map(item=>item.label), place: parts.place.map(item=>item.label) };
+}
+// Sources are verbatim spans, not a second vocabulary of hand-written concepts.
+const QUESTION_SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving increasing help helps learn leading field since from between until during written authored excluding without except s".split(" "));
+export const questionContentWords = sentence => [...new Set((String(sentence).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(word => !QUESTION_SCAFFOLD.has(word)))];
+export function groundedPlanSchema(year) {
+  const object = properties => ({type:"object",additionalProperties:false,required:Object.keys(properties),properties});
+  const text = {type:"string",minLength:1,maxLength:1000};
+  const candidate = object({plan:aiPlanSchema(year),sources:{type:"array",maxItems:40,items:object({path:{type:"string",maxLength:80},source:text})}});
+  return object({...candidate.properties,ambiguity:{anyOf:[{type:"null"},object({question:{...text,maxLength:180},options:{type:"array",minItems:2,maxItems:3,items:object({label:{...text,maxLength:80},...candidate.properties})}})]}});
+}
+export function groundPlan(candidate, sentence, year) {
+  const raw = validateAIPlan(candidate?.plan, year);
+  if (!Array.isArray(candidate.sources) || candidate.sources.length > 40) throw new Error("Invalid plan sources");
+  const sources = new Map();
+  for (const entry of candidate.sources) {
+    if (!exactObject(entry,["path","source"]) || typeof entry.path !== "string" || typeof entry.source !== "string" || !entry.source.trim() || entry.source.length > 1000) throw new Error("Invalid plan source");
+    // Exact words, including spelling/case. Prevent a source matching inside another word.
+    const start = sentence.indexOf(entry.source);
+    const before = start > 0 ? sentence[start-1] : "", after = sentence[start+entry.source.length] || "";
+    if (start >= 0 && !/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after) && !sources.has(entry.path)) sources.set(entry.path,entry.source);
+  }
+  const used = [];
+  const keep = path => {const source=sources.get(path);if(source)used.push({path,source});return Boolean(source);};
+  const topic = keep("topic") ? raw.topic : "";
+  const select = (items,prefix) => {
+    const selected=[];
+    items.forEach((item,index)=>{const source=sources.get(prefix+index);if(source){used.push({path:prefix+selected.length,source});selected.push(item);}});
+    return selected;
+  };
+  const synonyms = select(raw.synonyms,"synonyms.");
+  const includeGroups = select(raw.includeGroups,"includeGroups.");
+  const place = keep("place") ? raw.place : {codes:[],mode:"mentions"};
+  const excludeTerms = select(raw.excludeTerms,"excludeTerms.");
+  const years = {from:keep("years.from")?raw.years.from:2010,to:keep("years.to")?raw.years.to:null};
+  const covered = new Set(used.flatMap(entry=>questionContentWords(entry.source)));
+  const missing = questionContentWords(sentence).filter(word=>!covered.has(word));
+  return {plan:{topic,synonyms,includeGroups,place,excludeTerms,years},sources:used,missing};
+}
+export function reconcileGrounding(grounded, plan, sentence) {
+  const original=new Map(grounded.sources.map(entry=>[entry.path,entry.source])),sources=[];
+  const retain=(path,previous=path)=>{const source=original.get(previous);if(source)sources.push({path,source});};
+  retain("topic");
+  for (const field of ["synonyms","includeGroups","excludeTerms"]) plan[field].forEach((item,index)=>{
+    const previous=grounded.plan[field].findIndex(value=>JSON.stringify(value)===JSON.stringify(item));
+    if(previous>=0)retain(field+"."+index,field+"."+previous);
+  });
+  if(plan.place.codes.length)retain("place");
+  for(const field of ["from","to"])if(plan.years[field]!==null)retain("years."+field);
+  const covered=new Set(sources.flatMap(entry=>questionContentWords(entry.source)));
+  return {plan,sources,missing:questionContentWords(sentence).filter(word=>!covered.has(word))};
+}
+export function validateGroundedResponse(value, sentence, year) {
+  if (!exactObject(value,["plan","sources","ambiguity"])) throw new Error("Invalid grounded response");
+  groundPlan(value,sentence,year);
+  if (value.ambiguity !== null) {
+    const ambiguity=value.ambiguity;
+    if (!exactObject(ambiguity,["question","options"]) || typeof ambiguity.question!=="string" || !ambiguity.question.trim() || ambiguity.question.length>180 || !Array.isArray(ambiguity.options) || ambiguity.options.length<2 || ambiguity.options.length>3) throw new Error("Invalid ambiguity");
+    const labels=new Set();
+    for (const option of ambiguity.options) {
+      if (!exactObject(option,["label","plan","sources"]) || typeof option.label!=="string" || !option.label.trim() || option.label.length>80 || labels.has(option.label)) throw new Error("Invalid ambiguity option");
+      labels.add(option.label);
+      const grounded=groundPlan(option,sentence,year);
+      if (!grounded.plan.topic || grounded.missing.length) throw new Error("Incomplete ambiguity option");
+    }
+  }
+  return value;
+}
+export function planRequirements(plan) {
+  return {topic:plan.topic,alternatives:plan.synonyms,requiredGroups:plan.includeGroups.map(group=>group.preset?{label:SEARCH_PRESETS[group.preset].label,alternatives:SEARCH_PRESETS[group.preset].terms}:{alternatives:group.terms}),place:plan.place,exclusions:plan.excludeTerms};
+}
+export function passingTitleIds(raw, size) {
+  if(!exactObject(raw,["pass"]) || !Array.isArray(raw.pass) || raw.pass.length>size || raw.pass.some(id=>!Number.isInteger(id)||id<1||id>size) || new Set(raw.pass).size!==raw.pass.length)throw new Error("Invalid title judgments");
+  return Array.from({length:size},(_,i)=>raw.pass.includes(i+1));
+}
+export function verifiedExperts(ranked, candidates, judgments) {
+  const allowed=new Set(candidates.filter((_,i)=>judgments[i]===true).flatMap(paper=>(paper.authorships||[]).map(entry=>entry.author?.id)));
+  return ranked.filter(author=>allowed.has(author.openalexUrl)).slice(0,10).map(author=>({...author}));
+}
+export function expertCandidateQuery(query, ranked, year) {
+  const ids=[...new Set(ranked.slice(0,10).map(author=>author.openalexUrl).filter(id=>/^https:\/\/openalex\.org\/A\d+$/.test(id||"")))];
+  if(!ids.length)return null;
+  const base=buildQueries(query,year).find(item=>item.id==="papers");
+  return {id:"expertCandidates",params:{...base.params,filter:base.params.filter+",authorships.author.id:"+ids.map(id=>id.split("/").at(-1)).join("|"),per_page:"50"}};
+}
+
+export function rankExpertAuthors(response) {
+  return ranked(response).flatMap(item=>/^https:\/\/openalex\.org\/A\d+$/.test(item.key||"")&&item.key_display_name&&item.count>0?[{name:item.key_display_name,openalexUrl:item.key,count:item.count}]:[]).slice(0,10);
 }

@@ -255,3 +255,22 @@ test("'used to treat', 'for treating' and 'applied to' link the topic to its foc
   assert.deepEqual(read("Is CRISPR used to treat sickle cell disease in Saudi Arabia?"), ["CRISPR", "sickle cell disease + Saudi Arabia"]);
   assert.deepEqual(read("machine learning applied to cancer diagnosis"), ["machine learning", "cancer diagnosis"]);
 });
+
+const evalQuestions = [
+  ["How is research on CRISPR for sickle cell disease growing?", "CRISPR", [["sickle cell"]], 2010],
+  ["What research links air pollution to asthma in children?", "air pollution", [["asthma"], TMM_SEARCH_PRESETS.children.terms], 2010],
+  ["Which researchers study epigenetics during pregnancy?", "epigenetics", [TMM_SEARCH_PRESETS.pregnancy.terms], 2010],
+  ["How is research on battery recycling developing since 2020?", "battery recycling", [], 2020]
+];
+for (const [question, topic, groups, from] of evalQuestions) test("exact eval question strips scaffolding: " + question, () => {
+  const parsed=parse(question,currentYear);assert.equal(parsed.topic,topic);assert.deepEqual(parsed.includeGroups,groups);assert.equal(parsed.from,from);assert.deepEqual(parsed.errors,[]);
+});
+test("exact eval question preserves mental health, children and the Middle East without role scaffolding", () => {
+  const question="Is children’s mental health a growing field in the Middle East, and who’s leading it?";
+  const result=parse(question,currentYear);assert.equal(result.topic,"mental health");assert.deepEqual(result.includeGroups,[TMM_SEARCH_PRESETS.children.terms,TMM_SEARCH_PRESETS.middleEast.terms]);
+  assert.equal(parse(question.replace("children’s","childrens"),currentYear).topic,"mental health");
+});
+test("exact gamification question retains the school population and mathematics", () => {
+  const p=parse("Does gamification help primary school pupils learn mathematics?",currentYear);
+  assert.equal(p.topic,"gamification");assert.deepEqual(p.includeGroups,[TMM_QUERY_PARSER.PRIMARY_SCHOOL,["mathematics"]]);
+});
