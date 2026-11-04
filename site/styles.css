@@ -549,3 +549,7 @@ footer{color:var(--secondary)}
 
 .scope-place select{width:240px}
 .scope-row{align-items:flex-end}
+
+.scope-ai{display:flex;align-items:center;gap:8px;min-height:40px;font-size:.875rem;cursor:pointer}
+.scope-ai input{width:18px;height:18px}
+.scope-ai small{opacity:.75}

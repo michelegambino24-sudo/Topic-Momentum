@@ -27,6 +27,8 @@
   let activeExclusions = [], activeAuthored = [], activeUnderstandingKey = "", draftPlace = null, manualDraft = true;
   // A place chosen in the "Where" list always wins over a place written in the search bar. null = not chosen yet.
   let pickedPlace = null, pickedMode = "authored";
+  // True only after Advanced edits (synonyms, include groups). Years, Where and the place meaning never switch the page to the unchecked search.
+  let advancedDirty = false;
   const POPULAR_PLACES = ["worldwide", "country:US", "europe", "middleEast", "mena", "gcc", "country:AE", "country:SA", "africa", "asia"];
   function placeName(id) { return id === "country:US" ? "USA" : id === "worldwide" ? "Worldwide (no filter)" : globalThis.TMM_PLACES.byId[id].label; }
   function buildPlaceSelect() {
@@ -36,6 +38,26 @@
     // is found under MENA, Middle East, GCC and Saudi Arabia, and a paper from Nigeria under Africa.
     select.innerHTML = POPULAR_PLACES.filter(id => id === "worldwide" || places.byId[id]).map(id => `<option value="${id}">${escape(placeName(id))}</option>`).join("") + '<option value="custom" disabled hidden>Place from your text</option>';
     select.dataset.built = "1";
+  }
+  // The Where list and the year boxes are the source of truth for the AI search: they replace a place or years typed in the bar.
+  function composeSentence(sentence, from, to) {
+    let text = sentence;
+    if (pickedPlace !== null) {
+      // Dropping a typed place can leave a dangling word ("research about since 2020"): remove it.
+      const without = globalThis.TMM_PLACES.resolve(text).withoutPlaces.replace(/\s+(?:about|regarding|concerning|around|across|within|in|of|from|for|on)\s*(?=(?:since|until|between|after|before|during)\b|[?.!]*$)/gi, " ").replace(/\s+/g, " ").trim();
+      if (without) text = without + (pickedPlace === "worldwide" ? "" : " in " + globalThis.TMM_PLACES.byId[pickedPlace].label);
+    }
+    const year = new Date().getFullYear(), start = Number(from), end = to === "" || to == null ? null : Number(to);
+    if (Number.isInteger(start) && start >= 2000 && start <= year && (end === null || (Number.isInteger(end) && end >= start && end <= year))) {
+      const typed = parser.questionParts(text, year);
+      const sameYears = typed.explicitRange ? (typed.from === start && (typed.to ?? null) === end) : false;
+      if (sameYears || (!typed.explicitRange && start === 2010 && end === null)) return text;
+      let stripped = text;
+      for (const source of new Set(Object.values(typed.rangeSources || {}).filter(Boolean))) stripped = stripped.split(source).join(" ");
+      stripped = stripped.replace(/\s+(?:since|from|until|between|after|before|during)\s*(?=$|[?.!])/gi, " ").replace(/\s+/g, " ").trim();
+      if (stripped) text = stripped + (end !== null ? " from " + start + " to " + end : start !== 2010 ? " since " + start : "");
+    }
+    return text;
   }
   function applyPickedPlace() {
     if (pickedPlace === null) return;
@@ -472,7 +494,7 @@
     if (previous && $("status").textContent === previous) $("status").hidden = true;
   }
   function addIncludePreset(id) {
-    manualDraft = true;
+    manualDraft = true; advancedDirty = true;
     const preset = window.TMM_SEARCH_PRESETS[id];
     const existing = includeInputIds.slice(0, includeSlots).find(input => groupPreset(normaliseGroups([$(input).value.split(",")])[0] || []) === preset);
     if (existing) { $(existing).focus(); return; }
@@ -562,7 +584,7 @@
   function previewSentence(reset = false) {
     const parsed = parser.parse($("topic-input").value, new Date().getFullYear());
     sentenceText = $("topic-input").value;
-    manualDraft = false;
+    manualDraft = false; advancedDirty = false;
     draftTopic = parsed.topic; draftErrors = parsed.errors; draftNote = parsed.note; draftLabels = parsed.groups;
     if (reset) {
       activeExclusions = []; activeAuthored = []; activeUnderstandingKey = ""; draftPlace = null;
@@ -856,7 +878,7 @@
     activeSubfield = topic.subfieldId || "";
     activeExclusions = topic.excludeTerms || []; activeAuthored = topic.authoredCodes || [];
     activeUnderstandingKey = topic.understanding?.key || topic.understandingKey || "";
-    pickedPlace = null;
+    pickedPlace = null; advancedDirty = false;
     draftPlace = topic.understanding?.place || (topic.placeIds?.length?globalThis.TMM_PLACES.describe(topic.placeIds,topic.placeMode):null); manualDraft = !isSample;
     sentenceText = $("topic-input").value; draftTopic = sentenceText; draftErrors = []; draftNote = topic.understanding?.note || ""; draftLabels = []; showDraftFrom = reportRange(topic).from !== 2010;
     $("narrow-input").value = ""; narrowText = ""; narrowDraft = null;
@@ -1358,11 +1380,7 @@
       const current = options.mode ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored,placeIds,placeMode,subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
       if (useAI) url.search = "";
       let sentenceToSend = options.sentence;
-      if (useAI && pickedPlace !== null && !options.mode && !options.clarification && typeof sentenceToSend === "string") {
-        // Dropping a typed place can leave a dangling word ("research about since 2020"): remove it.
-        const typedWithoutPlace = globalThis.TMM_PLACES.resolve(sentenceToSend).withoutPlaces.replace(/\s+(?:about|regarding|concerning|around|across|within|in|of|from|for|on)\s*(?=(?:since|until|between|after|before|during)\b|[?.!]*$)/gi, " ").replace(/\s+/g, " ").trim();
-        if (typedWithoutPlace) sentenceToSend = typedWithoutPlace + (pickedPlace === "worldwide" ? "" : " in " + globalThis.TMM_PLACES.byId[pickedPlace].label);
-      }
+      if (useAI && !options.mode && !options.clarification && typeof sentenceToSend === "string") sentenceToSend = composeSentence(sentenceToSend, from, to);
       let response;
       try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:sentenceToSend,...(draftPlace || options.placeMode?{placeMode}:{}), ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
       catch { throw new Error(connectionError()); }
@@ -1419,7 +1437,7 @@
     event.preventDefault();
     if (busy) return;
     if ($("topic-input").value !== sentenceText) previewSentence();
-    if (window.AI_SEARCH_ENABLED !== false && !manualDraft) {
+    if (window.AI_SEARCH_ENABLED !== false && !advancedDirty) {
       if (!$("topic-input").value.trim()) { notify("Add a research topic, then try again.", true); return; }
       draftErrors = []; renderUnderstood();
       search(draftTopic, synonyms(), null, false, false, readIncludeGroups(), $("from-input").value, $("to-input").value, activeSubfield, null, {sentence:$("topic-input").value});
@@ -1431,6 +1449,20 @@
     search(draftTopic, synonyms());
   });
   try { buildPlaceSelect(); } catch { /* See syncPlaceSelect. */ }
+  try {
+    const aiToggle = document.getElementById("ai-toggle");
+    let saved = null;
+    try { saved = localStorage.getItem("tmm-ai-check"); } catch { /* Storage may be unavailable. */ }
+    if (saved === "off") window.AI_SEARCH_ENABLED = false;
+    if (aiToggle && typeof aiToggle.addEventListener === "function") {
+      aiToggle.checked = window.AI_SEARCH_ENABLED !== false;
+      aiToggle.addEventListener("change", () => {
+        window.AI_SEARCH_ENABLED = aiToggle.checked;
+        try { localStorage.setItem("tmm-ai-check", aiToggle.checked ? "on" : "off"); } catch { /* Optional convenience. */ }
+        notify(aiToggle.checked ? "AI check on: experts and key papers are checked for relevance." : "AI check off: quick counts only, no checked experts or key papers.");
+      });
+    }
+  } catch { /* The switch is optional. */ }
   document.getElementById("place-select")?.addEventListener?.("change", event => {
     if (busy) { syncPlaceSelect(); return; }
     pickedPlace = event.target.value === "custom" ? null : event.target.value;
@@ -1450,9 +1482,9 @@
     const back = { hash: reportHash(topic, cacheOnlyView), title: $("topic-name").textContent };
     search(merged.topic, merged.synonyms, topic.subtopicId ? { id: topic.subtopicId, name: baseTitle(topic) } : null, false, false, merged.includeGroups, merged.from, merged.to, topic.subfieldId || "", back);
   });
-  $("synonyms-input").addEventListener("input", () => { manualDraft = true; renderSynonyms(); syncOptions(); });
+  $("synonyms-input").addEventListener("input", () => { manualDraft = true; advancedDirty = true; renderSynonyms(); syncOptions(); });
   for (const id of [...includeInputIds, "from-input", "to-input"]) $(id).addEventListener("input", () => {
-    manualDraft = true;
+    if (id !== "from-input" && id !== "to-input") { manualDraft = true; advancedDirty = true; }
     const index = includeInputIds.indexOf(id);
     if (index >= 0) { editingGroups[index] = true; syncIncludePresets(); }
     syncOptions();
@@ -1593,15 +1625,12 @@
     if (button.dataset.placeToggle !== undefined) {
       if (busy || !draftPlace) return;
       const other = draftPlace.mode === "authored" ? "mentions" : "authored";
+      // Only the choice changes. Measure momentum then runs the full AI-checked search, with experts and key papers.
       pickedMode = other;
-      if(!activeUnderstandingKey || !topic.understanding?.sentence){
-        if(manualDraft && topic.placeIds?.length){
-          search(draftTopic,synonyms(),null,false,false,readIncludeGroups(),$("from-input").value,$("to-input").value,activeSubfield,null,{placeIds:draftPlace.ids,placeMode:other,authoredCodes:other==="authored"?draftPlace.codes:[]});return;
-        }
-        draftPlace={...draftPlace,mode:other};pickedMode=other;activeAuthored=other==="authored"?draftPlace.codes:[];renderUnderstood();return;
-      }
-      const back = { hash:reportHash(topic,cacheOnlyView),title:$("topic-name").textContent };
-      search(draftTopic, synonyms(), topic.subtopicId ? {id:topic.subtopicId,name:baseTitle(topic)} : null, false, false, readIncludeGroups(), $("from-input").value, $("to-input").value, activeSubfield, back, {sentence:topic.understanding.sentence,mode:other});
+      draftPlace = { ...draftPlace, mode: other };
+      activeAuthored = other === "authored" ? draftPlace.codes : [];
+      renderUnderstood();
+      notify("Press Measure momentum to search with this meaning.");
       return;
     }
     if (button.dataset.refine !== undefined) {
@@ -1620,7 +1649,6 @@
       return;
     }
     if (button.dataset.rangePreset !== undefined) {
-      manualDraft = true;
       $("from-input").value = button.dataset.rangePreset;
       $("to-input").value = "";
       syncOptions();
