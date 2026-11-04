@@ -572,3 +572,14 @@ This section supersedes the earlier step-16 Quick-mode and subset-count labels.
 - Ask at most one short ambiguity question before source searching, with 2–3 concrete choices. Choice labels name the intended search; do not expose model/schema details.
 - If coverage or self-check still fails after its bounded repair, use **Please rephrase your question.** followed by the short missing requirement/problem. Do not show unchecked results or invented options.
 - Clarification choices do not consume a checked-search allowance. AI usage is still budgeted. Editing the question clears the old choices.
+
+
+## Step 16 accurate AI failures
+
+This supersedes the generic AI-unavailable notice above.
+
+- Daily admission/neuron exhaustion only: Today's AI checks are used up. They reset at {Rome reset time} (Rome time). Saved reports and the Library still work. The next UTC midnight is 01:00 in winter and 02:00 in summer.
+- Per-search ceiling: This question needs more AI checking than one search allows. Shorten the question and try again. Saved reports and the Library still work.
+- Timeout: The AI check took too long. Try again later. Saved reports and the Library still work.
+- Other AI failures: The AI check could not finish. Try again later or rephrase your question. Saved reports and the Library still work.
+- Unresolved coverage/self-check: Please rephrase your question so every requirement is clear. Return an error, not an empty clarification.

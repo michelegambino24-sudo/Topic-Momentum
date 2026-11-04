@@ -162,7 +162,7 @@
     }
     // "gene editing or genome editing" → topic "gene editing", synonym "genome editing".
     const topicParts = stripGeneric(refinement ? withoutTopicWords(work, currentTopic) : clean(work)).replace(/["“”]/g, "").split(/\s+or\s+/i).map(part => stripGeneric(part)).filter(Boolean);
-    const topic = topicParts[0] || "";
+    const topic = (topicParts[0] || "").split(",").map(part => part.trim()).filter(Boolean).join(", ");
     const topicSynonyms = refinement ? [] : [...new Set(topicParts.slice(1).map(term))];
     const seen = new Set(), groups = [], ignored = [];
     for (const item of candidates.sort((a, b) => a.position - b.position)) {

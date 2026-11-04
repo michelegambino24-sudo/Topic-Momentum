@@ -1,0 +1,109 @@
+{
+  "coreStatus": 200,
+  "coreGroupCount": 10,
+  "coreGroups": [
+    {
+      "id": "S30879505",
+      "name": "Journal of the Association for Information Systems",
+      "count": 52
+    },
+    {
+      "id": "S2484188435",
+      "name": "IEEE Transactions on Cognitive Communications and Networking",
+      "count": 49
+    },
+    {
+      "id": "S2485537415",
+      "name": "IEEE Access",
+      "count": 38
+    },
+    {
+      "id": "S2737791640",
+      "name": "Journal of Information Systems Engineering & Management",
+      "count": 28
+    },
+    {
+      "id": "S186584794",
+      "name": "IEEE Network",
+      "count": 22
+    },
+    {
+      "id": "S4386621846",
+      "name": "International Journal of Artificial Intelligence and Machine Learning",
+      "count": 22
+    },
+    {
+      "id": "S4210180307",
+      "name": "Journal of Computer Science and Technology Studies",
+      "count": 21
+    },
+    {
+      "id": "S2764360368",
+      "name": "International Journal of Intelligent Systems and Applications in Engineering",
+      "count": 20
+    },
+    {
+      "id": "S4210170699",
+      "name": "AI and Ethics",
+      "count": 20
+    },
+    {
+      "id": "S158429083",
+      "name": "Computer Fraud & Security",
+      "count": 17
+    }
+  ],
+  "sources": [
+    {
+      "requestedName": "International Journal of Artificial Intelligence and Machine Learning",
+      "records": [
+        {
+          "id": "S4386621846",
+          "status": 200,
+          "name": "International Journal of Artificial Intelligence and Machine Learning",
+          "is_core": true,
+          "type": "journal",
+          "issn_l": "2789-2557",
+          "issn": [
+            "2789-2557"
+          ],
+          "coreQueryCount": 22
+        }
+      ]
+    },
+    {
+      "requestedName": "Journal of Computer Science and Technology Studies",
+      "records": [
+        {
+          "id": "S4210180307",
+          "status": 200,
+          "name": "Journal of Computer Science and Technology Studies",
+          "is_core": true,
+          "type": "journal",
+          "issn_l": "2709-104X",
+          "issn": [
+            "2709-104X"
+          ],
+          "coreQueryCount": 21
+        }
+      ]
+    },
+    {
+      "requestedName": "International Journal of Intelligent Systems and Applications in Engineering",
+      "records": [
+        {
+          "id": "S2764360368",
+          "status": 200,
+          "name": "International Journal of Intelligent Systems and Applications in Engineering",
+          "is_core": true,
+          "type": "journal",
+          "issn_l": "2147-6799",
+          "issn": [
+            "2147-6799"
+          ],
+          "coreQueryCount": 20
+        }
+      ]
+    }
+  ]
+}

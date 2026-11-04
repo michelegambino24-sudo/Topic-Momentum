@@ -1,5 +1,5 @@
 import { createAIService } from "./ai.js";
-import { normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors, explicitOpenAlexUsd } from "./lib.js";
+import { dailyKey, normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors, explicitOpenAlexUsd } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date(), timing = {}) {
@@ -68,7 +68,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
   }
   async function reserveTopic(env, date) {
     const cap = Math.min(30, dailyCap(env.NEW_TOPICS_PER_DAY));
-    const countKey = "count:" + date.toISOString().slice(0, 10);
+    const countKey = "count:" + dailyKey(date);
           return await locked(env.TMM, countKey, async () => {
             const count = await env.TMM.get(countKey, "json") ?? 0;
             if (!Number.isSafeInteger(count) || count < 0) throw new Error("Invalid counter");

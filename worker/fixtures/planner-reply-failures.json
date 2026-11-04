@@ -1,0 +1,221 @@
+{
+  "kind": "Synthetic malformed planner replies for offline reproduction; not captured production responses",
+  "variants": [
+    "markdown",
+    "trailingText",
+    "missingFields",
+    "emptyGroup",
+    "wrongType",
+    "truncated"
+  ],
+  "questions": [
+    {
+      "question": "Does gamification help primary school pupils learn mathematics?",
+      "reply": {
+        "plan": {
+          "topic": "gamification",
+          "synonyms": [],
+          "includeGroups": [
+            {
+              "terms": [
+                "primary school",
+                "elementary school",
+                "primary pupils",
+                "elementary students",
+                "grade school"
+              ]
+            },
+            {
+              "terms": [
+                "mathematics",
+                "math",
+                "maths"
+              ]
+            }
+          ],
+          "place": {
+            "codes": [],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "gamification"
+          },
+          {
+            "path": "includeGroups.0",
+            "source": "primary school pupils"
+          },
+          {
+            "path": "includeGroups.1",
+            "source": "mathematics"
+          }
+        ],
+        "ambiguity": null
+      }
+    },
+    {
+      "question": "How is research on CRISPR for sickle cell disease growing?",
+      "reply": {
+        "plan": {
+          "topic": "CRISPR",
+          "synonyms": [],
+          "includeGroups": [
+            {
+              "terms": [
+                "sickle cell"
+              ]
+            }
+          ],
+          "place": {
+            "codes": [],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "CRISPR"
+          },
+          {
+            "path": "includeGroups.0",
+            "source": "sickle cell disease"
+          }
+        ],
+        "ambiguity": null
+      }
+    },
+    {
+      "question": "What research links air pollution to asthma in children?",
+      "reply": {
+        "plan": {
+          "topic": "air pollution",
+          "synonyms": [],
+          "includeGroups": [
+            {
+              "terms": [
+                "asthma"
+              ]
+            },
+            {
+              "preset": "children"
+            }
+          ],
+          "place": {
+            "codes": [],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "air pollution"
+          },
+          {
+            "path": "includeGroups.0",
+            "source": "asthma"
+          },
+          {
+            "path": "includeGroups.1",
+            "source": "children"
+          }
+        ],
+        "ambiguity": null
+      }
+    },
+    {
+      "question": "How does sleep affect memory in teenagers?",
+      "reply": {
+        "plan": {
+          "topic": "sleep",
+          "synonyms": [],
+          "includeGroups": [
+            {
+              "terms": [
+                "memory",
+                "recall"
+              ]
+            },
+            {
+              "preset": "adolescents"
+            }
+          ],
+          "place": {
+            "codes": [],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "sleep"
+          },
+          {
+            "path": "includeGroups.0",
+            "source": "affect memory"
+          },
+          {
+            "path": "includeGroups.1",
+            "source": "teenagers"
+          }
+        ],
+        "ambiguity": null
+      }
+    },
+    {
+      "question": "Which researchers study epigenetics during pregnancy?",
+      "reply": {
+        "plan": {
+          "topic": "epigenetics",
+          "synonyms": [],
+          "includeGroups": [
+            {
+              "preset": "pregnancy"
+            }
+          ],
+          "place": {
+            "codes": [],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "epigenetics"
+          },
+          {
+            "path": "includeGroups.0",
+            "source": "pregnancy"
+          }
+        ],
+        "ambiguity": null
+      }
+    }
+  ]
+}

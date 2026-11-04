@@ -182,7 +182,7 @@ export function validateAIPlan(raw, year) {
   validateRange(raw.years.from, raw.years.to, year);
   const excluded = raw.excludeTerms.map(cleanTerm);
   if (excluded.includes(cleanTerm(raw.topic)) || raw.synonyms.some(value => excluded.includes(cleanTerm(value)))) fail();
-  return JSON.parse(JSON.stringify(raw));
+  return {...JSON.parse(JSON.stringify(raw)),topic:raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", ")};
 }
 export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) {
   raw = validateAIPlan(raw, year);
@@ -758,6 +758,48 @@ export function checkedEvidence(candidates, judgments) {
 }
 
 // Question-grounded plans: model output may refine terms, never erase an intent.
+export const dailyKey = date => date.toISOString().slice(0, 10);
+export function parseModelReply(value) {
+  if (typeof value !== "string") return value;
+  const text=value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try { return JSON.parse(text); } catch { /* Accept a complete object followed by prose, never truncated JSON. */ }
+  if (text[0] !== "{") throw new SyntaxError("The model reply is not a JSON object.");
+  let depth=0,quoted=false,escaped=false;
+  for(let i=0;i<text.length;i++) {
+    const char=text[i];
+    if(quoted){if(escaped)escaped=false;else if(char==="\\")escaped=true;else if(char==='"')quoted=false;continue;}
+    if(char==='"')quoted=true;
+    else if(char==="{")depth++;
+    else if(char==="}" && --depth===0) {
+      const tail=text.slice(i+1).trim().replace(/^```\s*/, "");
+      // A second JSON value is ambiguous; do not silently choose between answers.
+      if(/^[{\[]/.test(tail))throw new SyntaxError("The model returned multiple JSON values.");
+      return JSON.parse(text.slice(0,i+1));
+    }
+  }
+  throw new SyntaxError("The model reply contains incomplete JSON.");
+}
+export function aiAttemptDiagnostic({stage,attempt,call,category,error,parseableJSON,rawReply,secrets=[]}) {
+  const redact=value=>{
+    let text=String(value ?? "");
+    for(const secret of secrets)if(typeof secret==="string" && secret)text=text.split(secret).join("[redacted]");
+    return text.replace(/\bBearer\s+[^\s,"'}]+/gi,"Bearer [redacted]").replace(/((?:api[_-]?key|authorization|(?:access[_-]?)?token|secret|password)["']?\s*[:=]\s*["']?)([^\s,"'}]+)/gi,"$1[redacted]")
+      .replace(/\b(?:sk-|sk_)[a-zA-Z0-9_-]+/g,"[redacted]");
+  };
+  return {stage,attempt,call,category,errorName:redact(error.name || "Error").slice(0,60),message:redact(error.detail || error.message).slice(0,160),parseableJSON,replyPreview:redact(rawReply).slice(0,300)};
+}
+export function dailyReset(date) {
+  const next = new Date(date);
+  next.setUTCHours(24, 0, 0, 0);
+  const rome = new Intl.DateTimeFormat("en-GB", {timeZone:"Europe/Rome",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(next);
+  return {at:next.toISOString(),rome};
+}
+export function aiFailureMessage(reason, date) {
+  if (["daily_ai_limit", "daily_neuron_limit"].includes(reason)) return `Today's AI checks are used up. They reset at ${dailyReset(date).rome} (Rome time). Saved reports and the Library still work.`;
+  if (reason === "search_neuron_limit") return "This question needs more AI checking than one search allows. Shorten the question and try again. Saved reports and the Library still work.";
+  if (reason === "ai_timeout") return "The AI check took too long. Try again later. Saved reports and the Library still work.";
+  return "The AI check could not finish. Try again later or rephrase your question. Saved reports and the Library still work.";
+}
 export function questionRequirements(sentence, year) {
   const parts = globalThis.TMM_QUERY_PARSER.questionParts(sentence, year);
   return { topic: parts.concepts[0] || "", focus: parts.concepts.slice(1), population: parts.population.map(item=>item.label), place: parts.place.map(item=>item.label) };
@@ -780,7 +822,8 @@ export function groundPlan(candidate, sentence, year) {
     // Exact words, including spelling/case. Prevent a source matching inside another word.
     const start = sentence.indexOf(entry.source);
     const before = start > 0 ? sentence[start-1] : "", after = sentence[start+entry.source.length] || "";
-    if (start >= 0 && !/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after) && !sources.has(entry.path)) sources.set(entry.path,entry.source);
+    const path = entry.path.replace(/^plan\./, "").replace(/\[(\d+)\]/g, ".$1");
+    if (start >= 0 && !/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after) && !sources.has(path)) sources.set(path,entry.source);
   }
   const used = [];
   const keep = path => {const source=sources.get(path);if(source)used.push({path,source});return Boolean(source);};
@@ -827,6 +870,17 @@ export function validateGroundedResponse(value, sentence, year) {
     }
   }
   return value;
+}
+// Recover only a literal, single-concept question; never invent model expansions or choices.
+export function literalQuestionPlan(candidate, sentence, year) {
+  const parts = globalThis.TMM_QUERY_PARSER.questionParts(sentence, year);
+  if (parts.concepts.length !== 1 || parts.population.length || parts.place.length || /\b(?:without|excluding|except)\b/i.test(sentence)) return candidate;
+  if (cleanTerm(parts.concepts[0]) !== cleanTerm(candidate.plan.topic) || candidate.plan.synonyms.length || candidate.plan.includeGroups.length || candidate.plan.place.codes.length || candidate.plan.excludeTerms.length) return candidate;
+  const start = sentence.toLowerCase().indexOf(candidate.plan.topic.toLowerCase());
+  if (start < 0) return candidate;
+  const sources = [{path:"topic",source:sentence.slice(start,start+candidate.plan.topic.length)}];
+  for (const [field,value] of Object.entries({from:parts.from,to:parts.to})) if (value !== null && sentence.includes(String(value))) sources.push({path:"years."+field,source:String(value)});
+  return {...candidate,plan:{...candidate.plan,years:{from:parts.from,to:parts.to}},sources};
 }
 export function planRequirements(plan) {
   return {topic:plan.topic,alternatives:plan.synonyms,requiredGroups:plan.includeGroups.map(group=>group.preset?{label:SEARCH_PRESETS[group.preset].label,alternatives:SEARCH_PRESETS[group.preset].terms}:{alternatives:group.terms}),place:plan.place,exclusions:plan.excludeTerms};

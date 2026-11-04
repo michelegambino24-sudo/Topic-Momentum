@@ -22,7 +22,7 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
     else if(data.task==="plan")response=plans.length>1?plans.shift():plans[0];
     else {judges.push(data);response=config.judge?config.judge(data):{pass:data.titles.map((_,i)=>i+1)};}
     if(response instanceof Error)throw response;
-    return {response,usage:{neurons:2}};
+    return {response,...(config.unmeasured?{}:{usage:{neurons:2}})};
   }}};
   const service=createAIService({now:()=>new Date("2026-11-04T12:00:00Z"),clock:Date.now,locked:async(_kv,_key,fn)=>fn(),reserve:async()=>true,source:async descriptor=>{
     sourceCalls.push(descriptor);
@@ -43,6 +43,63 @@ test("source grounding drops unsupported elements of every kind and preserves br
  assert.deepEqual(result.missing,[]);assert.deepEqual(result.plan.synonyms,["social networking"]);assert.equal(result.plan.includeGroups.length,2);assert.deepEqual(result.plan.place.codes,[]);assert.deepEqual(result.plan.excludeTerms,[]);assert.deepEqual(result.plan.years,{from:2010,to:null});
  assert(questionContentWords(sentence).includes("attention"));
  const missing=groundPlan(candidate({...base(),topic:"social media"},{topic:"social media"}),sentence,2026);assert.deepEqual(missing.missing,["kids","attention"]);
+});
+
+test("unknown-cost planning, repair and self-check finish within the expanded search ceiling",async()=>{
+ const bad=candidate({...base(),topic:"battery"},{topic:"battery"});
+ const app=setup([bad,complete()],[{ok:true}],{unmeasured:true}),result=await app.search();
+ assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");
+ assert(result.body.aiUsage.neurons>600);assert(result.body.aiUsage.neurons<=2400);assert.equal(result.body.aiUsage.measured,false);
+ const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.reserved,0);assert.equal(ledger.used,result.body.aiUsage.neurons);
+ assert(app.kv.writes.filter(row=>row.key.startsWith("ai:usage:")).length>2);
+});
+test("daily guard denies a reservation extension before another model call",async()=>{
+ const app=setup([new Error("provider failed")],[{ok:true}],{unmeasured:true});
+ app.kv.values.set("ai:usage:2026-11-04",JSON.stringify({used:8400,reserved:0}));
+ const result=await app.search();assert.equal(result.body.aiReason,"daily_neuron_limit");assert.equal(app.calls.length,1);
+ const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.reserved,0);assert(ledger.used<=9000);
+});
+test("malformed JSON and invalid responses retain distinct diagnostics after retry",async()=>{
+ for(const [reply,category] of [["{broken","bad_json"],[{wrong:true},"validation"],[new Error("AI timeout"),"timeout"],[new Error("provider failed"),"provider_error"]]){
+  const app=setup([reply]),result=await app.search();
+  assert.equal(result.status,503);assert.equal(app.calls.length,2);assert(!result.body.message.includes("used up"));
+  assert.equal(result.body.aiUsage.errors.length,2);assert(result.body.aiUsage.errors.every(error=>error.category===category));
+ }
+});
+test("fenced JSON and plan-prefixed source paths remain grounded and complete",async()=>{
+ const value=complete();value.sources=value.sources.map(item=>({...item,path:"plan."+item.path}));
+ const app=setup(["```json\n"+JSON.stringify(value)+"\n```"]),result=await app.search();
+ assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");
+});
+test("literal single-concept question recovers missing topic/year sources without clarification",async()=>{
+ const app=setup([candidate({...base(),years:{from:2020,to:null}},{})]),result=await app.search();
+ assert.equal(result.status,200);assert(!result.body.clarification);assert.equal(result.body.from,2020);assert.equal(result.body.name,"battery recycling");
+ assert.equal(result.body.aiUsage.stages.planning.calls,1);assert.equal(result.body.aiUsage.stages.selfCheck.calls,1);
+});
+
+const malformedFixtures=JSON.parse(readFileSync(new URL("./fixtures/planner-reply-failures.json",import.meta.url),"utf8"));
+for(const row of malformedFixtures.questions)for(const variant of malformedFixtures.variants)test(`planner replay: ${variant}: ${row.question}`,async()=>{
+ const reply=structuredClone(row.reply);
+ let bad;
+ if(variant==="markdown")bad="```json\n"+JSON.stringify(reply)+"\n```";
+ if(variant==="trailingText")bad=JSON.stringify(reply)+"\nHere is the requested plan.";
+ if(variant==="missingFields"){delete reply.plan.years;bad=reply;}
+ if(variant==="emptyGroup"){reply.plan.includeGroups=[{terms:[]}];bad=reply;}
+ if(variant==="wrongType"){reply.plan.synonyms="not an array";bad=reply;}
+ if(variant==="truncated")bad=JSON.stringify(reply).slice(0,-15);
+ const app=setup([bad]),result=await app.search({sentence:row.question});
+ if(["markdown","trailingText"].includes(variant)) {
+  assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.errors.length,0);
+ } else {
+  assert.equal(result.status,503);assert.equal(app.calls.length,2);assert.equal(app.sourceCalls.length,0);
+  assert(!result.body.message.includes("used up"));
+  assert.equal(result.body.aiUsage.errors.length,2);
+  assert(result.body.aiUsage.errors.every(error=>error.parseableJSON===(variant!=="truncated")));
+  assert.deepEqual(result.body.aiUsage.errors.map(error=>error.attempt),[1,2]);
+  assert(result.body.aiUsage.errors.every(error=>error.replyPreview.length<=300 && error.stage==="planning"));
+  const repair=setup([bad,row.reply]),fixed=await repair.search({sentence:row.question});
+  assert.equal(fixed.status,200);assert.equal(fixed.body.papersKind,"checked");
+ }
 });
 test("sources must match exact complete words; typos may ground corrected model phrases",()=>{
  assert.deepEqual(groundPlan(candidate(base(),{topic:"battery recyling"}),"battery recyling",2026).missing,[]);
@@ -68,8 +125,8 @@ test("missing coverage triggers one AI re-plan with exact missed words before co
  const before=app.calls.length,cached=await app.search();assert.equal(cached.body.aiUsage.neurons,0);assert.equal(app.calls.length,before);
 });
 test("still-missing coverage asks for a rephrase with no source call or charged search",async()=>{
- const app=setup([candidate(base(),{topic:"battery"})]),result=await app.search();
- assert(result.body.clarification);assert(!result.body.papers);assert.equal(app.calls.length,2);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
+ const app=setup([candidate({...base(),topic:"battery"},{topic:"battery"})]),result=await app.search();
+ assert.equal(result.status,422);assert(!result.body.clarification);assert(!result.body.papers);assert.equal(app.calls.length,2);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.used,4);assert.equal(ledger.reserved,0);
 });
 test("self-check rejection re-plans once; both self-checks and re-plan are charged",async()=>{
@@ -79,7 +136,7 @@ test("self-check rejection re-plans once; both self-checks and re-plan are charg
 });
 test("a second self-check rejection clarifies without any source call",async()=>{
  const app=setup([complete()],[{ok:false,problem:"The intended meaning is unclear"}]),result=await app.search();
- assert(result.body.clarification);assert.equal(app.calls.length,4);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
+ assert.equal(result.status,422);assert(!result.body.clarification);assert.equal(app.calls.length,4);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
 });
 test("one ambiguity carries ready plans; selection uses stored options, verifies, and charges only the search",async()=>{
  const sentence="solar energy in Georgia";

@@ -255,7 +255,7 @@ test("invalid tightening re-plans once and clarifies rather than silently keepin
   const wider = clone(data.plan); wider.years.from = 2010;
   const app = setup([data.plan, judgments(10), wider, wider]);
   const result = await (await app.search()).json();
-  assert(result.clarification); assert(!result.papers);
+  assert.equal(result.error,"rephrase_required"); assert(!result.clarification); assert(!result.papers);
   assert.equal(app.aiCalls.length, 5);
   assert.equal(app.calls.filter(url => url.searchParams.get("select") === "id,display_name").length, 2);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1");

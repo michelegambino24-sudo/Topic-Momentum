@@ -38,10 +38,11 @@ export function checkExpectation(result, expected = {}, clarification = null) {
   return {pass:errors.length===0,errors};
 }
 export function combineUsage(usages) {
-  const total={neurons:0,calls:0,sourceCalls:0,measured:true,byModel:{},stages:{}};
+  const total={neurons:0,calls:0,sourceCalls:0,measured:true,byModel:{},stages:{},errors:[]};
   for(const usage of usages){
     if(!usage || !Number.isFinite(usage.neurons) || usage.neurons<0){total.measured=false;continue;}
     if(Number.isInteger(usage.sourceCalls)&&usage.sourceCalls>=0&&total.sourceCalls!==null)total.sourceCalls+=usage.sourceCalls;else total.sourceCalls=null;
+    total.errors.push(...(usage.errors||[]));
     total.neurons+=usage.neurons;total.calls+=usage.calls||0;total.measured&&=usage.measured===true;
     for(const [model,cost] of Object.entries(usage.byModel||{}))total.byModel[model]=(total.byModel[model]||0)+cost;
     for(const [stage,part] of Object.entries(usage.stages||{})){

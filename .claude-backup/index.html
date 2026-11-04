@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore research trends with Topic Momentum Meter.">
+  <title>Topic Momentum Meter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="config.js"></script>
+  <script defer src="sample-topic.js"></script>
+  <script defer src="map-data.js"></script>
+  <script defer src="search-presets.js"></script>
+  <script defer src="map-feedback.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="#search">Topic Momentum Meter</a>
+    <nav aria-label="Main navigation"><a href="#search" id="search-nav">Search</a><a href="#library" id="library-nav">Library</a></nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <section id="topic-page" aria-labelledby="topic-name">
+      <form novalidate id="search-form" class="search-panel">
+        <div class="search-fields"><label for="topic-input">Research topic <span class="help"><button type="button" class="help-trigger" data-help="search-help" aria-label="About Topic Momentum Meter" aria-controls="search-help" aria-describedby="search-help" aria-expanded="false">?</button><span id="search-help" class="tooltip" role="tooltip" hidden>Type a field or technology, like “epigenetics”. We search titles and abstracts.</span></span><input id="topic-input" name="topic" required autocomplete="off"></label><button class="primary" type="submit">Measure momentum</button></div>
+        <details id="search-options" class="search-options">
+          <summary>More options</summary>
+          <div class="options-grid">
+            <div><label for="synonyms-input">Synonyms <span class="help"><button type="button" class="help-trigger" data-help="synonyms-help" aria-label="About synonyms" aria-controls="synonyms-help" aria-describedby="synonyms-help" aria-expanded="false">?</button><span id="synonyms-help" class="tooltip" role="tooltip" hidden>Other words for the same topic. Papers that use any of them are counted too.</span></span><input id="synonyms-input" name="synonyms" autocomplete="off"></label><div id="synonym-chips" class="chips" aria-label="Current synonyms"></div></div>
+            <div class="include-controls">
+              <div class="include-group"><label for="include-input">Must also include <span class="help"><button type="button" class="help-trigger" data-help="include-note" aria-label="About additional terms" aria-controls="include-note" aria-describedby="include-note" aria-expanded="false">?</button><span id="include-note" class="tooltip" role="tooltip" hidden>Each group must match. Within a group, any term can match. For example, inheritance + GCC + children. Terms can appear anywhere in the title or abstract; multi-word terms stay together as phrases. Separate alternatives with commas. These presets match words in titles and abstracts, not where the authors work.</span></span><input id="include-input" name="include" aria-label="Include group 1" aria-describedby="include-note include-error" autocomplete="off"></label><button id="remove-include-1" class="text-button remove-include" type="button" aria-label="Remove include group 1">Remove group</button></div>
+              <div id="include-group-2" class="include-group" hidden><label for="include-input-2">Include group 2<input id="include-input-2" name="include2" aria-describedby="include-note include-error" autocomplete="off" disabled></label><button id="remove-include-2" class="text-button remove-include" type="button" aria-label="Remove include group 2">Remove group</button></div>
+              <div id="include-group-3" class="include-group" hidden><label for="include-input-3">Include group 3<input id="include-input-3" name="include3" aria-describedby="include-note include-error" autocomplete="off" disabled></label><button id="remove-include-3" class="text-button remove-include" type="button" aria-label="Remove include group 3">Remove group</button></div>
+              <button id="add-include-group" class="text-button" type="button">Add another group</button>
+              <p id="include-limit" class="include-message" hidden>You can use up to three include groups. Remove a group to add another.</p>
+              <p id="include-error" class="include-message" role="status" hidden></p>
+              <div class="chips"><button class="chip" id="children-preset" type="button">Children 0–9</button><button class="chip" id="middle-east-preset" type="button">Middle East</button><button class="chip" id="gcc-preset" type="button">GCC</button></div>
+            </div>
+            <div class="range-controls"><div class="range-fields"><label for="from-input">From<input id="from-input" name="from" type="number" min="2000" step="1" value="2010" required></label><label for="to-input">To <span class="help"><button type="button" class="help-trigger" data-help="range-help" aria-label="About the year range" aria-controls="range-help" aria-describedby="range-help" aria-expanded="false">?</button><span id="range-help" class="tooltip" role="tooltip" hidden>Leave empty to include papers up to today.</span></span><input id="to-input" name="to" type="number" min="2000" step="1" placeholder="Until today"></label></div><div class="range-presets" aria-label="Quick-fill From year"><button type="button" class="chip" data-range-preset="2010">2010</button><button type="button" class="chip" data-range-preset="2020">2020</button><button type="button" class="chip" data-range-preset="2023">2023</button><button type="button" class="chip" data-range-preset="2024">2024</button><button type="button" class="chip" data-range-preset="2025">2025</button></div></div>
+          </div>
+          <div class="suggestions" id="suggestions"><span>Suggested synonyms</span><div id="suggested-synonyms" class="chips"></div></div>
+        </details>
+      </form>
+      <div id="report-stage" class="t-skel is-revealed">
+        <div class="t-skel-skeleton report-skeleton" aria-hidden="true">
+          <div class="loading-work"><p>This search includes</p><ol id="loading-steps"><li>Counting papers per year</li><li>Finding leading experts</li><li>Mapping countries</li><li>Ranking sub-topics</li></ol><p class="loading-note">The report opens as soon as the data arrives.</p></div>
+        </div>
+        <div class="t-skel-content">
+          <p id="no-results" class="empty-state" role="status" hidden>No papers found for this topic. Check the spelling or add synonyms.</p>
+          <div id="report-content" class="dashboard">
+            <div class="tile hero-tile" id="hero-tile"><div class="report-heading"><div><a id="back-parent" hidden></a><h1 id="topic-name"></h1><p id="topic-meta"></p></div><div class="report-actions"><button id="export-csv" type="button">Export CSV</button><button id="save-report" type="button">Save to My library</button></div></div><section class="panel chart-panel" aria-label="Research activity"><div id="kpis" class="kpi-grid"></div><div class="chart-help"><span class="help"><button type="button" class="help-trigger" data-help="chart-help" aria-label="About the chart" aria-controls="chart-help" aria-describedby="chart-help" aria-expanded="false">?</button><span id="chart-help" class="tooltip" role="tooltip" hidden>Papers published each year. The current year isn’t over, so its line is dashed.</span></span></div><div id="year-chart"></div></section></div>
+            <section class="panel tile momentum-panel" aria-labelledby="momentum-heading"><div class="panel-heading"><h2 id="momentum-heading">Momentum</h2><span class="help"><button class="help-trigger" type="button" data-help="momentum-help" aria-label="About momentum" aria-controls="momentum-help" aria-describedby="momentum-help" aria-expanded="false">?</button><span id="momentum-help" class="tooltip" role="tooltip" hidden>Accelerating means 20% or more a year. Growing is 8 to 20%, Stable is 0 to 8%, Cooling means fewer papers each year.</span></span></div><div id="momentum-gauge" class="momentum-gauge"></div><div id="momentum-segments" class="momentum-segments" aria-label="Momentum scale"></div><p id="momentum-unavailable" hidden>Not enough data</p><p id="headline"></p><button id="copy-headline" class="text-button" type="button">Copy</button></section>
+            <section class="panel tile countries-tile" aria-labelledby="countries-heading"><div class="panel-heading"><h2 id="countries-heading">Countries</h2><span class="help"><button type="button" class="help-trigger" data-help="countries-note" aria-label="About country counts" aria-controls="countries-note" aria-describedby="countries-note" aria-expanded="false">?</button><span id="countries-note" class="tooltip" role="tooltip" hidden></span></span></div><div id="country-map" class="country-map"></div><p class="map-caption">Country positions are approximate. Marker area represents papers; country counts can overlap.</p><div id="countries"></div><p id="regional-counts"></p><button id="countries-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="countries" hidden>Show all</button></section>
+            <section class="panel tile experts-tile" aria-labelledby="experts-heading"><div class="panel-heading"><h2 id="experts-heading">Leading experts</h2><span class="help"><button type="button" class="help-trigger" data-help="experts-note" aria-label="About expert counts" aria-controls="experts-note" aria-describedby="experts-note" aria-expanded="false">?</button><span id="experts-note" class="tooltip" role="tooltip" hidden></span></span></div><p id="experts-source-note" class="source-note" hidden></p><ol id="experts" class="rank-list"></ol><button id="experts-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="experts" hidden>Show all</button></section>
+            <section class="panel tile journals-tile" aria-labelledby="journals-heading"><div class="panel-heading"><h2 id="journals-heading">Top journals</h2><span class="help"><button type="button" class="help-trigger" data-help="journals-note" aria-label="About journal counts" aria-controls="journals-note" aria-describedby="journals-note" aria-expanded="false">?</button><span id="journals-note" class="tooltip" role="tooltip" hidden></span></span></div><p id="journals-source-note" class="source-note" hidden></p><ol id="journals" class="rank-list"></ol><button id="journals-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="journals" hidden>Show all</button></section>
+            <section class="panel tile papers-tile" aria-labelledby="papers-heading"><div class="panel-heading"><h2 id="papers-heading">Most cited papers</h2><span class="help"><button type="button" class="help-trigger" data-help="papers-period" aria-label="About cited papers" aria-controls="papers-period" aria-describedby="papers-period" aria-expanded="false">?</button><span id="papers-period" class="tooltip" role="tooltip" hidden></span></span></div><div id="papers" class="paper-list"></div><button id="papers-toggle" class="text-button" type="button" aria-expanded="false" aria-controls="papers" hidden>Show all</button></section>
+            <section id="topics-section" class="panel tile topics-panel" aria-labelledby="subtopics-heading"><div class="panel-heading"><h2 id="subtopics-heading">Sub-topics</h2><span class="help"><button type="button" class="help-trigger" data-help="subtopics-note" aria-label="About sub-topic comparisons" aria-controls="subtopics-note" aria-describedby="subtopics-note" aria-expanded="false">?</button><span id="subtopics-note" class="tooltip" role="tooltip" hidden></span></span></div><div class="topic-column-heads"><div class="topic-columns" aria-hidden="true"><span>Name</span><span>Papers</span><span id="subtopics-metric">Growth</span></div><div class="topic-columns" aria-hidden="true"><span>Name</span><span>Papers</span><span>Growth</span></div></div><div id="subtopics-panel"><div id="subtopics" class="topics-grid"></div></div></section>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="library-page" aria-labelledby="library-heading" hidden>
+      <h1 id="library-heading" class="sr-only">Library</h1>
+      <div class="library-tabs t-tabs" role="tablist" aria-label="Library"><span class="t-tabs-pill" aria-hidden="true"></span><button id="my-library-tab" type="button" role="tab" aria-selected="true" aria-controls="library-results">My library</button><button id="all-topics-tab" type="button" role="tab" aria-selected="false" aria-controls="library-results">All topics</button></div>
+      <div id="library-results" class="library-layout" role="tabpanel" aria-labelledby="my-library-tab"><aside class="panel field-panel"><h2>Research fields</h2><div id="fields"></div></aside><div class="library-main"><div class="library-tools"><label for="library-search">Search the library <span class="help"><button type="button" class="help-trigger" data-help="library-help" aria-label="About the Library" aria-controls="library-help" aria-describedby="library-help" aria-expanded="false">?</button><span id="library-help" class="tooltip" role="tooltip" hidden>Find a saved topic by name or synonym.</span></span><input id="library-search" type="search" placeholder="Find a topic or synonym"></label><label for="library-sort">Sort by<select id="library-sort"><option value="momentum">Momentum</option><option value="name">Name</option><option value="updated">Last updated</option></select></label></div><p id="library-error" role="status" hidden></p><button id="library-retry" type="button" hidden>Try loading the Library again</button><p id="library-count" role="status"></p><div id="library-table" class="library-table"><div class="library-columns" aria-hidden="true"><span>Name</span><span>Trend</span><span>Growth</span><span></span></div><div id="library-cards"></div></div><p id="library-empty" class="empty-state" hidden>No topics match. Try a different search or choose All fields.</p></div></div>
+    </section>
+    <p id="status" class="status" role="status" aria-live="polite" hidden></p>
+  </main>
+  <footer><p><span id="report-source">Sample data</span><span id="data-notice">Fictional research and illustrative numbers.</span></p><p id="report-freshness"></p></footer>
+</body>
+</html>
