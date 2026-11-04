@@ -89,3 +89,8 @@ test("a group that only quotes trend wording is dropped",()=>{
  const value=validateGroundedResponse({plan:{...base(),topic:"quantum computing",includeGroups:[{terms:["advancements","development"]}]},sources:[{path:"topic",source:"quantum computing"},{path:"includeGroups.0",source:"rising"}],ambiguity:null},sentence,2026);
  assert.equal(value.plan.includeGroups.length,0);
 });
+test("'X for Y' is split into two required concepts too",()=>{
+ const sentence="Is research on quantum computing for finance growing?";
+ const value=validateGroundedResponse({plan:{...base(),topic:"quantum computing for finance"},sources:[{path:"topic",source:"quantum computing for finance"}],ambiguity:null},sentence,2026);
+ assert.equal(value.plan.topic,"quantum computing");assert.deepEqual(value.plan.includeGroups,[{terms:["finance"]}]);
+});

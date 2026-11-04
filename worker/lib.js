@@ -1058,7 +1058,7 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   }
   // "microplastics in human health" searched as one literal phrase finds almost nothing: it is two concepts that must both appear.
   {
-    const parts=topic.split(/\s+in\s+(?!(?:vitro|vivo|situ|silico|utero)\b)/i),entry=used.find(item=>item.path==="topic");
+    const parts=topic.split(/\s+(?:in|for)\s+(?!(?:vitro|vivo|situ|silico|utero)\b)/i),entry=used.find(item=>item.path==="topic");
     if(parts.length===2 && entry && includeGroups.length<3 && questionContentWords(parts[0]).length && questionContentWords(parts[1]).length){
       const head=questionSpan(parts[0].trim(),sentence) || fuzzySpan(parts[0],sentence),tail=questionSpan(parts[1].trim(),sentence) || fuzzySpan(parts[1],sentence);
       if(head && tail){
