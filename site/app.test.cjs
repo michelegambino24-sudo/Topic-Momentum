@@ -2069,6 +2069,14 @@ test("non-transient count preparation errors never retry or start a second repor
 function stagedReport(app){
  return {...report(app),papers:[],experts:[],papersKind:"unavailable",evidenceKey:"ai:prepared:v1:offline-fixture",understanding:{mode:"planned",labels:{topic:"fixture topic",synonyms:[]},check:null}};
 }
+for(const reason of ["request_limit","source_request_limit"])test("a persistent request limit retries only once then leaves Retry available: "+reason,async()=>{
+ let counts,attempts=0;const app=setup(async(url)=>{
+  if(new URL(url).searchParams.get("phase")==="prepare")return {ok:true,json:async()=>counts};
+  attempts++;return {ok:false,json:async()=>({aiReason:reason,message:"Request allowance reached"})};
+ },null,"#search",null,true);counts=stagedReport(app);
+ app.get("topic-input").value="fixture topic";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+ assert.equal(attempts,2);assert.equal(app.get("report-stage").hidden,false);assert.match(app.get("evidence-status").innerHTML,/Retry AI check/);
+});
 function checkedReport(counts){
  return {...counts,papersKind:"checked",papers:[{title:"A relevant checked paper",year:2025,citations:40,authors:"Research author",journal:"Research journal"}],experts:[{name:"Research author",count:12}],evidence:{version:3,accepted:1,candidates:2,notices:[]},understanding:{mode:"ai",labels:{topic:"fixture topic",synonyms:[]},check:{matched:18,total:20,early:{matched:9,total:10},late:{matched:9,total:10}}}};
 }
@@ -2086,7 +2094,7 @@ test("counts render before deferred evidence, which cannot replace the numbers",
  finish({ok:true,json:async()=>checked});await settle();await settle();
  assert.equal(app.get("kpis").innerHTML,numbers);assert.match(app.get("papers").innerHTML,/relevant checked paper/);assert.equal(app.get("evidence-status").hidden,true);
 });
-for(const reason of ["ai_call_timeout","ai_total_deadline","ai_provider_error","ai_bad_json"])test("evidence retries a transient failure once while keeping counts: "+reason,async()=>{
+for(const reason of ["ai_call_timeout","ai_total_deadline","ai_provider_error","ai_bad_json","request_limit","source_request_limit"])test("evidence retries a transient failure once while keeping counts: "+reason,async()=>{
  let counts,attempts=0;const app=setup(async(url)=>{
   if(new URL(url).searchParams.get("phase")==="prepare")return {ok:true,json:async()=>counts};
   attempts++;return attempts===1?{ok:false,json:async()=>({aiReason:reason,message:"Temporary check failure"})}:{ok:true,json:async()=>checkedReport(counts)};
@@ -2094,7 +2102,7 @@ for(const reason of ["ai_call_timeout","ai_total_deadline","ai_provider_error","
  app.get("topic-input").value="fixture topic";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
  assert.equal(attempts,2);assert.equal(app.get("report-stage").hidden,false);assert.match(app.get("papers").innerHTML,/relevant checked paper/);
 });
-for(const reason of ["daily_ai_limit","daily_neuron_limit","source_request_limit","rephrase_required"])test("daily and request limits retain counts and offer manual Retry without automatic retry: "+reason,async()=>{
+for(const reason of ["daily_ai_limit","daily_neuron_limit","rephrase_required"])test("daily limits and rephrase errors retain counts and offer manual Retry without automatic retry: "+reason,async()=>{
  let counts,attempts=0;const app=setup(async(url)=>{
   if(new URL(url).searchParams.get("phase")==="prepare")return {ok:true,json:async()=>counts};
   attempts++;return {ok:false,json:async()=>({aiReason:reason,message:"Specific limit reason"})};

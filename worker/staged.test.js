@@ -57,17 +57,18 @@ test("daily AI limit never prevents numbers and reservations settle before repor
  const checked=await app.check(result.body);assert.equal(checked.body.aiReason,"daily_ai_limit");assert.equal(app.models.length,0);
  assert(app.kv.values.has(REPORT_CACHE_PREFIX+result.body.id));
 });
-test("evidence retries share one admission and the original 30-source-request budget",async()=>{
+test("evidence retries share one admission and each evidence request gets its own source allowance",async()=>{
  let fail=true;const app=setup({model(data){if(data.titles && fail)throw Object.assign(new Error("temporary model error"),{reason:"ai_provider_error"});}});
- const first=await app.prepare(),bad=await app.check(first.body);assert.equal(bad.body.aiReason,"ai_provider_error");
- const afterFailure=app.calls.length;fail=false;const good=await app.check(first.body);assert.equal(good.status,200);assert(app.calls.length>afterFailure);assert(app.calls.length<=30);
+ const first=await app.prepare(),afterCounts=app.calls.length,bad=await app.check(first.body);assert.equal(bad.body.aiReason,"ai_provider_error");
+ const afterFailure=app.calls.length;assert(afterFailure-afterCounts<=30);fail=false;const good=await app.check(first.body);assert.equal(good.status,200);assert(app.calls.length>afterFailure);
+ const retryCalls=app.calls.length-afterFailure;assert(retryCalls<=30);assert(!app.calls.slice(afterCounts).some(params=>params.has("group_by")));
  assert.equal(app.kv.values.get("ai:count:2026-11-04"),"1");
- const record=JSON.parse(app.kv.values.get(first.body.evidenceKey));assert.equal(record.requests,app.calls.length);
+ const record=JSON.parse(app.kv.values.get(first.body.evidenceKey));assert.equal(record.requests,retryCalls);assert.equal(good.body.aiUsage.sourceRequestsTotal,retryCalls);
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.reserved,0);
 });
-test("exhausted source budget stops evidence without touching the saved counts",async()=>{
+test("a spent previous-step allowance does not starve evidence or change saved counts",async()=>{
  const app=setup(),first=await app.prepare(),record=JSON.parse(app.kv.values.get(first.body.evidenceKey));record.requests=30;app.kv.values.set(first.body.evidenceKey,JSON.stringify(record));
- const before=app.calls.length,result=await app.check(first.body);assert.equal(result.body.aiReason,"source_request_limit");assert.equal(app.calls.length,before);
+ const before=app.calls.length,result=await app.check(first.body);assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert(app.calls.length>before);assert(app.calls.length-before<=30);
  assert.deepEqual(JSON.parse(app.kv.values.get(REPORT_CACHE_PREFIX+first.body.id)).topic.kpis,first.body.kpis);
 });
 test("missing/expired cached report and query-ID tampering never rebuild a report",async()=>{

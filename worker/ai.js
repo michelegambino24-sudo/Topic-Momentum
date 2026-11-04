@@ -180,7 +180,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
     let sourceSession;
     const result=await locked(originalEnv.TMM,key,async()=>{
       const session=sessionFor(originalEnv.TMM),env={...originalEnv,TMM:session.store};
-      if(pipeline?.record){session.requests=pipeline.record.requests;session.reserved=true;session.operations=2;}
+      if(pipeline?.record){session.requests=0;session.reserved=true;session.operations=2;} // Each step has its own 30-request allowance: the counts cannot starve the paper check.
       sourceSession=session;
       const day=dailyKey(now()),usageKey="ai:usage:"+day;
       const usage={neurons:0,measured:true,calls:0,byModel:{},stages:{},errors:[],repairs:[],turns:[],checks:[],ambiguities:[],notes:[]};

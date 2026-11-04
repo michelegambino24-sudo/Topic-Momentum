@@ -1358,7 +1358,7 @@
     }catch(error){
       if(version!==requestVersion || topic.id!==id || window.AI_SEARCH_ENABLED===false)return;
       const reason=controller.signal.aborted?"ai_call_timeout":error.reason;
-      const transient=["ai_call_timeout","ai_total_deadline","ai_provider_error","ai_bad_json","ai_validation"].includes(reason);
+      const transient=["ai_call_timeout","ai_total_deadline","ai_provider_error","ai_bad_json","ai_validation","request_limit","source_request_limit"].includes(reason);
       if(attempt===0 && transient){await loadEvidence(key,id,version,1);return;}
       evidenceState={key,id,version,loading:false};
       evidenceStatus((controller.signal.aborted?"The AI paper check timed out. Your numbers are still available.":error.message)+" Counts stay unchanged.",true);
