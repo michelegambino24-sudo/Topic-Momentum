@@ -22,7 +22,7 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
     else if(data.task==="plan")response=plans.length>1?plans.shift():plans[0];
     else {judges.push(data);response=config.judge?config.judge(data):{pass:data.titles.map((_,i)=>i+1)};}
     if(response instanceof Error)throw response;
-    return {response,...(config.unmeasured?{}:{usage:{neurons:2}})};
+    return {response,...(config.unmeasured?{}:{usage:{neurons:config.neurons?config.neurons(calls.length,data):2}})};
   }}};
   const service=createAIService({now:()=>new Date("2026-11-04T12:00:00Z"),clock:config.clock||Date.now,waitForAI:config.waitForAI,locked:async(_kv,_key,fn)=>fn(),reserve:async()=>true,source:async descriptor=>{
     sourceCalls.push(descriptor);
@@ -79,6 +79,90 @@ test("literal single-concept question recovers missing topic/year sources withou
 });
 
 const malformedFixtures=JSON.parse(readFileSync(new URL("./fixtures/planner-reply-failures.json",import.meta.url),"utf8"));
+const ambiguityFixtures=JSON.parse(readFileSync(new URL("./fixtures/ambiguity-rephrase.json",import.meta.url),"utf8"));
+for(const row of ambiguityFixtures.questions)test("clear regional trend question survives malformed ambiguity: "+row.question,async()=>{
+ const app=setup([row.reply]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert(!result.body.clarification);
+ assert.deepEqual(result.body.understanding.place.codes,[...REGIONS.middleEast]);assert.equal(result.body.understanding.place.label,"Middle East");
+ assert(result.body.evidence.notices.some(note=>note.includes("no clarification")));
+ assert.equal(app.calls.filter(call=>call.data.task==="plan").length,1);
+ assert.equal(result.body.aiUsage.ambiguities[0].question,row.reply.ambiguity.question);
+ assert.deepEqual(result.body.aiUsage.ambiguities[0].rawOptions,row.reply.ambiguity.options);
+ assert.equal(result.body.aiUsage.ambiguities[0].requirement,"growth");
+ assert(result.body.aiUsage.repairs.some(repair=>repair.check==="option_constraints" && repair.missing.includes("requested region")));
+ const cached=await app.search({sentence:row.question});assert.equal(cached.body.aiUsage.neurons,0);assert(cached.body.evidence.notices.some(note=>note.includes("no clarification")));
+});
+test("compact ambiguity labels derive identical regional plans without repeating model plans",()=>{
+ const row=ambiguityFixtures.questions[0],reply=structuredClone(row.reply);reply.ambiguity.options=["Regional research","Research mentioning the region"];
+ const repaired=validateGroundedResponse(reply,row.question,2026);
+ assert.equal(repaired.ambiguity.options.length,2);
+ for(const option of repaired.ambiguity.options){assert.deepEqual(option.plan,repaired.plan);assert.deepEqual(option.plan.place.codes,[...REGIONS.middleEast]);}
+ const schema=groundedPlanSchema(2026,row.question).properties.ambiguity.anyOf[1];
+ assert.equal(schema.properties.options.items.type,"string");assert.equal(schema.properties.options.maxItems,3);
+ assert.equal(schema.properties.options.items.maxLength,60);assert(schema.required.includes("requirement"));
+});
+test("a literal autism plan recovers from an invented optional topic-source span",async()=>{
+ const row=ambiguityFixtures.questions[0],reply=structuredClone(row.reply);reply.sources[0].source="Autism research growth";
+ const app=setup([reply]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,200);assert.equal(result.body.name,"autism");assert.deepEqual(result.body.understanding.place.codes,[...REGIONS.middleEast]);assert.equal(result.body.aiUsage.stages.replan,undefined);
+});
+test("422 names coverage before cleanup, retains raw ambiguity, and redacts diagnostics",async t=>{
+ const logs=[];t.mock.method(console,"log",(...args)=>logs.push(args));
+ const row=ambiguityFixtures.questions[0],reply=structuredClone(row.reply);reply.plan.topic="research";reply.sources=[{path:"topic",source:"research"}];
+ reply.ambiguity={requirement:"meaning",question:"Which interpretation?",options:[{label:"raw option",api_key:"private-test-value"}]};
+ const app=setup([reply]);app.env.OPENALEX_KEY="private-test-value";
+ const result=await app.search({sentence:row.question});assert.equal(result.status,422);
+ assert.equal(result.body.failingCheck.check,"coverage_before_cleanup");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
+ assert.equal(result.body.failingCheck.rejectedPlan.topic,"research");assert.equal(result.body.failingCheck.modelPlan.topic,"research");
+ assert.equal(result.body.ambiguities.length,2);assert.equal(result.body.ambiguities[0].rawOptions[0].api_key,"[redacted]");
+ assert(!JSON.stringify(result.body).includes("private-test-value"));assert(!JSON.stringify(logs).includes("private-test-value"));
+ assert(logs.some(args=>args[0]==="AI ambiguity returned"));assert(logs.some(args=>args[0]==="AI plan check" && JSON.parse(args[1]).check==="coverage_before_cleanup"));
+});
+test("422 distinguishes coverage lost during cleanup from initial coverage failure",async()=>{
+ const row=ambiguityFixtures.questions[0];
+ const reply=candidate({...base(),topic:"research",includeGroups:[{terms:["Montenegro"]}]},{topic:"research","includeGroups.0":"autism"});
+ const app=setup([reply]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,422);assert.equal(result.body.failingCheck.check,"coverage_after_cleanup");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
+ assert.deepEqual(result.body.failingCheck.rejectedPlan.includeGroups,[]);assert.equal(result.body.aiUsage.stages.selfCheck,undefined);
+});
+for(const withAmbiguity of [true,false])test("replay supplied sequence: successful JSON self-check can reject semantically; ambiguity="+withAmbiguity,async()=>{
+ const row=ambiguityFixtures.questions[0],bad=structuredClone(row.reply),good=structuredClone(row.reply);
+ bad.plan.topic="research";bad.sources=[{path:"topic",source:"research"}];bad.ambiguity=withAmbiguity?{question:"What does growing mean?",options:[{label:"Incomplete"}]}:null;
+ good.ambiguity=null;
+ let time=0,index=0;const durations=[4000,4000,1800,16500];
+ const app=setup([bad,good,bad],[{ok:false,problem:"The requested condition is missing",missing:["autism"]}],{clock:()=>time,neurons:call=>[2,35,2,139][call-1],waitForAI:async action=>{time+=durations[index++];return action();}});
+ const result=await app.search({sentence:row.question}),usage=result.body.aiUsage;
+ assert.equal(result.status,422);assert.deepEqual(usage.turns.map(turn=>turn.stage),["planning","replan","selfCheck","replan"]);
+ assert.equal(usage.turns[1].neurons,35);assert.equal(usage.turns[2].ms,1800);assert.equal(usage.turns[2].outcome,"success");assert.equal(usage.turns[2].semanticOk,false);
+ assert.equal(usage.turns[3].neurons,139);assert.equal(usage.turns[3].ms,16500);
+ assert(usage.checks.some(check=>check.check==="replan_trigger" && check.trigger==="self_check"));
+ assert.equal(result.body.failingCheck.check,"coverage_before_cleanup");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
+});
+test("a semantic self-check pass can precede a later tightening-constraint 422",async()=>{
+ const row=ambiguityFixtures.questions[0],good=structuredClone(row.reply),bad=structuredClone(row.reply);
+ good.ambiguity=null;bad.ambiguity=null;bad.plan.topic="research";bad.sources=[{path:"topic",source:row.question}];
+ const app=setup([good,bad,bad],[{ok:true}],{judge:()=>({pass:[]})}),result=await app.search({sentence:row.question});
+ assert.equal(result.status,422);assert.equal(result.body.aiUsage.turns.find(turn=>turn.stage==="selfCheck").semanticOk,true);
+ assert(result.body.aiUsage.checks.some(check=>check.check==="tightening_trigger" && check.outcome==="low_precision"));
+ assert.equal(result.body.failingCheck.check,"tightening_constraints");assert.deepEqual(result.body.failingCheck.missing,["topic"]);assert.equal(result.body.failingCheck.phase,"tightening");
+});
+test("422 explicitly identifies semantic self-check rejection and the model's missing concept",async()=>{
+ const row=ambiguityFixtures.questions[0],good=structuredClone(row.reply);good.ambiguity=null;
+ const app=setup([good],[{ok:false,problem:"Missing the requested condition",missing:["autism"]}]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,422);assert.equal(result.body.failingCheck.check,"self_check");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
+ assert.equal(result.body.failingCheck.rejectedPlan.topic,"autism");assert.equal(result.body.aiUsage.turns.filter(turn=>turn.stage==="selfCheck").length,2);
+});
+test("a self-check complaining only about trend wording is advisory",async()=>{
+ const row=ambiguityFixtures.questions[0],app=setup([row.reply],[{ok:false,problem:"The meaning of growing is ambiguous",missing:["growing"]}]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,200);assert(result.body.evidence.notices.some(note=>note.includes("trend wording")));
+ assert.equal(result.body.aiUsage.stages.replan,undefined);assert(result.body.aiUsage.checks.some(check=>check.check==="self_check" && check.outcome==="advisory"));
+});
+test("a self-check claiming ambiguity does not replace a valid covered regional plan",async()=>{
+ const row=ambiguityFixtures.questions[0],reply=structuredClone(row.reply);reply.ambiguity=null;
+ const app=setup([reply],[{ok:false,problem:"Clarification is needed for the ambiguous place mode",missing:["place mode"]}]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,200);assert(!result.body.clarification);assert.deepEqual(result.body.understanding.place.codes,[...REGIONS.middleEast]);
+ assert(result.body.evidence.notices.some(note=>note.includes("no clarification")));assert.equal(result.body.aiUsage.stages.replan,undefined);
+});
 const inventedPlace=JSON.parse(readFileSync(new URL("./fixtures/invented-place-replies.json",import.meta.url),"utf8"));
 for(const reply of inventedPlace.replies)test("production preview regression: drop "+reply.plan.place.codes[0]+" and keep toddler research",async()=>{
  // Confirm the original strict check, then exercise the repaired service boundary.
@@ -295,18 +379,17 @@ test("a second self-check rejection clarifies without any source call",async()=>
  const app=setup([complete()],[{ok:false,problem:"The intended meaning is unclear"}]),result=await app.search();
  assert.equal(result.status,422);assert(!result.body.clarification);assert.equal(app.calls.length,4);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
 });
-test("one ambiguity carries ready plans; selection uses stored options, verifies, and charges only the search",async()=>{
+test("legacy stored choices remain bound to their question and are verified before use",async()=>{
  const sentence="solar energy in Georgia";
  const first=candidate({...base(),topic:"solar energy",place:{codes:["GE"],mode:"mentions"}},{topic:"solar energy",place:"Georgia"});
  const second=candidate({...base(),topic:"solar energy",includeGroups:[{terms:["Georgia state","US state of Georgia"]}]},{topic:"solar energy","includeGroups.0":"Georgia"});
  const ambiguity={question:"Which Georgia do you mean?",options:[{label:"The country",plan:first.plan,sources:first.sources},{label:"The US state",plan:second.plan,sources:second.sources}]};
- const app=setup([{...first,ambiguity}]),start=await app.search({sentence});
- assert.equal(start.body.clarification.options.length,2);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
- assert(!JSON.stringify(start.body.clarification).includes("sources"));
- const selected=await app.search({sentence,clarification:{key:start.body.clarification.key,option:0}});
- assert.equal(selected.body.papersKind,"checked");assert.equal(app.calls.filter(call=>call.data.task==="plan").length,1);assert.equal(app.calls[1].data.decision.label,"The country");assert.equal(app.kv.values.get("ai:count:2026-11-04"),"1");
- const tampered=await app.search({sentence:"other question",clarification:{key:start.body.clarification.key,option:0}});assert.equal(tampered.status,400);
- const forged=await app.search({sentence,clarification:{key:start.body.clarification.key,option:0,plan:base()}});assert.equal(forged.status,400);
+ const app=setup([{...first,ambiguity}]),key="ai:clarify:v1:11111111-1111-4111-8111-111111111111";
+ app.kv.values.set(key,JSON.stringify({sentence,options:ambiguity.options.map(option=>({...option,question:ambiguity.question})),expires:new Date("2026-11-04T12:15:00Z").getTime()}));
+ const selected=await app.search({sentence,clarification:{key,option:0}});
+ assert.equal(selected.body.papersKind,"checked");assert.equal(app.calls.filter(call=>call.data.task==="plan").length,0);assert.equal(app.calls[0].data.decision.label,"The country");assert.equal(app.kv.values.get("ai:count:2026-11-04"),"1");
+ const tampered=await app.search({sentence:"other question",clarification:{key,option:0}});assert.equal(tampered.status,400);
+ const forged=await app.search({sentence,clarification:{key,option:0,plan:base()}});assert.equal(forged.status,400);
 });
 test("invalid optional ambiguity is dropped without fake choices",async()=>{
  const app=setup([{...complete(),ambiguity:{question:"Choose?",options:[{label:"Only one",...complete()}]}}]);
@@ -343,8 +426,9 @@ for(const entry of evaluationCases)test("varied grounded plan/clarification fixt
 });
 test("a selected ambiguous country is grounded in the explicit chosen label, without adding its namesake",async()=>{
  const entry=evaluationCases.find(item=>item.question==="Malaria research in Guinea"),app=setup([entry.mock]);
- const first=await app.search({sentence:entry.question});
- const chosen=await app.search({sentence:entry.question,clarification:{key:first.body.clarification.key,option:1}});
+ const key="ai:clarify:v1:22222222-2222-4222-8222-222222222222";
+ app.kv.values.set(key,JSON.stringify({sentence:entry.question,options:entry.mock.ambiguity.options.map(option=>({...option,question:entry.mock.ambiguity.question})),expires:new Date("2026-11-04T12:15:00Z").getTime()}));
+ const chosen=await app.search({sentence:entry.question,clarification:{key,option:1}});
  assert.equal(chosen.body.papersKind,"checked");assert.deepEqual(chosen.body.understanding.place.codes,["GW"]);
 });
 
@@ -368,9 +452,9 @@ test("retained source paths are reindexed when an unsupported earlier element is
  const result=groundPlan(raw,"battery recycling",2026);
  assert.deepEqual(result.plan.synonyms,["recovered batteries"]);assert(result.sources.some(entry=>entry.path==="synonyms.0"&&entry.source==="battery recycling"));assert(!result.sources.some(entry=>entry.path==="synonyms.1"));
 });
-test("a clarification after reliability checking refunds the AI attempt, retaining real inference costs",async()=>{
+test("advisory ambiguity during tightening keeps the checked report and consumed attempt",async()=>{
  const option=complete(),ambiguity={question:"Which process do you mean?",options:[{label:"Material recovery",plan:option.plan,sources:option.sources},{label:"Closed-loop recycling",plan:option.plan,sources:option.sources}]};
  const app=setup([complete(),{...complete(),ambiguity}],[{ok:true}],{judge:()=>({pass:[]})}),result=await app.search();
- assert(result.body.clarification);assert.equal(app.kv.values.get("ai:count:2026-11-04"),"0");assert(app.sourceCalls.length>0);
+ assert.equal(result.body.papersKind,"checked");assert(!result.body.clarification);assert(result.body.evidence.notices.some(note=>note.includes("no clarification")));assert.equal(app.kv.values.get("ai:count:2026-11-04"),"1");assert(app.sourceCalls.length>0);
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.used,result.body.aiUsage.neurons);assert.equal(ledger.reserved,0);
 });

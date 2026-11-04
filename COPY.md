@@ -594,3 +594,10 @@ This supersedes the generic AI-unavailable notice above.
 - Call-count limit: This question needed too many AI checks. Shorten the question and try again. Saved reports and the Library still work.
 - Advisory self-check timeout: Your search plan is ready, but its final AI self-check took too long. Paper and expert lists are unavailable until the checks finish. Try the question again later.
 - Plan-only presentation: Search plan: {topic and filters}. {advisory notice} Display as plain text, persist the note and show no paper/expert list.
+
+
+## Step 16 advisory ambiguity
+
+- Used the validated search plan; no clarification was needed.
+- Used the validated search plan; trend wording did not require clarification.
+- Show these as small checked-report notices. A named region remains in the plan. Raw ambiguity/check diagnostics belong to logs/eval/API responses, not the visible report.

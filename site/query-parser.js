@@ -200,9 +200,10 @@
   const SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning related how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing bigger before fast field fields topic topics area areas domain domains help helps learn learning leading lead know evidence relationship relationships affect affects effect effects impact impacts during used applied treat treating disease written authored".split(" "));
   function cleanTrendTerm(value, question) {
     const text=String(value).trim();
-    const trendQuestion=/\b(?:changing|growing|developing|evolving|trends)\s*(?:since\s+\d{4})?\s*[?.!]*$/i.test(question) || /\btrends\s+(?:in|on)\b/i.test(question);
+    const trendQuestion=/\b(?:is|how|research)\b[\s\S]*\bgrowing\b/i.test(question) || /\b(?:changing|growing|developing|evolving|trends)\s*(?:since\s+\d{4})?\s*[?.!]*$/i.test(question) || /\btrends\s+(?:in|on)\b/i.test(question);
     if(!trendQuestion)return text;
-    return text.replace(/^trends\s+(?:in|on|for)\s+/i, "").replace(/(?:\b(?:changing|growing|developing|evolving|trends)\b[\s,;]*)+$/gi, "").trim();
+    const cleaned=text.replace(/^trends\s+(?:in|on|for)\s+/i, "").replace(/(?:\b(?:changing|growing|developing|evolving|trends)\b[\s,;]*)+$/gi, "").trim();
+    return !/\bgrowth\b/i.test(question)?cleaned.replace(/\s+growth$/i, ""):cleaned;
   }
   function questionParts(sentence, currentYear) {
     const text = String(sentence).replace(/[’‘]/g,"'").replace(/\bchildrens\b/gi,"children").replace(/\bwho's\b/gi,"who is").replace(/\b(children|kids|women|teens|teenagers|students)'s?\b/gi,"$1");
@@ -223,7 +224,7 @@
     if (!population.some(item=>item.preset==="children" || item.label==="Primary school pupils")) addPopulation("Students",presets.students.terms,/\b(?:(?:university|college) students|students)\b/gi,"students");
     const place = [];
     for (const [preset, pattern] of [["middleEast",/\b(?:middle east|mena|arab world)\b/gi],["gcc",/\b(?:gulf cooperation council|gulf countries|gulf|gcc)\b/gi]]) {
-      if (pattern.test(rest)) { place.push({preset,label:presets[preset].label,terms:[...presets[preset].terms]});rest=rest.replace(pattern," "); }
+      if (pattern.test(rest)) { place.push({preset,label:presets[preset].label,terms:[...presets[preset].terms],source:rest.match(pattern)[0]});rest=rest.replace(pattern," "); }
     }
     for (const country of countries) {
       const pattern=new RegExp("\\b(?:in|from|within|written in|authored in)\\s+(?:the\\s+)?("+country.terms.map(escapeRE).join("|")+")\\b","gi");

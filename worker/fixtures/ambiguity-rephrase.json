@@ -1,0 +1,133 @@
+{
+  "provenance": "Synthetic replies for the supplied production question and log sequence. Raw production plans/options and semantic self-check outputs were not supplied.",
+  "questions": [
+    {
+      "question": "Is research on autism growing the middle east",
+      "reply": {
+        "plan": {
+          "topic": "autism growth",
+          "synonyms": [],
+          "includeGroups": [],
+          "place": {
+            "codes": [
+              "ME"
+            ],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "Autism"
+          },
+          {
+            "path": "place",
+            "source": "MIDDLE EAST"
+          }
+        ],
+        "ambiguity": {
+          "requirement": "growth",
+          "question": "Does growing refer to research growth or changes in individual development?",
+          "options": [
+            "Research in the Middle East",
+            "Research worldwide"
+          ]
+        },
+        "reason": "Synthetic optional extra key"
+      }
+    },
+    {
+      "question": "Is research on autism growing in the Middle East?",
+      "reply": {
+        "plan": {
+          "topic": "autism growth",
+          "synonyms": [],
+          "includeGroups": [],
+          "place": {
+            "codes": [
+              "ME"
+            ],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "Autism"
+          },
+          {
+            "path": "place",
+            "source": "MIDDLE EAST"
+          }
+        ],
+        "ambiguity": {
+          "requirement": "growth",
+          "question": "Does growing refer to research growth or changes in individual development?",
+          "options": [
+            "Research in the Middle East",
+            "Research worldwide"
+          ]
+        },
+        "reason": "Synthetic optional extra key"
+      }
+    },
+    {
+      "question": "Is children's mental health a growing field in the Middle East, and who's leading it?",
+      "reply": {
+        "plan": {
+          "topic": "mental health growth",
+          "synonyms": [],
+          "includeGroups": [
+            {
+              "preset": "children"
+            }
+          ],
+          "place": {
+            "codes": [
+              "ME"
+            ],
+            "mode": "mentions"
+          },
+          "excludeTerms": [],
+          "years": {
+            "from": 2010,
+            "to": null
+          }
+        },
+        "sources": [
+          {
+            "path": "topic",
+            "source": "mental health"
+          },
+          {
+            "path": "place",
+            "source": "MIDDLE EAST"
+          },
+          {
+            "path": "includeGroups.0",
+            "source": "children"
+          }
+        ],
+        "ambiguity": {
+          "requirement": "growth",
+          "question": "Does growing refer to research growth or changes in individual development?",
+          "options": [
+            "Research in the Middle East",
+            "Research worldwide"
+          ]
+        },
+        "reason": "Synthetic optional extra key"
+      }
+    }
+  ]
+}

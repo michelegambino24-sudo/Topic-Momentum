@@ -1,6 +1,6 @@
 // Pure query and response logic. No credentials or network calls belong here.
 import "../site/search-presets.js";
-import { COUNTRY_CODES, placeDetails, countryLabel } from "./countries.js";
+import { COUNTRY_CODES, placeDetails, countryLabel, REGIONS } from "./countries.js";
 
 export const SEARCH_PRESETS = globalThis.TMM_SEARCH_PRESETS;
 export const includeGroupIdentity = (groups, presets = SEARCH_PRESETS) => globalThis.TMM_PRESET_IDENTITIES.encode(groups, presets);
@@ -200,15 +200,20 @@ export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) 
   return { query, place: raw.place.codes.length ? { codes: [...raw.place.codes].sort(), mode, label: details.label, terms: details.terms } : null };
 }
 export function isTighterPlan(initial, candidate, year) {
+  return tighteningFailures(initial,candidate,year).length===0;
+}
+export function tighteningFailures(initial, candidate, year) {
   const a = compileAIPlan(initial, year), b = compileAIPlan(candidate, year);
   // Phrase replacements cannot be proved narrower lexically: re-sampling decides
   // whether they improve precision. Never remove an AND constraint or population.
-  return a.query.name === b.query.name && a.query.from === b.query.from && a.query.to === b.query.to
-    && initial.place.mode === candidate.place.mode
-    && JSON.stringify([...initial.place.codes].sort()) === JSON.stringify([...candidate.place.codes].sort())
-    && initial.includeGroups.length === candidate.includeGroups.length
-    && JSON.stringify(initial.includeGroups.filter(group => group.preset).map(group => group.preset).sort()) === JSON.stringify(candidate.includeGroups.filter(group => group.preset).map(group => group.preset).sort())
-    && (a.query.excludeTerms || []).every(term => b.query.excludeTerms?.includes(term));
+  return [
+    ["topic",a.query.name===b.query.name],["years.from",a.query.from===b.query.from],["years.to",a.query.to===b.query.to],
+    ["place.mode",initial.place.mode===candidate.place.mode],
+    ["place.codes",JSON.stringify([...initial.place.codes].sort())===JSON.stringify([...candidate.place.codes].sort())],
+    ["includeGroups",initial.includeGroups.length===candidate.includeGroups.length],
+    ["population presets",JSON.stringify(initial.includeGroups.filter(group=>group.preset).map(group=>group.preset).sort())===JSON.stringify(candidate.includeGroups.filter(group=>group.preset).map(group=>group.preset).sort())],
+    ["excludeTerms",(a.query.excludeTerms || []).every(term=>b.query.excludeTerms?.includes(term))]
+  ].filter(([,passed])=>!passed).map(([field])=>field);
 }
 export function judgeTitles(raw, size) {
   if (!exactObject(raw, ["onTopic"]) || !Array.isArray(raw.onTopic) || raw.onTopic.length !== size || !raw.onTopic.every(value => typeof value === "boolean")) throw new Error("Invalid title judgments");
@@ -788,14 +793,26 @@ export function parseModelReply(value) {
   }
   throw new SyntaxError("The model reply contains incomplete JSON.");
 }
-export function aiAttemptDiagnostic({stage,attempt,call,category,error,parseableJSON,rawReply,secrets=[]}) {
-  const redact=value=>{
+export function redactAIText(value,secrets=[]) {
     let text=String(value ?? "");
     for(const secret of secrets)if(typeof secret==="string" && secret)text=text.split(secret).join("[redacted]");
     return text.replace(/\bBearer\s+[^\s,"'}]+/gi,"Bearer [redacted]").replace(/((?:api[_-]?key|authorization|(?:access[_-]?)?token|secret|password)["']?\s*[:=]\s*["']?)([^\s,"'}]+)/gi,"$1[redacted]")
       .replace(/\b(?:sk-|sk_)[a-zA-Z0-9_-]+/g,"[redacted]");
-  };
+}
+export function aiAttemptDiagnostic({stage,attempt,call,category,error,parseableJSON,rawReply,secrets=[]}) {
+  const redact=value=>redactAIText(value,secrets);
   return {stage,attempt,call,category,errorName:redact(error.name || "Error").slice(0,60),message:redact(error.detail || error.message).slice(0,160),parseableJSON,replyPreview:redact(rawReply).slice(0,800)};
+}
+export function safeAIDetail(value, secrets=[]) {
+  const redact=text=>redactAIText(text,secrets);
+  const clean=(item,depth=0)=>{
+    if(depth>12)return "[depth limit]";
+    if(typeof item==="string")return redact(item);
+    if(Array.isArray(item))return item.map(entry=>clean(entry,depth+1));
+    if(item && typeof item==="object")return Object.fromEntries(Object.entries(item).map(([key,entry])=>[redact(key),/(?:api.?key|authorization|token|secret|password)/i.test(key)?"[redacted]":clean(entry,depth+1)]));
+    return item ?? null;
+  };
+  return clean(value);
 }
 export function dailyReset(date) {
   const next = new Date(date);
@@ -834,7 +851,7 @@ export function groundedPlanSchema(year, sentence = null) {
   if(namedPlace)plan.properties.place.anyOf[1].properties.codes.items={type:"string",enum:[...COUNTRY_CODES]};
   plan.required=plan.required.filter(key=>key!=="place");
   const candidate = object({plan,sources:{type:"array",maxItems:40,items:object({path:{type:"string",maxLength:80},source:text})}});
-  return object({...candidate.properties,ambiguity:{anyOf:[{type:"null"},object({question:{...text,maxLength:180},options:{type:"array",minItems:2,maxItems:3,items:object({label:{...text,maxLength:80},...candidate.properties})}})]}});
+  return object({...candidate.properties,ambiguity:{anyOf:[{type:"null"},object({requirement:{...text,maxLength:60},question:{...text,maxLength:120},options:{type:"array",minItems:2,maxItems:3,items:{type:"string",minLength:1,maxLength:60}}})]}});
 }
 export function groundPlan(candidate, sentence, year) {
   const raw = validateAIPlan(candidate?.plan, year);
@@ -879,6 +896,15 @@ export function reconcileGrounding(grounded, plan, sentence) {
   return {plan,sources,missing:questionContentWords(sentence).filter(word=>!covered.has(word))};
 }
 // Repair the model boundary only; cached/internal plans still use the strict validator.
+function questionSpan(source,sentence) {
+  if(typeof source!=="string" || !source)return "";
+  const escaped=source.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  for(const match of sentence.matchAll(new RegExp(escaped,"giu"))){
+    const before=sentence[match.index-1] || "",after=sentence[match.index+match[0].length] || "";
+    if(!/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after))return match[0];
+  }
+  return "";
+}
 export function repairGroundedResponse(value, sentence, year, record = () => {}) {
   const raw=value?.plan ?? value;
   const usable=(term,max=80)=>typeof term==="string" && term.trim() && term.length<=max && !/[\x00-\x1f\x7f|{}[\]\\]/.test(term);
@@ -891,14 +917,17 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   const sources=new Map();
   for(const entry of entries.slice(0,40))if(typeof entry?.path==="string" && entry.path.length<=80 && typeof entry.source==="string" && entry.source.trim() && entry.source.length<=1000){
     const path=entry.path.replace(/^plan\./,"").replace(/\[(\d+)\]/g,".$1");
-    if(!sources.has(path))sources.set(path,entry.source);
+    if(!sources.has(path))sources.set(path,questionSpan(entry.source,sentence) || entry.source);
   }
   if(JSON.stringify(entries)!==JSON.stringify(sourceInput))note("sources","invalid_source_entries");
   const used=[];
   const retain=(target,original=target)=>{if(sources.has(original))used.push({path:target,source:sources.get(original)});};
   retain("topic");
   // A literal topic supplies its own source if the optional sources field is absent/broken.
-  if(!used.length){const start=sentence.indexOf(topic);if(start>=0)used.push({path:"topic",source:sentence.slice(start,start+topic.length)});}
+  if(!used.length || !questionSpan(used[0].source,sentence)){
+    const span=questionSpan(topic,sentence);
+    if(span){used.splice(0,used.length,{path:"topic",source:span});}
+  }
   const list=(field,max,length=80)=>{
     const result=[];
     for(const [index,item] of (Array.isArray(raw[field])?raw[field]:[]).entries())if(usable(item,length)){
@@ -929,6 +958,15 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   if(raw.place!=null && (JSON.stringify(place)!==JSON.stringify(raw.place)))note("place",!namedPlace?"no_named_place":!validCodes.length?"invalid_codes":"invalid_place_fields",place.codes.length?"repaired":"dropped");
   const parsedYear=input=>Number.isInteger(input)?input:typeof input==="string" && /^\d{4}$/.test(input)?Number(input):null;
   const requested=globalThis.TMM_QUERY_PARSER.questionParts(sentence,year);
+  const regions=requested.place.filter(item=>item.preset && REGIONS[item.preset]);
+  if(regions.length){
+    const codes=[...new Set(regions.flatMap(item=>REGIONS[item.preset]))];
+    if(JSON.stringify([...place.codes].sort())!==JSON.stringify([...codes].sort()))note("place","restore_requested_region","repaired");
+    place={codes,mode:raw.place?.mode==="authored"?"authored":"mentions"};
+    for(let i=used.length-1;i>=0;i--)if(used[i].path==="place")used.splice(i,1);
+    const spans=regions.map(item=>({start:sentence.indexOf(item.source),length:item.source.length}));
+    used.push({path:"place",source:sentence.slice(Math.min(...spans.map(item=>item.start)),Math.max(...spans.map(item=>item.start+item.length)))});
+  }
   let years={from:parsedYear(raw.years?.from) ?? 2010,to:parsedYear(raw.years?.to)};
   try{validateRange(years.from,years.to,year);}catch{years={from:2010,to:null};}
   let rangeSource=null;
@@ -959,13 +997,15 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     if(typeof proposed.question==="string" && proposed.question.trim() && proposed.question.length<=180 && Array.isArray(proposed.options) && proposed.options.length>=2 && proposed.options.length<=3){
       try{
         const labels=new Set();
-        const options=proposed.options.map(option=>{
-          if(typeof option?.label!=="string" || !option.label.trim() || option.label.length>80 || labels.has(option.label))throw new Error("Invalid option");
-          labels.add(option.label);
-          const repaired=repairGroundedResponse({...option,ambiguity:null},sentence,year,record);
+        const options=proposed.options.map((option,index)=>{
+          const label=typeof option==="string"?option:option?.label;
+          if(typeof label!=="string" || !label.trim() || label.length>80 || labels.has(label)){record({field:"ambiguity",optionIndex:index,check:"option_label",missing:["unique nonempty label"],reason:"invalid_options"});throw new Error("Invalid option label");}
+          labels.add(label);
+          if(/\b(?:worldwide|global|anywhere)\b/i.test(label) && regions.length){record({field:"ambiguity",optionIndex:index,check:"option_constraints",missing:["requested region"],reason:"invalid_options"});throw new Error("Option drops requested region");}
+          const repaired=typeof option==="string" || !option.plan?{plan,sources:used,ambiguity:null}:repairGroundedResponse({plan:option.plan,sources:option.sources,ambiguity:null},sentence,year,record);
           const grounded=groundPlan(repaired,sentence,year);
-          if(!grounded.plan.topic || grounded.missing.length)throw new Error("Incomplete option");
-          return {label:option.label,plan:repaired.plan,sources:repaired.sources};
+          if(!grounded.plan.topic || grounded.missing.length){record({field:"ambiguity",optionIndex:index,check:"option_coverage",missing:grounded.missing,reason:"invalid_options"});throw new Error("Incomplete option");}
+          return {label,plan:repaired.plan,sources:repaired.sources};
         });
         ambiguity={question:proposed.question,options};
       }catch{note("ambiguity","invalid_options");}
