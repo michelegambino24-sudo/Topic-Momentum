@@ -1157,7 +1157,34 @@
     return saved;
   }
 
+  // Estimated progress: the work has no exact steps, so the bar eases toward 92% and jumps to 100% when the report arrives.
+  let progressTimer = null, progressStart = 0, progressSlow = true;
+  function showProgress(loading) {
+    try { drawProgress(loading); } catch { /* The bar is cosmetic and must never block a search. */ }
+  }
+  function drawProgress(loading) {
+    const box = document.getElementById("search-progress");
+    if (!box || typeof box.querySelector !== "function") return;
+    const fill = box.querySelector(".search-progress-fill"), label = box.querySelector(".search-progress-label");
+    clearInterval(progressTimer); progressTimer = null;
+    const paint = percent => {
+      const value = Math.max(0, Math.min(100, Math.round(percent)));
+      fill.style.width = value + "%"; box.setAttribute("aria-valuenow", String(value));
+      const left = Math.max(3, Math.round((progressSlow ? 40 : 12) * (1 - value / 100)));
+      label.textContent = value >= 100 ? "Done" : value + "% · " + (value < 25 ? "Understanding your question" : value < 65 ? "Collecting papers" : "Checking relevance") + " · about " + left + " s left (estimate)";
+    };
+    if (loading) {
+      progressStart = Date.now(); progressSlow = true;
+      box.hidden = false; paint(2);
+      progressTimer = setInterval(() => paint(92 * (1 - Math.exp(-(Date.now() - progressStart) / 15000))), 300);
+      if (progressTimer && progressTimer.unref) progressTimer.unref();
+    } else if (!box.hidden) {
+      paint(100);
+      setTimeout(() => { if (!progressTimer) box.hidden = true; }, 600);
+    }
+  }
   function setLoading(loading) {
+    showProgress(loading);
     if (loading) $("report-stage").hidden = false;
     busy = loading;
     setPresentationLoading(loading);

@@ -84,3 +84,8 @@ test("'X in Y' becomes two required concepts instead of one rare literal phrase"
  const vitro=validateGroundedResponse({plan:{...base(),topic:"cells in vitro"},sources:[{path:"topic",source:"cells in vitro"}],ambiguity:null},"Is research on cells in vitro growing?",2026);
  assert.equal(vitro.plan.topic,"cells in vitro");
 });
+test("a group that only quotes trend wording is dropped",()=>{
+ const sentence="is research on quantum computing in finance rising?";
+ const value=validateGroundedResponse({plan:{...base(),topic:"quantum computing",includeGroups:[{terms:["advancements","development"]}]},sources:[{path:"topic",source:"quantum computing"},{path:"includeGroups.0",source:"rising"}],ambiguity:null},sentence,2026);
+ assert.equal(value.plan.includeGroups.length,0);
+});

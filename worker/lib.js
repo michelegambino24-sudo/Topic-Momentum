@@ -1012,6 +1012,9 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   const synonyms=list("synonyms",5),exclusions=list("excludeTerms",6,120),includeGroups=[];
   for(const [index,group] of (Array.isArray(raw.includeGroups)?raw.includeGroups:[]).entries()){
     let cleaned=null;
+    // A group quoting only framing words ("rising", "growing", "advancements") is the model inventing a requirement.
+    const quoted=sources.get("includeGroups."+index);
+    if(quoted && !questionContentWords(quoted).length){note("includeGroups","trend_wording_group_dropped","dropped");continue;}
     if(typeof group?.preset==="string" && Object.hasOwn(SEARCH_PRESETS,group.preset))cleaned={preset:group.preset};
     else if(Array.isArray(group?.terms)){
       const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).map(plain).filter(Boolean).map(cleanTerm).filter(term=>questionContentWords(term).length))].slice(0,8);
