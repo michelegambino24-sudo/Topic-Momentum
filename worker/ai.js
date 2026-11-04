@@ -1,4 +1,4 @@
-import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, isTighterPlan, judgeTitles, titleSample, semanticQuery, semanticMembership, shapePapers, normaliseQuery, includeGroupsOf, cacheIsFresh, dailyCap, cleanTerm, cleanAIPlanTerms, reliabilitySamples, reliabilityCheck, checkedEvidence, EVIDENCE_NOTICES, buildQueries, groundedPlanSchema, groundPlan, reconcileGrounding, validateGroundedResponse, planRequirements, questionRequirements, passingTitleIds, verifiedExperts, expertCandidateQuery, rankExpertAuthors, openAlexUsage, dailyKey, aiFailureMessage, literalQuestionPlan, parseModelReply, aiAttemptDiagnostic, aiTimeouts, aiStopReason, tighteningFailures, safeAIDetail, selfCheckRequirements, SELF_CHECK_TIMEOUT_NOTE } from "./lib.js";
+import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, isTighterPlan, judgeTitles, titleSample, semanticQuery, semanticMembership, shapePapers, normaliseQuery, includeGroupsOf, cacheIsFresh, dailyCap, cleanTerm, cleanAIPlanTerms, reliabilitySamples, reliabilityCheck, checkedEvidence, EVIDENCE_NOTICES, buildQueries, groundedPlanSchema, groundPlan, reconcileGrounding, validateGroundedResponse, planRequirements, questionRequirements, passingTitleIds, verifiedExperts, expertCandidateQuery, rankExpertAuthors, openAlexUsage, dailyKey, aiFailureMessage, literalQuestionPlan, parseModelReply, aiAttemptDiagnostic, aiTimeouts, aiStopReason, tighteningFailures, safeAIDetail, selfCheckRequirements, SELF_CHECK_TIMEOUT_NOTE, expansionTerms, EXPANSION_BELOW, EXPANSION_MAX_GROWTH } from "./lib.js";
 import "../site/query-parser.js";
 import { COUNTRY_CODES, REGIONS, countryLabel } from "./countries.js";
 
@@ -401,7 +401,23 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
             else {required=nextRequired;judgments.clear();}
           }
         }
-        const compiled=compileAIPlan(raw,year),result=await invokeReport(compiled.query);if(result.status!==200)return clock()>=end?blocked("ai_total_deadline"):{...result,body:{...result.body,aiReason:"source_failed",aiUsage:usage}};
+        let compiled=compileAIPlan(raw,year),result=await invokeReport(compiled.query);if(result.status!==200)return clock()>=end?blocked("ai_total_deadline"):{...result,body:{...result.body,aiReason:"source_failed",aiUsage:usage}};
+        // A small result usually means the exact wording is rare, not that the subject is: add a few safe related wordings.
+        const smallTotal=result.body.kpis?.total;
+        if(env.AI_EXPAND_SMALL==="on"&&!input.mode&&!(raw.synonyms||[]).length&&Number.isInteger(smallTotal)&&smallTotal<EXPANSION_BELOW){
+          try{
+            const proposed=await run(AI_MODEL,{messages:[{role:"system",content:'Task: related wordings. Give up to 5 other ways researchers write the SAME topic, each 2 to 4 words, with the same or a narrower meaning. Never broader, never a different subject, never a place. Return only {"terms":[...]}.'},
+              {role:"user",content:JSON.stringify({task:"synonyms",topic:raw.topic,question:input.sentence})}],
+              response_format:{type:"json_schema",json_schema:{type:"object",additionalProperties:false,required:["terms"],properties:{terms:{type:"array",items:{type:"string"}}}}},max_tokens:150,temperature:0},value=>{if(!Array.isArray(value?.terms))throw new Error("Invalid related wordings");return value;},"expansion");
+            const added=expansionTerms(proposed.terms,raw,input.sentence);
+            if(added.length){
+              const widened={...raw,synonyms:added},wide=compileAIPlan(widened,year),wideResult=await invokeReport(wide.query),wideTotal=wideResult.body?.kpis?.total;
+              if(wideResult.status===200&&Number.isInteger(wideTotal)&&wideTotal>=smallTotal&&wideTotal<=Math.max(smallTotal*EXPANSION_MAX_GROWTH,smallTotal+400)){
+                raw=widened;compiled=wide;result=wideResult;usage.notes.push("Added related wordings: "+added.join(", ")+".");
+              }
+            }
+          }catch(error){if(error.reason)throw error;}
+        }
         session.sourceStage="candidates";
         const citedBase=buildQueries(compiled.query,year).find(item=>item.id==="papers");
         const cited=await fetchSource({...citedBase,id:"citedCandidates",params:{...citedBase.params,per_page:"30"}},compiled.query);if(!Array.isArray(cited.results))throw new Error("Invalid cited candidates");

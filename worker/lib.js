@@ -1208,3 +1208,26 @@ export function openAlexBudgetSummary(rows, budgetUsd = .90) {
     costBasis:provider?"provider_reported_usd":"estimate_from_spec",recommendedNewTopicsPerDay:maximum>0?Math.floor((budgetUsd+1e-12)/maximum):null,
     readyToRaiseCap:false,reason:provider?"Observed sample maximum only; retain the 30-attempt cap until a hard daily dollar guard covers heavier searches and retries":"Dollar costs use the unverified SPEC rate; verify pricing and add a hard daily dollar guard before raising the cap"};
 }
+
+// Related wordings proposed by the AI for a small result. Code, not the prompt, decides what is safe to add.
+export const EXPANSION_BELOW = 150;
+export const EXPANSION_MAX_GROWTH = 8;
+const GENERIC_WORDS = new Set(["research","study","studies","analysis","science","sciences","learning","data","system","systems","technology","technologies","model","models","theory","review","reviews","general","new","applications","application","methods","method","approach","approaches","issues","issue","aspects","topic","topics","field","fields"]);
+export function expansionTerms(candidates, raw, sentence = "", limit = 4) {
+  if (!Array.isArray(candidates)) return [];
+  const known = new Set([raw.topic, ...(raw.synonyms || []), ...(raw.includeGroups || []).flatMap(group => group.terms || [])].map(cleanTerm));
+  const out = [];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const term = cleanTerm(candidate);
+    const words = term.split(" ").filter(Boolean);
+    if (!term || term.length > 60 || words.length < 2 || words.length > 4) continue;
+    if (!words.every(word => /^[a-z0-9][a-z0-9-]*$/.test(word))) continue;
+    if (words.every(word => GENERIC_WORDS.has(word) || word.length < 3)) continue;
+    if (known.has(term)) continue;
+    try { if (globalThis.TMM_PLACES?.resolve(term).matches.length) continue; } catch { /* Place check is advisory. */ }
+    known.add(term); out.push(term);
+    if (out.length === limit) break;
+  }
+  return out;
+}

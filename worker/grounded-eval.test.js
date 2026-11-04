@@ -17,11 +17,12 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
   const kv=new MemoryKV(),calls=[],sourceCalls=[],judges=[],reportQueries=[];
   const authors=[{name:"Field author",openalexUrl:"https://openalex.org/A111",count:175}];
   const paper={id:"https://openalex.org/W1",display_name:"Battery recycling advances",publication_year:2025,cited_by_count:100,authorships:[{author:{id:authors[0].openalexUrl,display_name:authors[0].name}}]};
-  const env={TMM:kv,AI_MODEL,AI_JUDGE_MODEL:JUDGE_MODEL,AI_SEARCHES_PER_DAY:"50",NEW_TOPICS_PER_DAY:"30",AI:{async run(model,params){
+  const env={TMM:kv,AI_MODEL,AI_JUDGE_MODEL:JUDGE_MODEL,AI_SEARCHES_PER_DAY:"50",NEW_TOPICS_PER_DAY:"30",...(config.expand?{AI_EXPAND_SMALL:"on"}:{}),AI:{async run(model,params){
     const data=payload(params);calls.push({model,data,params});
     let response;
     if(data.task==="self-check")response=checks.length>1?checks.shift():checks[0];
     else if(data.task==="plan")response=plans.length>1?plans.shift():plans[0];
+    else if(data.task==="synonyms")response=config.synonyms||{terms:[]};
     else {judges.push(data);response=config.judge?config.judge(data):{pass:data.titles.map((_,i)=>i+1)};}
     if(response instanceof Error)throw response;
     return {response,...(config.unmeasured?{}:{usage:{neurons:config.neurons?config.neurons(calls.length,data):2}})};
@@ -35,7 +36,7 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
   }});
   return {kv,calls,sourceCalls,judges,reportQueries,env,async search(input={sentence:question}){return service.search(input,env,async(query,_env,session)=>{
     reportQueries.push(query);session.expertRanking=authors;
-    return {status:200,body:{id:query.id,name:query.name,searchTerms:{name:query.name},synonyms:query.synonyms,includeGroups:includeGroupsOf(query),excludeTerms:query.excludeTerms,from:query.from,to:query.to,papers:[],experts:authors,kpis:{total:100},countries:[]}};
+    return {status:200,body:{id:query.id,name:query.name,searchTerms:{name:query.name},synonyms:query.synonyms,includeGroups:includeGroupsOf(query),excludeTerms:query.excludeTerms,from:query.from,to:query.to,papers:[],experts:authors,kpis:{total:config.total?config.total(query):100},countries:[]}};
   });}};
 }
 
@@ -550,4 +551,27 @@ test("advisory ambiguity during tightening keeps the checked report and consumed
  const app=setup([complete(),{...complete(),ambiguity}],[{ok:true}],{judge:()=>({pass:[]})}),result=await app.search();
  assert.equal(result.body.papersKind,"checked");assert(!result.body.clarification);assert(result.body.evidence.notices.some(note=>note.includes("no clarification")));assert.equal(app.kv.values.get("ai:count:2026-11-04"),"1");assert(app.sourceCalls.length>0);
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.used,result.body.aiUsage.neurons);assert.equal(ledger.reserved,0);
+});
+
+test("a small result gets safe related wordings; broad, generic, duplicate and place wordings are refused", async () => {
+  const totals = query => query.synonyms.length ? 400 : 40;
+  const app = setup([complete()], [{ ok: true }], { expand: true, total: totals, synonyms: { terms: ["battery recovery", "learning", "battery recycling", "recycling in Egypt", "used cell reprocessing", "x"] } });
+  const result = await app.search();
+  assert.equal(result.status, 200);
+  assert.deepEqual(app.reportQueries.at(-1).synonyms, ["battery recovery", "used cell reprocessing"]);
+  assert(result.body.aiUsage.notes.some(note => note.startsWith("Added related wordings: battery recovery, used cell reprocessing")));
+  assert.equal(result.body.papersKind, "checked");
+});
+test("related wordings that multiply the count are discarded, and large results are never expanded", async () => {
+  const flood = setup([complete()], [{ ok: true }], { expand: true, total: query => query.synonyms.length ? 40000 : 40, synonyms: { terms: ["battery recovery"] } });
+  const result = await flood.search();
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.synonyms, []);
+  assert(!result.body.aiUsage.notes.some(note => note.startsWith("Added related")));
+  const large = setup([complete()], [{ ok: true }], { expand: true, total: () => 5000, synonyms: { terms: ["battery recovery"] } });
+  await large.search();
+  assert(!large.calls.some(call => call.data.task === "synonyms"));
+  const off = setup([complete()], [{ ok: true }], { total: () => 40, synonyms: { terms: ["battery recovery"] } });
+  await off.search();
+  assert(!off.calls.some(call => call.data.task === "synonyms"));
 });
