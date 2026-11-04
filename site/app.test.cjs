@@ -1597,7 +1597,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
   const lib = await import("../worker/lib.js");
   const ai = JSON.parse(readFileSync(__dirname + "/../worker/fixtures/ai-search.json", "utf8"));
   const fixture = id => JSON.parse(readFileSync(__dirname + `/../worker/fixtures/${id}.json`, "utf8"));
-  const calls = [], key = "ai:search:v1:" + "a".repeat(64);
+  const calls = [], key = "ai:search:v2:" + "a".repeat(64);
   let newUnderstandings = 0;
   const initial = lib.compileAIPlan(ai.plan, 2026);
   const fetch = async (url, options = {}) => {
@@ -1960,7 +1960,7 @@ test("checked evidence labels, low precision and trend warnings survive renderin
   let data;
   const app=setup(async()=>({ok:true,json:async()=>data}),null,"#search",null,true);
   data={...report(app),papersKind:"checked",evidence:{version:3,accepted:2,candidates:6,notices:["Few papers match this question exactly","Many matching papers may be off-topic; narrow the search for reliable numbers","The trend may be distorted by off-topic papers."]},
-    understanding:{mode:"ai",key:"ai:search:v1:"+"b".repeat(64),sentence:"social media, kids, attention",check:{matched:13,total:20,early:{matched:4,total:10},late:{matched:9,total:10},lowPrecision:true,trendDistorted:true}}};
+    understanding:{mode:"ai",key:"ai:search:v2:"+"b".repeat(64),sentence:"social media, kids, attention",check:{matched:13,total:20,early:{matched:4,total:10},late:{matched:9,total:10},lowPrecision:true,trendDistorted:true}}};
   app.get("topic-input").value="social media, kids, attention";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
   assert.equal(app.get("papers-heading").textContent,"Key papers");
   assert.equal(app.get("papers-source-note").textContent,"Checked by AI for this question · sorted by citations");

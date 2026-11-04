@@ -5,7 +5,7 @@ import { COUNTRY_CODES, REGIONS, countryLabel } from "./countries.js";
 // Officially supports JSON mode on Workers AI (gpt-oss-120b does not, and its reasoning cut answers off).
 export const AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 export const AI_TTL = 7 * 24 * 60 * 60;
-const validKey = key => /^ai:search:v1:[a-f0-9]{64}$/.test(key || "");
+const validKey = key => /^ai:search:v2:[a-f0-9]{64}$/.test(key || "");
 const validCheck = check => check && Number.isInteger(check.matched) && Number.isInteger(check.total) && check.matched >= 0 && check.matched <= check.total && check.total <= 20;
 function displayLabels(raw, query) {
   const label = (value, choices) => choices.find(choice => cleanTerm(choice) === cleanTerm(value)) || value;
@@ -67,7 +67,7 @@ export async function interpretationKey(sentence, year) {
   const versions = Object.entries(SEARCH_PRESETS).map(([id, preset]) => [id, preset.version]);
   const input = JSON.stringify(["deterministic-places-v1",globalThis.TMM_PLACES.version, AI_MODEL, JUDGE_MODEL, year, versions, sentence.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ")]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return "ai:search:v1:" + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  return "ai:search:v2:" + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 // Binding calls, source requests and KV operations share a conservative Free-plan ledger.
