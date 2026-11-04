@@ -69,3 +69,10 @@ test("filler-only include groups left behind by place stripping are dropped",()=
  const value=validateGroundedResponse({plan:{...base(),includeGroups:[{terms:["region"]},{terms:["area"]}]},sources:[{path:"topic",source:"PTSD"},{path:"includeGroups.0",source:"area"}],ambiguity:null},sentence,2026);
  assert.deepEqual(value.plan.includeGroups,[]);
 });
+test("framing words the person did not type as a phrase are not searched as a literal phrase",()=>{
+ const sentence="is rearch on ptsd growing in the MENA area?";
+ const value=validateGroundedResponse({plan:{...base(),topic:"ptsd research",synonyms:["post-traumatic stress disorder studies"]},sources:[{path:"topic",source:"ptsd"},{path:"synonyms.0",source:"ptsd"}],ambiguity:null},sentence,2026);
+ assert.equal(value.plan.topic,"ptsd");assert.deepEqual(value.plan.synonyms,["post-traumatic stress disorder"]);
+ const kept=validateGroundedResponse({plan:{...base(),topic:"operations research"},sources:[{path:"topic",source:"operations research"}],ambiguity:null},"Is operations research growing?",2026);
+ assert.equal(kept.plan.topic,"operations research");
+});

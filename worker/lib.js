@@ -965,7 +965,13 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   const usable=(term,max=80)=>typeof term==="string" && term.trim() && term.length<=max && !/[\x00-\x1f\x7f|{}[\]\\]/.test(term);
   const subjectPlace=globalThis.TMM_PLACES.resolve(sentence).mode==="mentions";
   const cleanTrend=value=>globalThis.TMM_QUERY_PARSER.cleanTrendTerm(subjectPlace?value:globalThis.TMM_PLACES.resolve(value).withoutPlaces,sentence);
-  const topic=typeof raw?.topic==="string"?cleanTrend(raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", ")):"";
+  // "ptsd research" / "studies" are framing the person did not type as a phrase: searching them as a literal phrase finds almost nothing.
+  const plain=term=>{
+    if(typeof term!=="string" || questionSpan(term,sentence))return term;
+    const stripped=term.replace(/\s+(?:research|studies|study|papers|literature|publications)$/i,"").replace(/^(?:research|studies)\s+(?:on|about|into)\s+/i,"").trim();
+    return stripped && questionContentWords(stripped).length?stripped:term;
+  };
+  const topic=typeof raw?.topic==="string"?plain(cleanTrend(raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", "))):"";
   if(!usable(topic,200))throw new Error("The model reply has no usable research topic.");
   const note=(field,reason,action="dropped_or_repaired")=>record({field,action,reason});
   const sourceInput=value?.sources ?? raw.sources;
@@ -997,7 +1003,7 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   const list=(field,max,length=80)=>{
     const result=[];
     for(const [index,item] of (Array.isArray(raw[field])?raw[field]:[]).entries())if(usable(item,length)){
-      const term=cleanTerm(field==="synonyms"?cleanTrend(item):item);
+      const term=cleanTerm(field==="synonyms"?plain(cleanTrend(item)):item);
       if(term && result.length<max && !result.includes(term)){retain(field+"."+result.length,field+"."+index,term);result.push(term);}
     }
     if(JSON.stringify(result)!==JSON.stringify(raw[field]))note(field,"invalid_or_duplicate_terms");
@@ -1008,7 +1014,7 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     let cleaned=null;
     if(typeof group?.preset==="string" && Object.hasOwn(SEARCH_PRESETS,group.preset))cleaned={preset:group.preset};
     else if(Array.isArray(group?.terms)){
-      const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).filter(Boolean).map(cleanTerm).filter(term=>questionContentWords(term).length))].slice(0,8);
+      const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).map(plain).filter(Boolean).map(cleanTerm).filter(term=>questionContentWords(term).length))].slice(0,8);
       if(terms.length)cleaned={terms};
     }
     if(cleaned && includeGroups.length<3 && !includeGroups.some(item=>JSON.stringify(item)===JSON.stringify(cleaned))){

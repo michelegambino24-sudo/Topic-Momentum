@@ -1237,6 +1237,7 @@
     search(name, terms, id ? { id, name: params.get("title") || id } : null, true, params.get("cache") === "only", include, params.get("from") ?? params.get("period") ?? "2010", params.get("to") ?? "", subfield, null, {placeIds:params.get("places")?.split(",") || [],placeMode:params.get("placeMode") || "authored",excludeTerms,authoredCodes:params.get("authored") ? params.get("authored").split(",") : [],understandingKey:params.get("understanding") || ""});
   }
 
+  let lastSearchOk = false;
   async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false, cacheOnly = false, include = readIncludeGroups(), from = $("from-input").value, to = $("to-input").value, subfield = activeSubfield, refinementBack = null, options = {}) {
     if (busy) return;
     const useAI = typeof options.sentence === "string" && (window.AI_SEARCH_ENABLED !== false || Boolean(options.mode));
@@ -1259,6 +1260,16 @@
     setLoading(true);
     vanishQuery();
     const version = ++requestVersion;
+    lastSearchOk = false;
+    // When the AI check cannot run or cannot finish, a plain keyword search still answers the question.
+    const plainFallback = reason => {
+      if (!useAI || options.mode || options.clarification || !String(name).trim()) return false;
+      setTimeout(async () => {
+        await search(name, terms, selection, fromRoute, cacheOnly, include, from, to, subfield, refinementBack, { ...options, sentence: undefined });
+        if (lastSearchOk) notify("The AI check could not run (" + reason + "), so this is a plain keyword search. Counts may include off-topic papers.", true);
+      }, 0);
+      return true;
+    };
     notify(useAI ? "Understanding and checking your search…" : queryOperatorCount(name, terms, include) > 5 ? "This search is more complex, so it takes a little longer…" : "Loading research data…", true);
     const controller = new AbortController();
     requestController = controller;
@@ -1294,6 +1305,7 @@
         throw Object.assign(new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later."), { code: data.error, unmatched: Array.isArray(data.failingCheck?.missing) ? data.failingCheck.missing.filter(word => typeof word === "string").slice(0, 4) : [] });
       }
       if (version !== requestVersion) return;
+      if (useAI && data.papersKind === "unavailable" && plainFallback("the paper check did not finish")) return;
       if (useAI && data.planOnly) {
         pendingClarification = null; $("search-clarification").hidden = true;
         $("report-stage").hidden = true; $("papers").innerHTML = ""; $("experts").innerHTML = "";
@@ -1319,6 +1331,7 @@
       const predecessor = refinementBack || refinementHistory.get(topic.id) || savedPredecessor;
       if (predecessor) { topic.refinementBack = predecessor; refinementHistory.set(topic.id, predecessor); }
       isSample = false;
+      lastSearchOk = true;
       cacheOnlyView = cacheOnly;
       if (!cacheOnly || data.cached === false) { libraryDirty = true; libraryRevision++; }
       renderTopic();
@@ -1327,7 +1340,7 @@
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
       else if (saved) notify("Research data loaded.");
-    } catch (error) { if (version === requestVersion) { if(error.code === "ai_unavailable" || error.code === "rephrase_required") $("report-stage").hidden = true; notify((error.message || "The data service returned an unreadable report. Try again later.") + (error.code === "rephrase_required" && error.unmatched?.length ? " Not matched: " + error.unmatched.join(", ") + "." : ""), true); } }
+    } catch (error) { if (version === requestVersion && (!error.code || error.code === "rephrase_required") && plainFallback(error.code === "rephrase_required" ? "the question could not be fully interpreted" : String(error.message || "service problem").replace(/[.\s]+$/, "").slice(0, 120))) { /* plain search runs next */ } else if (version === requestVersion) { if(error.code === "ai_unavailable" || error.code === "rephrase_required") $("report-stage").hidden = true; notify((error.message || "The data service returned an unreadable report. Try again later.") + (error.code === "rephrase_required" && error.unmatched?.length ? " Not matched: " + error.unmatched.join(", ") + "." : ""), true); } }
     finally {
       clearTimeout(timeout);
       if (version === requestVersion) setLoading(false);

@@ -138,10 +138,10 @@ test("replay logged topic fields: autism research must not become an empty rejec
  assert.equal(before.plan.topic,blankingFixture.observedLogFields.rejectedPlan.topic);
  assert.deepEqual(before.missing,blankingFixture.observedLogFields.missing);
  const repairs=[],repaired=validateGroundedResponse(reply,sentence,2026,event=>repairs.push(event));
- assert.equal(repaired.plan.topic,blankingFixture.observedLogFields.repairedPlan.topic);
+ assert.equal(repaired.plan.topic,"autism");
  assert(repaired.sources.some(source=>source.path==="topic" && source.source==="autism"));
  const after=groundPlan(repaired,sentence,2026);
- assert.equal(after.plan.topic,"autism research");assert.deepEqual(after.missing,[]);
+ assert.equal(after.plan.topic,"autism");assert.deepEqual(after.missing,[]);
  assert(repairs.some(event=>event.reason==="recovered_literal_topic_source"));
  // Recovering scaffold words must not legitimise an invented research subject.
  const invented=validateGroundedResponse({...reply,plan:{...reply.plan,topic:"autism genetics research"}},sentence,2026);
@@ -149,10 +149,10 @@ test("replay logged topic fields: autism research must not become an empty rejec
 });
 for(const [index,reply] of blankingFixture.replies.entries())test("offline autism research replay with "+(index?"no model place":"model Middle East place"),async()=>{
  const app=setup([reply]),result=await app.search({sentence:blankingFixture.question});
- assert.equal(result.status,200);assert.equal(result.body.understanding.labels.topic,"autism research");
+ assert.equal(result.status,200);assert.equal(result.body.understanding.labels.topic,"autism");
  assert.equal(result.body.understanding.place.label,"Middle East");assert.equal(result.body.understanding.place.countryCount,16);
  assert.equal(result.body.understanding.place.mode,"authored");assert.deepEqual(result.body.understanding.place.ids,["middleEast"]);
- assert.equal(app.calls.find(call=>call.data.task==="self-check").data.plan.topic,"autism research");
+ assert.equal(app.calls.find(call=>call.data.task==="self-check").data.plan.topic,"autism");
  assert.equal(result.body.aiUsage.stages.replan,undefined);
 });
 for(const missing of [["children"],["growing"],["growth"],["growing","children"],[]])test("unquoted populations and trend self-check objections never replan: "+JSON.stringify(missing),async()=>{
