@@ -458,7 +458,7 @@
     $(includeInputIds[index]).focus();
     checkIncludeLimits($("topic-input").value, synonyms(), readIncludeGroups(), $("from-input").value, $("to-input").value);
   }
-  function checkIncludeLimits(name, terms, include, from, to, selection, subfield = activeSubfield, exclusions = activeExclusions, authored = activeAuthored) {
+  function checkIncludeLimits(name, terms, include, from, to, selection, subfield = activeSubfield, exclusions = activeExclusions, authored = activeAuthored, placeIds = draftPlace?.ids || [], placeMode = draftPlace?.mode || "authored") {
     const raw = groupsOf(include);
     clearIncludeError();
     let message;
@@ -471,7 +471,7 @@
       const encodedGroups = window.TMM_PRESET_IDENTITIES.encode(groups);
       const includeId = encodedGroups ? [encodedGroups] : [];
       const rangeId = to != null && to !== "" ? ["range:" + from + "-" + to] : Number(from) !== 2010 ? ["since:" + from] : [];
-      const extraId = [...(exclusions.length ? ["exclude:" + JSON.stringify([...new Set(exclusions.map(cleanSearchTerm))].sort())] : []), ...(authored.length ? ["authored:" + JSON.stringify([...new Set(authored)].sort())] : [])];
+      const extraId = [...(exclusions.length ? ["exclude:" + JSON.stringify([...new Set(exclusions.map(cleanSearchTerm))].sort())] : []), ...(placeIds.length && !placeIds.includes("worldwide") && (placeMode==="mentions" || authored.length>64) ? ["places:"+JSON.stringify(globalThis.TMM_PLACES.tokens(placeIds))+":"+placeMode] : authored.length ? ["authored:" + JSON.stringify([...new Set(authored)].sort())] : [])];
       const id = [cleanedName, ...cleanedTerms, ...includeId, ...rangeId, ...extraId, ...(subfield ? ["subfield:" + subfield] : []), ...(selection ? ["primary_topic:" + selection.id] : [])].join("|");
       if (new TextEncoder().encode("v3:topic:" + id).length > 512) message = "This search has too many terms. Remove some synonyms or additional terms and try again.";
     }
@@ -512,10 +512,11 @@
     else if (showDraftFrom || Number(from) !== 2010) chips.push(understoodButton("Since " + from, "from"));
     if (activeSubfield) chips.push(understoodButton("Only: " + (topic.selectedSubfield?.name || "Subfield " + activeSubfield), "subfield"));
     activeExclusions.forEach((term, index) => chips.push(understoodButton("Excluded: " + term, "exclude:" + index)));
-    if (draftPlace) {
-      const other = draftPlace.mode === "authored" ? "Mentions" : "Written in";
-      const label = `${draftPlace.mode === "authored" ? "Written in" : "Mentions"} ${draftPlace.label}`;
-      chips.push(`<span class="place-chip"><button type="button" class="chip" data-place-toggle="true" aria-label="${escape(label + ". Switch to " + other + " " + draftPlace.label)}" title="Switch between author location and words mentioned in papers"${busy ? " disabled" : ""}>${escape(label)}</button><button type="button" class="chip place-remove" data-draft-remove="place" aria-label="Remove place restriction"${busy ? " disabled" : ""}>×</button></span>`);
+    if(draftPlace?.ids?.includes("worldwide"))chips.push(understoodButton("Worldwide (no place filter)","place"));
+    else if (draftPlace) {
+      const other = draftPlace.mode === "authored" ? "Mentioned in title/abstract" : "Authors based in";
+      const label = draftPlace.ids ? `${draftPlace.mode === "authored" ? "Authors based in:" : "Mentioned in title/abstract:"} ${draftPlace.label} (${draftPlace.countryCount || draftPlace.codes?.length || 0} ${(draftPlace.countryCount || draftPlace.codes?.length)===1?"country":"countries"})` : `${draftPlace.mode === "authored" ? "Written in" : "Mentions"} ${draftPlace.label}`;
+      chips.push(`<span class="place-chip"><button type="button" class="chip" data-place-toggle="true" aria-label="${escape(label + ". Switch to " + other + " " + draftPlace.label)}" title="Authors based in uses member countries. Mentioned in title/abstract uses the selected place's aliases."${busy ? " disabled" : ""}>${escape(label)}</button><button type="button" class="chip place-remove" data-draft-remove="place" aria-label="Remove place restriction"${busy ? " disabled" : ""}>×</button></span>`);
     } else if (activeAuthored.length) chips.push(understoodButton("Written in: " + (topic.authoredLabel || activeAuthored.join(", ")), "place"));
     // "Did you mean…?" only checks the meaningful words (topic and focus terms), never the framing words.
     const checked = [draftTopic, ...draftLabels.filter(item => item.kind === "focus").flatMap(item => item.terms)].join(" ");
@@ -541,6 +542,7 @@
       if (parsed.synonyms.length) $("synonyms-input").value = parsed.synonyms.join(", ");
       if (parsed.explicitRange) { $("from-input").value = String(parsed.from); $("to-input").value = parsed.to === null ? "" : String(parsed.to); showDraftFrom = true; }
     }
+    if(parsed.resolvedPlace){draftPlace=parsed.resolvedPlace.matches.length?parsed.resolvedPlace:null;activeAuthored=draftPlace?.mode==="authored"?draftPlace.codes:[];}
     renderSynonyms(); renderUnderstood();
   }
   function currentNarrowSearch() {
@@ -820,7 +822,7 @@
     activeSubfield = topic.subfieldId || "";
     activeExclusions = topic.excludeTerms || []; activeAuthored = topic.authoredCodes || [];
     activeUnderstandingKey = topic.understanding?.key || topic.understandingKey || "";
-    draftPlace = topic.understanding?.place || null; manualDraft = !isSample;
+    draftPlace = topic.understanding?.place || (topic.placeIds?.length?globalThis.TMM_PLACES.describe(topic.placeIds,topic.placeMode):null); manualDraft = !isSample;
     sentenceText = $("topic-input").value; draftTopic = sentenceText; draftErrors = []; draftNote = topic.understanding?.note || ""; draftLabels = []; showDraftFrom = reportRange(topic).from !== 2010;
     $("narrow-input").value = ""; narrowText = ""; narrowDraft = null;
     $("narrow-understood").innerHTML = ""; $("narrow-note").textContent = ""; $("narrow-note").hidden = true;
@@ -971,10 +973,12 @@
     const to = rangePart ? Number(rangePart[1]) : null;
     const subtopicId = parts.find((part) => part.startsWith("primary_topic:"))?.slice(14);
     const subfieldId = entry.subfieldId || parts.find(part => part.startsWith("subfield:"))?.slice(9);
-    const synonyms = parts.filter((part) => !part.startsWith("exclude:") && !part.startsWith("authored:") && !part.startsWith("subfield:") && !part.startsWith("include:") && !part.startsWith("includeGroups:") && !part.startsWith("primary_topic:") && !part.startsWith("since:") && !part.startsWith("range:"));
+    const synonyms = parts.filter((part) => !part.startsWith("places:") && !part.startsWith("exclude:") && !part.startsWith("authored:") && !part.startsWith("subfield:") && !part.startsWith("include:") && !part.startsWith("includeGroups:") && !part.startsWith("primary_topic:") && !part.startsWith("since:") && !part.startsWith("range:"));
     let includeTerms = [];
-    let includeGroups, excludeTerms = [], authoredCodes = [];
+    let includeGroups, excludeTerms = [], authoredCodes = [],placeIds=entry.placeIds || [],placeMode=entry.placeMode || "authored";
     try {
+      const savedPlace=parts.find(part=>part.startsWith("places:"))?.match(/^places:(\[.*\]):(authored|mentions)$/);
+      if(savedPlace && !placeIds.length){placeIds=globalThis.TMM_PLACES.normaliseIds(JSON.parse(savedPlace[1]));placeMode=savedPlace[2];}
       excludeTerms = entry.excludeTerms || JSON.parse(parts.find(part => part.startsWith("exclude:"))?.slice(8) || "[]");
       authoredCodes = entry.authoredCodes || JSON.parse(parts.find(part => part.startsWith("authored:"))?.slice(9) || "[]");
       if (includePart) includeTerms = JSON.parse(includePart.slice(8));
@@ -983,7 +987,7 @@
         includeGroups = window.TMM_PRESET_IDENTITIES.expand(savedGroups || JSON.parse(groupsPart.slice(14)));
       }
     } catch { if (groupsPart) return "#search"; }
-    return reportHash({ ...entry, from, to, subtopicId, subfieldId, includeTerms, includeGroups, excludeTerms, authoredCodes, searchTerms: { name, synonyms, includeTerms, includeGroups } }, true);
+    return reportHash({ ...entry, from, to, subtopicId, subfieldId, includeTerms, includeGroups, excludeTerms, authoredCodes,placeIds,placeMode,searchTerms: { name, synonyms, includeTerms, includeGroups } }, true);
   }
 
   function renderLibrary() {
@@ -1006,7 +1010,7 @@
       $("library-count").textContent = libraryLoading ? "Loading library…" : "";
       return;
     }
-    const visible = library.filter((item) => !(item.from !== undefined && (item.from !== 2010 || item.to != null)) && !item.id.includes("|range:") && !(item.period && item.period !== 2010) && !item.id.includes("|since:") && !item.variant && !item.excludeTerms?.length && !item.authoredCodes?.length && !/\|(exclude:|authored:)/.test(item.id) && !item.subfieldId && !item.id.includes("|subfield:") && !groupsOf(item).length && !item.id.includes("|include:") && !item.id.includes("|includeGroups:"));
+    const visible = library.filter((item) => !(item.from !== undefined && (item.from !== 2010 || item.to != null)) && !item.id.includes("|range:") && !(item.period && item.period !== 2010) && !item.id.includes("|since:") && !item.variant && !item.excludeTerms?.length && !item.authoredCodes?.length && !/\|(exclude:|authored:|places:)/.test(item.id) && !item.subfieldId && !item.id.includes("|subfield:") && !groupsOf(item).length && !item.id.includes("|include:") && !item.id.includes("|includeGroups:"));
     const source = [...new Map((libraryTab === "my" ? myLibrary : visible).map(repairBoundedSummary).map((item) => [item.id, item])).values()];
     const lookup = new Map([...library, ...source].map((item) => [item.id, item]));
     const baseId = (id) => id.split("|").filter((part) => !/^(include:|includeGroups:|exclude:|authored:|subfield:|since:|range:|primary_topic:)/.test(part)).join("|");
@@ -1115,7 +1119,8 @@
       params.set("title", baseTitle(report));
     }
     if (report.excludeTerms?.length) params.set("exclude", JSON.stringify(report.excludeTerms));
-    if (report.authoredCodes?.length) params.set("authored", report.authoredCodes.join(","));
+    if(report.placeIds?.length){params.set("places",globalThis.TMM_PLACES.tokens(report.placeIds).join(","));params.set("placeMode",report.placeMode);}
+    else if (report.authoredCodes?.length) params.set("authored", report.authoredCodes.join(","));
     if (report.understanding?.key || report.understandingKey) params.set("understanding", report.understanding?.key || report.understandingKey);
     if (cacheOnly) params.set("cache", "only");
     return "#" + params.toString();
@@ -1134,7 +1139,7 @@
       const lastYear = Math.min(range.to ?? Number(topic.updated.slice(0, 4)) - 1, Number(topic.updated.slice(0, 4)) - 1);
       const sparkStartYear = Math.max(range.from, Math.min(...topic.years.map((item) => item.year)));
       const summary = { id: topic.id, name: topic.name, parent: topic.parent || null, field: topic.field,
-        ...(topic.excludeTerms?.length ? {excludeTerms:topic.excludeTerms} : {}), ...(topic.authoredCodes?.length ? {authoredCodes:topic.authoredCodes} : {}), ...(topic.understanding?.key ? {understandingKey:topic.understanding.key} : {}),
+        ...(topic.placeIds?.length?{placeIds:topic.placeIds,placeMode:topic.placeMode}:{}),...(topic.excludeTerms?.length ? {excludeTerms:topic.excludeTerms} : {}), ...(topic.authoredCodes?.length ? {authoredCodes:topic.authoredCodes} : {}), ...(topic.understanding?.key ? {understandingKey:topic.understanding.key} : {}),
         ...(topic.subfieldId ? { subfieldId: topic.subfieldId, selectedSubfield: topic.selectedSubfield, searchTerms: topic.searchTerms } : {}),
         ...(topic.refinementBack ? { refinementBack: topic.refinementBack } : {}),
         momentum: topic.kpis.momentum, growth: primaryGrowth(topic), total: topic.kpis.total,
@@ -1227,15 +1232,16 @@
     const subfield = params.has("subfield") ? params.get("subfield").match(/^(?:https:\/\/openalex\.org\/subfields\/)?([1-9][0-9]{3})$/)?.[1] : "";
     if (params.getAll("subfield").length > 1 || params.has("subfield") && !subfield) { notify("Choose a subfield from the report and try again.", true); return; }
     let excludeTerms;
-    try { excludeTerms = JSON.parse(params.get("exclude") || "[]"); if (!Array.isArray(excludeTerms) || params.getAll("exclude").length > 1 || params.getAll("authored").length > 1) throw new Error(); }
+    try { excludeTerms = JSON.parse(params.get("exclude") || "[]"); if (!Array.isArray(excludeTerms) || params.getAll("exclude").length > 1 || params.getAll("authored").length > 1 || params.getAll("places").length>1 || params.getAll("placeMode").length>1 || !["authored","mentions"].includes(params.get("placeMode") || "authored")) throw new Error(); globalThis.TMM_PLACES.normaliseIds(params.get("places")?.split(",") || []); }
     catch { notify("Use valid excluded terms and country codes, then try again.", true); return; }
-    search(name, terms, id ? { id, name: params.get("title") || id } : null, true, params.get("cache") === "only", include, params.get("from") ?? params.get("period") ?? "2010", params.get("to") ?? "", subfield, null, {excludeTerms,authoredCodes:params.get("authored") ? params.get("authored").split(",") : [],understandingKey:params.get("understanding") || ""});
+    search(name, terms, id ? { id, name: params.get("title") || id } : null, true, params.get("cache") === "only", include, params.get("from") ?? params.get("period") ?? "2010", params.get("to") ?? "", subfield, null, {placeIds:params.get("places")?.split(",") || [],placeMode:params.get("placeMode") || "authored",excludeTerms,authoredCodes:params.get("authored") ? params.get("authored").split(",") : [],understandingKey:params.get("understanding") || ""});
   }
 
   async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false, cacheOnly = false, include = readIncludeGroups(), from = $("from-input").value, to = $("to-input").value, subfield = activeSubfield, refinementBack = null, options = {}) {
     if (busy) return;
     const useAI = typeof options.sentence === "string" && (window.AI_SEARCH_ENABLED !== false || Boolean(options.mode));
     const exclusions = options.excludeTerms ?? activeExclusions, authored = options.authoredCodes ?? activeAuthored;
+    const placeIds=options.placeIds ?? draftPlace?.ids ?? [],placeMode=options.mode || options.placeMode || draftPlace?.mode || "authored";
     const understandingKey = options.understandingKey ?? activeUnderstandingKey;
     if (!useAI || options.mode) {
     if (!name.trim()) { notify("Enter a research topic and try again.", true); return; }
@@ -1243,7 +1249,7 @@
     if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) { $("search-options").open = true; notify(`Enter a From year between 2000 and ${currentYear}.`, true); return; }
     if (to != null && to !== "" && (!/^\d{4}$/.test(String(to)) || Number(to) < 2000 || Number(to) > currentYear)) { $("search-options").open = true; notify(`Enter a To year between 2000 and ${currentYear}, or leave it empty to include papers up to today.`, true); return; }
     if (to != null && to !== "" && Number(from) > Number(to)) { $("search-options").open = true; notify("The From year must be the same as or earlier than the To year.", true); return; }
-    if (!checkIncludeLimits(name, terms, include, from, to, selection, subfield, exclusions, authored)) return;
+    if (!checkIncludeLimits(name, terms, include, from, to, selection, subfield, exclusions, authored,placeIds,placeMode)) return;
     const normalizedInclude = normaliseGroups(include);
     // Keep the original single-group request serialization, including preset order.
     include = normalizedInclude.length === 1 ? [groupsOf(include).find(group => normaliseGroups([group]).length).map(term => term.trim()).filter(Boolean)] : normalizedInclude;
@@ -1273,12 +1279,13 @@
         if (selection.parentName) url.searchParams.set("parentName", selection.parentName);
       }
       if (exclusions.length) url.searchParams.set("exclude", JSON.stringify(exclusions));
-      if (authored.length) url.searchParams.set("authored", authored.join(","));
+      if(placeIds.length){url.searchParams.set("places",globalThis.TMM_PLACES.tokens(placeIds).join(","));url.searchParams.set("placeMode",placeMode);}
+      else if (authored.length) url.searchParams.set("authored", authored.join(","));
       if (understandingKey) url.searchParams.set("understanding", understandingKey);
-      const current = options.mode ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored, subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
+      const current = options.mode ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored,placeIds,placeMode,subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
       if (useAI) url.search = "";
       let response;
-      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:options.sentence, ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
+      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:options.sentence,...(draftPlace || options.placeMode?{placeMode}:{}), ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
       catch { throw new Error(connectionError()); }
       let data;
       try { data = await response.json(); }
@@ -1475,6 +1482,10 @@
       if (kind === "to") $("to-input").value = "";
       if (kind === "subfield") activeSubfield = "";
       if (kind === "exclude") activeExclusions = activeExclusions.filter((_, i) => i !== index);
+      if (kind === "place" && draftPlace?.ids) {
+        $("topic-input").value=globalThis.TMM_PLACES.resolve(activeUnderstandingKey && topic.understanding?.sentence || $("topic-input").value).withoutPlaces;
+        previewSentence(true);$("topic-input").focus();return;
+      }
       if (kind === "place") {
         if (draftPlace?.mode === "mentions") setIncludeGroups(readIncludeGroups().filter(group => parser.key(group) !== parser.key(draftPlace.terms)));
         activeAuthored = []; draftPlace = null;
@@ -1492,8 +1503,14 @@
       return;
     }
     if (button.dataset.placeToggle !== undefined) {
-      if (busy || !draftPlace || !topic.understanding?.sentence) return;
+      if (busy || !draftPlace) return;
       const other = draftPlace.mode === "authored" ? "mentions" : "authored";
+      if(!activeUnderstandingKey || !topic.understanding?.sentence){
+        if(manualDraft && topic.placeIds?.length){
+          search(draftTopic,synonyms(),null,false,false,readIncludeGroups(),$("from-input").value,$("to-input").value,activeSubfield,null,{placeIds:draftPlace.ids,placeMode:other,authoredCodes:other==="authored"?draftPlace.codes:[]});return;
+        }
+        draftPlace={...draftPlace,mode:other};activeAuthored=other==="authored"?draftPlace.codes:[];renderUnderstood();return;
+      }
       const back = { hash:reportHash(topic,cacheOnlyView),title:$("topic-name").textContent };
       search(draftTopic, synonyms(), topic.subtopicId ? {id:topic.subtopicId,name:baseTitle(topic)} : null, false, false, readIncludeGroups(), $("from-input").value, $("to-input").value, activeSubfield, back, {sentence:topic.understanding.sentence,mode:other});
       return;

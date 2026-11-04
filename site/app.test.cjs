@@ -42,7 +42,7 @@ function setup(fetch, saved = null, initialHash = "#search", summaries = null, a
     localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) }
   });
   vm.runInContext('window = globalThis; windowListeners = {}; window.addEventListener = (type, fn) => { windowListeners[type] = fn; };', context);
-  for (const name of ["config.js", "sample-topic.js", "map-data.js", "search-presets.js", "query-parser.js", "map-feedback.js", "app.js"]) vm.runInContext(source(name), context);
+  for (const name of ["config.js", "sample-topic.js", "map-data.js", "search-presets.js", "places.js", "query-parser.js", "map-feedback.js", "app.js"]) vm.runInContext(source(name), context);
   return { context, stored, navigate(hash) { context.location.hash = hash; }, get: doc.getElementById, copied: () => copied,
     submit() { doc.getElementById("search-form").listeners.submit({ preventDefault() {} }); },
     click(dataset) { const button = { dataset, setAttribute() {} }; doc.listeners.click({ target: { closest: () => button } }); }
@@ -1351,7 +1351,7 @@ async function preciseResponse(app, url, trace = []) {
   trace.push(params);
   if (new URL(url).pathname === "/api/library") return {ok:true,json:async()=>[]};
   const groups = ["include","include2","include3"].map(key => (params.get(key)||"").split(","));
-  const query = lib.normaliseQuery(params.get("q"),params.get("syn")||"",params.get("subtopic")||"",groups,params.get("from")||2010,params.get("to")||"",new Date().getFullYear(),params.get("subfield")||"");
+  const query = lib.normaliseQuery(params.get("q"),params.get("syn")||"",params.get("subtopic")||"",groups,params.get("from")||2010,params.get("to")||"",new Date().getFullYear(),params.get("subfield")||"",lib.SEARCH_PRESETS,{placeIds:params.get("places")?.split(",") || [],placeMode:params.get("placeMode") || "authored",authoredCodes:params.get("authored")?.split(",") || []});
   const effective = lib.includeGroupsOf(query);
   const parent = query.subtopicId ? lib.normaliseQuery(query.name,query.synonyms.join(","),"",effective,query.from,query.to).id : effective.length ? lib.normaliseQuery(query.name,query.synonyms.join(",")).id : null;
   return {ok:true,json:async()=>({...report(app),...query,parent,
@@ -1384,8 +1384,11 @@ test("sentence previews never fetch and submit the exact existing query fields f
     assert.equal(params.get("from"), String(expectedFrom));
     assert.equal(params.get("to"), row.to === null ? null : String(row.to));
     const actualGroups = ["include", "include2", "include3"].filter(key => params.has(key)).map(key => params.get(key).split(","));
-    const expected = normaliseQuery(row.topic, "", "", row.groups, expectedFrom, row.to ?? "");
-    assert.deepEqual(actualGroups, row.groups.length > 1 ? expected.includeGroups : row.groups);
+    const place=app.context.TMM_PLACES.resolve(row.sentence);
+    const expectedGroups=row.groups.filter(group=>!app.context.TMM_PLACES.resolve(group.join(" ")).matches.length || app.context.TMM_PLACES.resolve(group.join(" ")).withoutPlaces.trim());
+    const expected = normaliseQuery(row.topic, "", "", expectedGroups, expectedFrom, row.to ?? "",2026,"",undefined,{placeIds:Array.from(place.ids),placeMode:place.mode});
+    assert.deepEqual(actualGroups, expectedGroups.length > 1 ? expected.includeGroups : expectedGroups);
+    assert(app.stored.has("topic-momentum:last-topic"),row.sentence+": "+app.get("status").textContent);
     assert.equal(JSON.parse(app.stored.get("topic-momentum:last-topic")).id, expected.id);
   }
 });
@@ -1395,9 +1398,9 @@ test("understood removals and Advanced edits change the draft without reparsing 
   app = setup(url => preciseResponse(app, url, calls));
   app.get("topic-input").value = "research and development in the UAE since 2020";
   app.get("topic-input").listeners.input();
-  assert.match(app.get("understood-chips").innerHTML, /Mentions: UAE/);
-  app.click({ draftRemove: "group:0" });
-  assert(!app.get("understood-chips").innerHTML.includes("Mentions: UAE"));
+  assert.match(app.get("understood-chips").innerHTML, /Authors based in: UAE \(1 country\)/);
+  app.click({ draftRemove: "place" });
+  assert(!app.get("understood-chips").innerHTML.includes("Authors based in: UAE"));
   app.click({ draftRemove: "from" });
   assert(!app.get("understood-chips").innerHTML.includes("Since 2020"));
   app.get("search-options").open = true;
@@ -1514,10 +1517,10 @@ test("Narrow down no-ops, non-overlapping ranges and removed preview details nev
 
 test("group overflow is explained; oversized custom identities and invalid years stop before a request", async () => {
   const app = setup(() => assert.fail("Validation stays local"));
-  app.get("topic-input").value = "AI in Qatar for women in Bahrain among students";
+  app.get("topic-input").value = "AI in Qatar for women among students in children among older adults";
   app.get("topic-input").listeners.input();
-  assert.match(app.get("query-note").textContent, /Not added: Students/);
-  assert(!app.get("understood-chips").innerHTML.includes("Students"));
+  assert.match(app.get("query-note").textContent, /Not added: Older adults/);
+  assert(!app.get("understood-chips").innerHTML.includes("Older adults"));
   app.get("topic-input").value = "inheritance in " + "x".repeat(480) + " among children since 2020";
   app.get("topic-input").listeners.input(); app.submit();
   assert.match(app.get("include-error").textContent, /too many terms/);
@@ -1543,7 +1546,7 @@ test("sentence controls have accessible removals and flow layout; all five rotat
   for (const text of ["epigenetics in children since 2020", "inheritance law in the GCC", "AI and its impact on jobs, wages and productivity", "neurotechnology in the UAE, last 5 years", "screen time and sleep in teenagers"]) assert(script.includes('"' + text + '"'));
   const app = setup(() => assert.fail("No request expected"));
   app.get("topic-input").value = "AI in Qatar"; app.get("topic-input").listeners.input();
-  assert.match(app.get("understood-chips").innerHTML, /type="button"[^>]*aria-label="Remove Mentions: Qatar"/);
+  assert.match(app.get("understood-chips").innerHTML, /type="button"[^>]*aria-label="Remove place restriction"/);
 });
 
 test("Narrow down prevents duplicate submissions and retains the current report and draft on failure", async () => {
@@ -1621,7 +1624,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
   app.submit(); await settle(); await settle();
   assert.equal(calls[0].url.pathname, "/api/search"); assert.equal(calls[0].url.search, "");
   assert.equal(calls[0].options.method, "POST");
-  assert.deepEqual(JSON.parse(calls[0].options.body), { sentence: ai.sentence });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { sentence: ai.sentence,placeMode:"authored" });
   assert.match(app.get("understanding-line").textContent, /Checked: 23 of 25 sample papers on-topic/);
   assert.match(app.get("understanding-line").textContent, /written in GCC/);
   assert.match(app.get("understood-chips").innerHTML, /Written in GCC/);
@@ -2007,7 +2010,7 @@ test("clarification shows one escaped question with native buttons, and submits 
  assert.match(app.get("search-clarification").innerHTML,/Which Georgia &lt;country&gt;/);assert.match(app.get("search-clarification").innerHTML,/type="button" data-clarify="0"/);assert.match(app.get("search-clarification").innerHTML,/The country &amp; region/);
  assert.equal(app.get("status").hidden,true);
  app.click({clarify:"1"});await settle();await settle();
- assert.deepEqual(requests[1],{sentence:question,clarification:{key,option:1}});assert(!requests[1].plan);
+ assert.deepEqual(requests[1],{sentence:question,placeMode:"authored",clarification:{key,option:1}});assert(!requests[1].plan);
  app.get("topic-input").value="a new topic";app.get("topic-input").listeners.input();assert.equal(app.get("search-clarification").hidden,true);
  const before=requests.length;app.click({clarify:"0"});await settle();assert.equal(requests.length,before);
  const html=source("app.html");assert.match(html,/id="search-clarification"[^>]*role="group"[^>]*aria-labelledby="clarification-question"/);
@@ -2021,4 +2024,27 @@ test("self-check advisory shows the returned plan persistently and hides old pap
  assert.equal(app.get("report-stage").hidden,true);assert.equal(app.get("status").hidden,false);
  assert.match(app.get("status").textContent,/Search plan: screen time <safe>/);assert.match(app.get("status").textContent,/language development/);assert.match(app.get("status").textContent,/self-check took too long/);
  assert.equal(app.get("papers").innerHTML,"");assert.equal(app.get("experts").innerHTML,"");assert.equal(app.get("search-clarification").hidden,true);
+});
+for(const [name,count] of [["Europe",49],["the Middle East",16],["MENA",20],["the Nordic countries",5]])test("region chip defaults to authors and switches only mode before inference: "+name,async()=>{
+ const requests=[],question="autism in "+name;
+ const app=setup(async(_url,options)=>{requests.push(JSON.parse(options.body));return {ok:false,json:async()=>({error:"ai_unavailable",message:"Offline fixture"})};},null,"#search",null,true);
+ app.get("topic-input").value=question;app.get("topic-input").listeners.input();
+ const resolved=app.context.TMM_PLACES.resolve(question);
+ assert.match(app.get("understood-chips").innerHTML,/Authors based in:/);assert(app.get("understood-chips").innerHTML.includes("("+count+" countries)"));assert.equal(requests.length,0);
+ app.click({placeToggle:"true"});assert.match(app.get("understood-chips").innerHTML,/Mentioned in title\/abstract:/);assert.equal(requests.length,0);
+ assert.deepEqual(Array.from(app.context.TMM_PLACES.resolve(question,"mentions").codes),Array.from(resolved.codes));
+ app.submit();await settle();await settle();assert.deepEqual(requests[0],{sentence:question,placeMode:"mentions"});
+});
+test("region removal changes the question, so a following AI search cannot restore it",async()=>{
+ const requests=[],app=setup(async(_url,options)=>{requests.push(JSON.parse(options.body));return {ok:false,json:async()=>({error:"ai_unavailable",message:"Offline fixture"})};},null,"#search",null,true);
+ app.get("topic-input").value="autism in Europe and the Middle East";app.get("topic-input").listeners.input();
+ assert(app.get("understood-chips").innerHTML.includes("64 countries"));app.click({draftRemove:"place"});
+ assert.equal(app.get("topic-input").value,"autism");assert(!app.get("understood-chips").innerHTML.includes("Authors based in:"));
+ app.submit();await settle();await settle();assert.deepEqual(requests[0],{sentence:"autism"});
+});
+test("regional subject wording starts in mentions and still permits an author-location switch",()=>{
+ const app=setup(()=>assert.fail("Preview stays offline"),null,"#search",null,true);
+ app.get("topic-input").value="research about European policy";app.get("topic-input").listeners.input();
+ assert.match(app.get("understood-chips").innerHTML,/Mentioned in title\/abstract: Europe/);
+ app.click({placeToggle:"true"});assert.match(app.get("understood-chips").innerHTML,/Authors based in: Europe \(49 countries\)/);
 });

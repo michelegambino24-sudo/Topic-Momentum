@@ -113,7 +113,7 @@ test("valid AI search checks actual titles, preserves real counts and caches que
   for (const call of app.aiCalls) {
     assert([AI_MODEL,"@cf/qwen/qwen3-30b-a3b-fp8"].includes(call.model));
     const sent = payload(call.params);
-    assert(Object.keys(sent).every(key => ["task", "sentence", "decision", "feedback", "baseline", "plan", "mismatches", "question", "required", "titles", "year"].includes(key)));
+    assert(Object.keys(sent).every(key => ["task", "contentQuestion", "sentence", "decision", "feedback", "baseline", "plan", "mismatches", "question", "required", "titles", "year"].includes(key)));
     assert(!JSON.stringify(call.params).includes(app.env.OPENALEX_KEY));
   }
   const semantic = app.calls.find(url => url.searchParams.has("search.semantic"));
@@ -132,9 +132,9 @@ test("place mode switches reuse cached interpretation without inference and pres
   const switched = await (await app.search({ sentence: data.sentence, mode: "mentions" })).json();
   assert.equal(app.aiCalls.length,4);
   assert.equal(switched.understanding.place.mode, "mentions"); assert.equal(switched.understanding.check, null);
-  assert(switched.id.includes("preset:gcc@1")); assert(!switched.id.includes("|authored:"));
-  assert.equal(switched.includeGroups.length, 2); assert.equal(switched.excludeTerms.length, 1);
-  const changed = await (await app.search({ sentence: data.sentence, mode: "authored", current: { name: "gene editing", synonyms: [], includeGroups: switched.includeGroups, excludeTerms: [], from: 2021, to: 2025 } })).json();
+  assert(switched.id.includes('places:["gcc@1"]:mentions')); assert(!switched.id.includes("|authored:"));
+  assert(switched.includeTerms.includes("children")); assert.equal(switched.excludeTerms.length, 1);
+  const changed = await (await app.search({ sentence: data.sentence, mode: "authored", current: { name: "gene editing", synonyms: [], includeGroups: [switched.includeTerms], excludeTerms: [], from: 2021, to: 2025 } })).json();
   assert.equal(app.aiCalls.length,4); assert.equal(changed.from, 2021); assert.equal(changed.to, 2025);
   assert.equal(changed.excludeTerms, undefined); assert.deepEqual(changed.synonyms, []);
   assert(!changed.includeGroups); assert(changed.includeTerms.includes("children"));

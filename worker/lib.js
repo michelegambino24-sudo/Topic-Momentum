@@ -144,15 +144,19 @@ export function normaliseQuery(query, synonyms = "", subtopicId = "", include = 
   const includeId = encodedGroups ? [encodedGroups] : [];
   const rangeId = range.to !== null ? [`range:${range.from}-${range.to}`] : range.from !== 2010 ? ["since:" + range.from] : [];
   const extra = normaliseFilters(filters);
-  const extraId = [...(extra.excludeTerms?.length ? ["exclude:" + JSON.stringify(extra.excludeTerms)] : []), ...(extra.authoredCodes?.length ? ["authored:" + JSON.stringify(extra.authoredCodes)] : [])];
+  const extraId = [...(extra.excludeTerms?.length ? ["exclude:" + JSON.stringify(extra.excludeTerms)] : []), ...(extra.placeIds?.length && (extra.placeMode==="mentions" || (extra.authoredCodes?.length || 0)>64) ? ["places:"+JSON.stringify(globalThis.TMM_PLACES.tokens(extra.placeIds))+":"+extra.placeMode] : extra.authoredCodes?.length ? ["authored:" + JSON.stringify(extra.authoredCodes)] : [])];
   return { name, synonyms: terms, ...range, id: [name, ...terms, ...includeId, ...rangeId, ...extraId, ...(subfieldId ? ["subfield:" + subfieldId] : []), ...(filterId ? ["primary_topic:" + filterId] : [])].join("|"),
     ...includeFields(groups), ...extra, ...(subfieldId ? { subfieldId } : {}), ...(filterId ? { subtopicId: filterId } : {}) };
 }
 
-export function normaliseFilters({ excludeTerms = [], authoredCodes = [] } = {}) {
+export function normaliseFilters({ excludeTerms = [], authoredCodes = [], placeIds = [], placeMode = "authored" } = {}) {
+  placeIds=globalThis.TMM_PLACES.normaliseIds(placeIds);
+  if(placeIds.includes("worldwide")){placeIds=[];authoredCodes=[];}
+  if(!["authored","mentions"].includes(placeMode))throw new Error("Choose a valid place mode.");
+  if(placeIds.length)authoredCodes=placeMode==="authored"?globalThis.TMM_PLACES.describe(placeIds).codes:[];
   if (!Array.isArray(excludeTerms) || excludeTerms.length > 6 || excludeTerms.some(term => typeof term !== "string" || !cleanTerm(term) || term.length > 120)) throw new Error("Use up to six excluded terms, each under 120 characters.");
-  if (!Array.isArray(authoredCodes) || authoredCodes.length > 64 || authoredCodes.some(code => typeof code !== "string" || !COUNTRY_CODES.has(code))) throw new Error("Choose valid country codes and try again.");
-  return { ...(excludeTerms.length ? { excludeTerms: [...new Set(excludeTerms.map(cleanTerm))].sort() } : {}), ...(authoredCodes.length ? { authoredCodes: [...new Set(authoredCodes)].sort() } : {}) };
+  if (!Array.isArray(authoredCodes) || authoredCodes.length > COUNTRY_CODES.size || authoredCodes.some(code => typeof code !== "string" || !COUNTRY_CODES.has(code))) throw new Error("Choose valid country codes and try again.");
+  return { ...(placeIds.length?{placeIds,placeMode}:{}),...(excludeTerms.length ? { excludeTerms: [...new Set(excludeTerms.map(cleanTerm))].sort() } : {}), ...(authoredCodes.length ? { authoredCodes: [...new Set(authoredCodes)].sort() } : {}) };
 }
 
 export function aiPlanSchema(year) {
@@ -177,7 +181,8 @@ export function validateAIPlan(raw, year) {
     if (exactObject(group, ["preset"])) { if (typeof group.preset !== "string" || !Object.hasOwn(SEARCH_PRESETS, group.preset)) fail(); }
     else if (!exactObject(group, ["terms"]) || !terms(group.terms, 8, 80, 1)) fail();
   }
-  if (!exactObject(raw.place, ["codes", "mode"]) || !["authored", "mentions"].includes(raw.place.mode) || !Array.isArray(raw.place.codes) || raw.place.codes.length > 64 || new Set(raw.place.codes).size !== raw.place.codes.length || raw.place.codes.some(code => !COUNTRY_CODES.has(code))) fail();
+  if ((!exactObject(raw.place, ["codes", "mode"]) && !exactObject(raw.place,["codes","mode","ids"])) || !["authored", "mentions"].includes(raw.place.mode) || !Array.isArray(raw.place.codes) || raw.place.codes.length > COUNTRY_CODES.size || new Set(raw.place.codes).size !== raw.place.codes.length || raw.place.codes.some(code => !COUNTRY_CODES.has(code))) fail();
+  if(raw.place.ids)globalThis.TMM_PLACES.normaliseIds(raw.place.ids);
   if (!exactObject(raw.years, ["from", "to"]) || !Number.isInteger(raw.years.from) || raw.years.to !== null && !Number.isInteger(raw.years.to)) fail();
   validateRange(raw.years.from, raw.years.to, year);
   const excluded = raw.excludeTerms.map(cleanTerm);
@@ -187,17 +192,17 @@ export function validateAIPlan(raw, year) {
 export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) {
   raw = validateAIPlan(raw, year);
   if (!["authored", "mentions"].includes(mode)) throw new Error("Invalid place mode");
-  const details = placeDetails(raw.place.codes, SEARCH_PRESETS, globalThis.TMM_COUNTRY_GROUPS);
+  const details = raw.place.ids?globalThis.TMM_PLACES.describe(raw.place.ids,mode):placeDetails(raw.place.codes, SEARCH_PRESETS, globalThis.TMM_COUNTRY_GROUPS);
   const groupKey = group => JSON.stringify([...group].map(cleanTerm).sort());
   let groups = current ? includeGroupsOf(current).map(group => [...group]) : raw.includeGroups.map(group => group.preset ? [...SEARCH_PRESETS[group.preset].terms] : [...group.terms]);
   if (current && details.terms.length) groups = groups.filter(group => groupKey(group) !== groupKey(details.terms));
-  if (mode === "mentions" && details.terms.length && !groups.some(group => groupKey(group) === groupKey(details.terms))) groups.push(details.terms);
+  if (!raw.place.ids && mode === "mentions" && details.terms.length && !groups.some(group => groupKey(group) === groupKey(details.terms))) groups.push(details.terms);
   const query = normaliseQuery(current?.name || raw.topic, (current?.synonyms || raw.synonyms).join(","), current?.subtopicId || "", groups, current?.from ?? raw.years.from, (current ? current.to : raw.years.to) ?? "", year, current?.subfieldId || "", SEARCH_PRESETS,
-    { excludeTerms: current?.excludeTerms || raw.excludeTerms, authoredCodes: mode === "authored" ? raw.place.codes : [] });
+    { excludeTerms: current?.excludeTerms || raw.excludeTerms, authoredCodes: mode === "authored" ? raw.place.codes : [],...(raw.place.ids?{placeIds:raw.place.ids,placeMode:mode}:{}) });
   if (new TextEncoder().encode(REPORT_CACHE_PREFIX + query.id).length > 512 || groups.reduce((sum, group) => sum + group.join(",").length, 0) > 1200) throw new Error(COMPLEX_SEARCH_MESSAGE);
   query.headlineName = current?.headlineName || raw.topic;
   if (current?.subtopicName) query.subtopicName = current.subtopicName;
-  return { query, place: raw.place.codes.length ? { codes: [...raw.place.codes].sort(), mode, label: details.label, terms: details.terms } : null };
+  return { query, place: raw.place.codes.length || raw.place.ids?.length ? { codes: [...raw.place.codes].sort(), mode, label: details.label, terms: details.terms,countryCount:raw.place.codes.length,...(raw.place.ids?{ids:raw.place.ids}:{}) } : null };
 }
 export function isTighterPlan(initial, candidate, year) {
   return tighteningFailures(initial,candidate,year).length===0;
@@ -239,7 +244,8 @@ export function queryParams(query) {
   if (query.to != null) params.set("to", String(query.to));
   includeGroupsOf(query).forEach((group, index) => params.set(index ? "include" + (index + 1) : "include", group.join(",")));
   if (query.excludeTerms?.length) params.set("exclude", JSON.stringify(query.excludeTerms));
-  if (query.authoredCodes?.length) params.set("authored", query.authoredCodes.join(","));
+  if(query.placeIds?.length){params.set("places",globalThis.TMM_PLACES.tokens(query.placeIds).join(","));params.set("placeMode",query.placeMode);}
+  else if (query.authoredCodes?.length) params.set("authored", query.authoredCodes.join(","));
   if (query.subfieldId) params.set("subfield", query.subfieldId);
   for (const [property, key] of [["subtopicId", "subtopic"], ["subtopicName", "subtopicName"], ["parent", "parent"], ["parentName", "parentName"]]) if (query[property]) params.set(key, query[property]);
   return params;
@@ -385,7 +391,7 @@ export function updateLibrary(index, topic) {
   const previous = index.find((entry) => entry.id === topic.id);
   const parent = topic.parent || previous?.parent || null;
   const entry = { ...reportSummary(topic), synonyms: topic.synonyms, parent, children: [],
-    ...(topic.authoredCodes?.length || topic.excludeTerms?.length ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}),
+    ...(topic.authoredCodes?.length || topic.excludeTerms?.length || topic.placeIds?.length ? { variant: !topic.subtopicId, searchTerms: topic.searchTerms } : {}),
     ...(topic.subfieldId ? { subfieldId: topic.subfieldId, selectedSubfield: topic.selectedSubfield, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
     ...(topic.includeGroups?.length ? { includeGroups: topic.includeGroups, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
     ...(topic.includeTerms?.length ? { includeTerms: topic.includeTerms, searchTerms: topic.searchTerms, variant: !topic.subtopicId } : {}),
@@ -409,14 +415,15 @@ export function updateLibrary(index, topic) {
 export function buildSearchExpression(query) {
   const group = (terms) => `(${terms.map((term) => /[\s-]/.test(term) ? `"${term}"` : term).join(" OR ")})`;
   const positive = group([query.name, ...query.synonyms]) + includeGroupsOf(query).map(terms => ` AND ${group(terms)}`).join("");
-  return positive + (query.excludeTerms?.length ? ` NOT ${group(query.excludeTerms)}` : "");
+  const place=query.placeIds?.length && query.placeMode==="mentions"?globalThis.TMM_PLACES.describe(query.placeIds).terms:[];
+  return positive + (place.length?" AND "+group(place):"") + (query.excludeTerms?.length ? ` NOT ${group(query.excludeTerms)}` : "");
 }
 
 // Descriptors contain only public parameters; the Worker adds authentication.
 export const COMPLEX_SEARCH_MESSAGE = "This search has too many terms. Remove some synonyms or additional terms and try again.";
 export const MAX_SOURCE_REQUESTS = 30;
 export function queryOperatorCount(query) {
-  return (query.synonyms?.length || 0) + includeGroupsOf(query).reduce((sum, group) => sum + group.length, 0) + (query.excludeTerms?.length || 0);
+  return (query.synonyms?.length || 0) + includeGroupsOf(query).reduce((sum, group) => sum + group.length, 0) + (query.excludeTerms?.length || 0)+(query.placeIds?.length && query.placeMode==="mentions"?globalThis.TMM_PLACES.describe(query.placeIds).terms.length:0);
 }
 export function retryDelay(value, time) {
   if (value == null || value === "") return 1000;
@@ -637,7 +644,7 @@ export function formatPercent(value) {
 export function headline(name, kpis, lastYear, regionalCounts, periodTotal = 0, period = 2020, includeTerms = []) {
   const range = typeof period === "object" ? period : { from: period, to: null };
   const prefix = range.to == null ? `Since ${range.from}, ` : `From ${range.from} to ${range.to}, `;
-  const context = (range.selectedSubfield ? ` within ${range.selectedSubfield.name}` : "") + (range.authoredCodes?.length ? ` with authors in ${placeDetails(range.authoredCodes, SEARCH_PRESETS).label}` : "") + (range.excludeTerms?.length ? ` excluding ${range.excludeTerms.join(" or ")}` : "");
+  const context = (range.selectedSubfield ? ` within ${range.selectedSubfield.name}` : "") + (range.authoredCodes?.length ? ` with authors in ${(range.placeIds?.length?globalThis.TMM_PLACES.describe(range.placeIds).label:placeDetails(range.authoredCodes, SEARCH_PRESETS).label)}` : "") + (range.excludeTerms?.length ? ` excluding ${range.excludeTerms.join(" or ")}` : "");
   const topicName = headlineSubject(name, includeTerms) + context;
   const count = new Intl.NumberFormat("en-US").format(kpis.lastYear);
   const published = `In ${lastYear}, ${count} ${kpis.lastYear === 1 ? "paper was" : "papers were"} published.`;
@@ -692,7 +699,7 @@ export function shapeTopic(query, responses, date) {
     subtopicWindow: { countsOnly: subtopicCountsOnly, from: range.from, split: range.split, end: range.lastComplete },
     searchTerms: { name: query.name, synonyms: query.synonyms, ...fields, ...normaliseFilters(query), ...(query.subfieldId ? { subfieldId: query.subfieldId } : {}) },
     subfields, ...selection, ...normaliseFilters(query),
-    ...(query.authoredCodes?.length ? { authoredLabel: placeDetails(query.authoredCodes, SEARCH_PRESETS).label } : {}),
+    ...(query.authoredCodes?.length ? { authoredLabel: query.placeIds?.length?globalThis.TMM_PLACES.describe(query.placeIds).label:placeDetails(query.authoredCodes, SEARCH_PRESETS).label } : {}),
     ...(groups.length ? { ...fields, parent: query.parent || null } : {}),
     ...(query.subtopicId ? { subtopicId: query.subtopicId, parent: query.parent || null, parentName: query.parentName || query.name } : {}),
     field: ranked(responses.field).map(displayName)[0] || "Unclassified",
@@ -719,7 +726,7 @@ export function originAllowed(origin, env) {
 }
 // Remove filtered reports and their relationships from public browsing only.
 export function publicLibrary(index) {
-  const hidden = new Set(index.filter((item) => (item.from !== undefined && (item.from !== 2010 || item.to != null)) || item.id.includes("|range:") || (item.period && item.period !== 2010) || item.id.includes("|since:") || item.variant || item.authoredCodes?.length || item.excludeTerms?.length || /\|(exclude:|authored:)/.test(item.id) || item.subfieldId || item.id.includes("|subfield:") || includeGroupsOf(item).length || item.id.includes("|include:") || item.id.includes("|includeGroups:")).map((item) => item.id));
+  const hidden = new Set(index.filter((item) => (item.from !== undefined && (item.from !== 2010 || item.to != null)) || item.id.includes("|range:") || (item.period && item.period !== 2010) || item.id.includes("|since:") || item.variant || item.authoredCodes?.length || item.placeIds?.length || item.excludeTerms?.length || /\|(exclude:|authored:|places:)/.test(item.id) || item.subfieldId || item.id.includes("|subfield:") || includeGroupsOf(item).length || item.id.includes("|include:") || item.id.includes("|includeGroups:")).map((item) => item.id));
   let changed;
   do {
     changed = false;
@@ -834,21 +841,15 @@ export function questionRequirements(sentence, year) {
   return { topic: parts.concepts[0] || "", focus: parts.concepts.slice(1), population: parts.population.map(item=>item.label), place: parts.place.map(item=>item.label) };
 }
 // Sources are verbatim spans, not a second vocabulary of hand-written concepts.
-const QUESTION_SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing help helps learn leading field since from between until during written authored excluding without except s".split(" "));
+const QUESTION_SCAFFOLD = new Set("a an the and or of on in for to with as about regarding concerning how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing help helps learn leading field since from between until during written authored excluding without except s".split(" "));
 export const questionContentWords = sentence => [...new Set((String(sentence).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(word => !QUESTION_SCAFFOLD.has(word)))];
-export function questionHasPlace(sentence, year) {
-  if(globalThis.TMM_QUERY_PARSER.questionParts(sentence,year).place.length)return true;
-  const words=value=>String(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();
-  const text=" "+words(sentence)+" ",names=new Intl.DisplayNames(["en"],{type:"region"});
-  return [...COUNTRY_CODES].some(code=>[names.of(code),countryLabel(code)].some(name=>text.includes(" "+words(name)+" ")));
-}
+export function questionHasPlace(sentence, year) { return globalThis.TMM_PLACES.resolve(sentence).matches.length>0; }
 export function groundedPlanSchema(year, sentence = null) {
   const object = properties => ({type:"object",additionalProperties:false,required:Object.keys(properties),properties});
   const text = {type:"string",minLength:1,maxLength:1000};
   const plan=aiPlanSchema(year);
-  const namedPlace=sentence===null || questionHasPlace(sentence,year);
-  plan.properties.place=namedPlace?{anyOf:[{type:"null"},plan.properties.place]}:{type:"null"};
-  if(namedPlace)plan.properties.place.anyOf[1].properties.codes.items={type:"string",enum:[...COUNTRY_CODES]};
+  plan.properties.includeGroups.items.oneOf[0].properties.preset.enum=Object.keys(SEARCH_PRESETS).filter(id=>!globalThis.TMM_PLACES.regions[id]);
+  delete plan.properties.place;
   plan.required=plan.required.filter(key=>key!=="place");
   const candidate = object({plan,sources:{type:"array",maxItems:40,items:object({path:{type:"string",maxLength:80},source:text})}});
   return object({...candidate.properties,ambiguity:{anyOf:[{type:"null"},object({requirement:{...text,maxLength:60},question:{...text,maxLength:120},options:{type:"array",minItems:2,maxItems:3,items:{type:"string",minLength:1,maxLength:60}}})]}});
@@ -875,10 +876,11 @@ export function groundPlan(candidate, sentence, year) {
   };
   const synonyms = select(raw.synonyms,"synonyms.");
   const includeGroups = select(raw.includeGroups,"includeGroups.");
-  const place = keep("place") ? raw.place : {codes:[],mode:"mentions"};
+  const place = raw.place.ids ? raw.place : keep("place") ? raw.place : {codes:[],mode:"mentions"};
+  if(raw.place.ids)keep("place");
   const excludeTerms = select(raw.excludeTerms,"excludeTerms.");
   const years = {from:keep("years.from")?raw.years.from:2010,to:keep("years.to")?raw.years.to:null};
-  const covered = new Set(used.flatMap(entry=>questionContentWords(entry.source)));
+  const covered = new Set(used.flatMap(entry=>questionContentWords(entry.source)).concat(globalThis.TMM_PLACES.resolve(sentence).matches.flatMap(hit=>questionContentWords(hit.source))));
   const missing = questionContentWords(sentence).filter(word=>!covered.has(word));
   return {plan:{topic,synonyms,includeGroups,place,excludeTerms,years},sources:used,missing};
 }
@@ -890,9 +892,9 @@ export function reconcileGrounding(grounded, plan, sentence) {
     const previous=grounded.plan[field].findIndex(value=>JSON.stringify(value)===JSON.stringify(item));
     if(previous>=0)retain(field+"."+index,field+"."+previous);
   });
-  if(plan.place.codes.length)retain("place");
+  if(plan.place.codes.length || plan.place.ids?.length)retain("place");
   for(const field of ["from","to"])if(plan.years[field]!==null)retain("years."+field);
-  const covered=new Set(sources.flatMap(entry=>questionContentWords(entry.source)));
+  const covered=new Set(sources.flatMap(entry=>questionContentWords(entry.source)).concat(globalThis.TMM_PLACES.resolve(sentence).matches.flatMap(hit=>questionContentWords(hit.source))));
   return {plan,sources,missing:questionContentWords(sentence).filter(word=>!covered.has(word))};
 }
 // Repair the model boundary only; cached/internal plans still use the strict validator.
@@ -905,10 +907,24 @@ function questionSpan(source,sentence) {
   }
   return "";
 }
+// A model objection cannot create a requirement the user did not state.
+export function selfCheckRequirements(check, sentence) {
+  const blocking=[],ignored=[];
+  for(const requirement of check.missing || []){
+    const source=questionSpan(requirement.trim(),sentence);
+    const place=globalThis.TMM_PLACES.resolve(requirement);
+    const trendOnly=/^(?:growing|growth|changing|developing|evolving|trends?)$/i.test(requirement.trim());
+    const placeOnly=place.matches.length>0 && !questionContentWords(place.withoutPlaces).length;
+    if(!source || trendOnly || placeOnly || !questionContentWords(requirement).length)ignored.push({requirement,reason:!source?"not_quoted_from_question":placeOnly?"geography_resolved_by_code":"trend_or_scaffolding"});
+    else blocking.push(source);
+  }
+  return {blocking:[...new Set(blocking)],ignored};
+}
 export function repairGroundedResponse(value, sentence, year, record = () => {}) {
   const raw=value?.plan ?? value;
   const usable=(term,max=80)=>typeof term==="string" && term.trim() && term.length<=max && !/[\x00-\x1f\x7f|{}[\]\\]/.test(term);
-  const cleanTrend=value=>globalThis.TMM_QUERY_PARSER.cleanTrendTerm(value,sentence);
+  const subjectPlace=globalThis.TMM_PLACES.resolve(sentence).mode==="mentions";
+  const cleanTrend=value=>globalThis.TMM_QUERY_PARSER.cleanTrendTerm(subjectPlace?value:globalThis.TMM_PLACES.resolve(value).withoutPlaces,sentence);
   const topic=typeof raw?.topic==="string"?cleanTrend(raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", ")):"";
   if(!usable(topic,200))throw new Error("The model reply has no usable research topic.");
   const note=(field,reason,action="dropped_or_repaired")=>record({field,action,reason});
@@ -925,8 +941,11 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   retain("topic");
   // A literal topic supplies its own source if the optional sources field is absent/broken.
   if(!used.length || !questionSpan(used[0].source,sentence)){
-    const span=questionSpan(topic,sentence);
-    if(span){used.splice(0,used.length,{path:"topic",source:span});}
+    // A model can add scaffolding ("autism research") to a literal topic.
+    // Recover only when every remaining content word forms one exact question span.
+    const content=questionContentWords(topic).join(" ");
+    const span=questionSpan(topic,sentence) || (content && questionSpan(content,sentence));
+    if(span){used.splice(0,used.length,{path:"topic",source:span});note("sources.topic","recovered_literal_topic_source","repaired");}
   }
   const list=(field,max,length=80)=>{
     const result=[];
@@ -950,23 +969,13 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     }
   }
   if(JSON.stringify(includeGroups)!==JSON.stringify(raw.includeGroups))note("includeGroups","invalid_or_duplicate_groups");
-  const namedPlace=questionHasPlace(sentence,year);
-  const suppliedCodes=raw.place?.codes;
-  const validCodes=Array.isArray(suppliedCodes)?[...new Set(suppliedCodes.filter(code=>COUNTRY_CODES.has(code)))].slice(0,64):[];
-  let place={codes:[],mode:"mentions"};
-  if(namedPlace && validCodes.length){place={codes:validCodes,mode:raw.place.mode==="authored"?"authored":"mentions"};retain("place");}
-  if(raw.place!=null && (JSON.stringify(place)!==JSON.stringify(raw.place)))note("place",!namedPlace?"no_named_place":!validCodes.length?"invalid_codes":"invalid_place_fields",place.codes.length?"repaired":"dropped");
-  const parsedYear=input=>Number.isInteger(input)?input:typeof input==="string" && /^\d{4}$/.test(input)?Number(input):null;
   const requested=globalThis.TMM_QUERY_PARSER.questionParts(sentence,year);
-  const regions=requested.place.filter(item=>item.preset && REGIONS[item.preset]);
-  if(regions.length){
-    const codes=[...new Set(regions.flatMap(item=>REGIONS[item.preset]))];
-    if(JSON.stringify([...place.codes].sort())!==JSON.stringify([...codes].sort()))note("place","restore_requested_region","repaired");
-    place={codes,mode:raw.place?.mode==="authored"?"authored":"mentions"};
-    for(let i=used.length-1;i>=0;i--)if(used[i].path==="place")used.splice(i,1);
-    const spans=regions.map(item=>({start:sentence.indexOf(item.source),length:item.source.length}));
-    used.push({path:"place",source:sentence.slice(Math.min(...spans.map(item=>item.start)),Math.max(...spans.map(item=>item.start+item.length)))});
-  }
+  const resolved=globalThis.TMM_PLACES.resolve(sentence);
+  const place={codes:resolved.codes,mode:resolved.mode,ids:resolved.ids};
+  if(raw.place!=null)note("place",resolved.matches.length?"model_place_ignored":"no_named_place","dropped");
+  if(resolved.matches.length)used.push({path:"place",source:resolved.matches[0].source});
+  const regions=resolved.ids.filter(id=>globalThis.TMM_PLACES.regions[id]);
+  const parsedYear=input=>Number.isInteger(input)?input:typeof input==="string" && /^\d{4}$/.test(input)?Number(input):null;
   let years={from:parsedYear(raw.years?.from) ?? 2010,to:parsedYear(raw.years?.to)};
   try{validateRange(years.from,years.to,year);}catch{years={from:2010,to:null};}
   let rangeSource=null;

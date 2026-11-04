@@ -601,3 +601,10 @@ This supersedes the generic AI-unavailable notice above.
 - Used the validated search plan; no clarification was needed.
 - Used the validated search plan; trend wording did not require clarification.
 - Show these as small checked-report notices. A named region remains in the plan. Raw ambiguity/check diagnostics belong to logs/eval/API responses, not the visible report.
+
+## Step 16 region chips
+
+- Authors based in: Middle East (16 countries)
+- Mentioned in title/abstract: Middle East (16 countries)
+- Worldwide (no place filter)
+- Keep the mode switch and remove button visible. Default to author locations unless the wording clearly studies the region as a subject. Switching modes keeps the same region. Explain in the tooltip that author mode uses member countries, while mentions mode uses the selected place names and demonyms.

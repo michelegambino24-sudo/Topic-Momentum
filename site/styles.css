@@ -523,3 +523,6 @@ footer{color:var(--secondary)}
 .search-clarification[hidden]{display:none}
 .search-clarification button{min-height:44px;padding:8px 14px;white-space:normal;text-align:left}
 .search-clarification button:focus-visible{outline:2px solid var(--action);outline-offset:3px}
+
+/* Place labels remain readable with their remove target at phone width. */
+.place-chip{max-width:100%;min-width:0;align-items:stretch}.place-chip>.chip{min-width:0;white-space:normal;overflow-wrap:anywhere;text-align:left;min-height:44px}.place-chip>.place-remove{flex:none;min-width:44px;min-height:44px}

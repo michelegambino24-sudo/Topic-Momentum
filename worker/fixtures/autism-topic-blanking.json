@@ -1,0 +1,9 @@
+{
+  "question": "Is research on autism growing in the Middle East?",
+  "observedLogFields": {"repairedPlan": {"topic": "autism research"}, "rejectedPlan": {"topic": ""}, "missing": ["autism"]},
+  "provenance": "Only the topic and missing fields above were supplied from logs. The remaining response fields and invalid source below are realistic reconstructed fixtures, not complete saved production replies.",
+  "replies": [
+    {"plan":{"topic":"autism research","synonyms":[],"includeGroups":[],"place":{"codes":["BH","EG","IR","IQ","IL","JO","KW","LB","OM","PS","QA","SA","SY","TR","AE","YE"],"mode":"mentions"},"excludeTerms":[],"years":{"from":2010,"to":null}},"sources":[{"path":"topic","source":"autism research"}],"ambiguity":null},
+    {"plan":{"topic":"autism research","synonyms":[],"includeGroups":[],"excludeTerms":[],"years":{"from":2010,"to":null}},"sources":[{"path":"topic","source":"autism research"}],"ambiguity":null}
+  ]
+}

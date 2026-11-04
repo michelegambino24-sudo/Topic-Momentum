@@ -12,7 +12,7 @@ const question="How is research on battery recycling developing since 2020?";
 const complete=()=>candidate({...base(),years:{from:2020,to:null}},{topic:"battery recycling","years.from":"2020"});
 const payload=params=>JSON.parse(params.messages?.[1]?.content||params.prompt.split("<|im_start|>user\n")[1].split("\n/no_think")[0]);
 function setup(plans=[complete()],checks=[{ok:true}],config={}){
-  const kv=new MemoryKV(),calls=[],sourceCalls=[],judges=[];
+  const kv=new MemoryKV(),calls=[],sourceCalls=[],judges=[],reportQueries=[];
   const authors=[{name:"Field author",openalexUrl:"https://openalex.org/A111",count:175}];
   const paper={id:"https://openalex.org/W1",display_name:"Battery recycling advances",publication_year:2025,cited_by_count:100,authorships:[{author:{id:authors[0].openalexUrl,display_name:authors[0].name}}]};
   const env={TMM:kv,AI_MODEL,AI_JUDGE_MODEL:JUDGE_MODEL,AI_SEARCHES_PER_DAY:"50",NEW_TOPICS_PER_DAY:"30",AI:{async run(model,params){
@@ -31,8 +31,8 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
     if(descriptor.id.startsWith("check"))return {results:[{...paper,id:descriptor.id==="checkearly"?"https://openalex.org/W2":"https://openalex.org/W3"}]};
     return {results:config.papers||[paper]};
   }});
-  return {kv,calls,sourceCalls,judges,env,async search(input={sentence:question}){return service.search(input,env,async(query,_env,session)=>{
-    session.expertRanking=authors;
+  return {kv,calls,sourceCalls,judges,reportQueries,env,async search(input={sentence:question}){return service.search(input,env,async(query,_env,session)=>{
+    reportQueries.push(query);session.expertRanking=authors;
     return {status:200,body:{id:query.id,name:query.name,searchTerms:{name:query.name},synonyms:query.synonyms,includeGroups:includeGroupsOf(query),excludeTerms:query.excludeTerms,from:query.from,to:query.to,papers:[],experts:authors,kpis:{total:100},countries:[]}};
   });}};
 }
@@ -79,7 +79,95 @@ test("literal single-concept question recovers missing topic/year sources withou
 });
 
 const malformedFixtures=JSON.parse(readFileSync(new URL("./fixtures/planner-reply-failures.json",import.meta.url),"utf8"));
+for(const [sentence,id,count] of [
+ ["Is research on autism growing in the Middle East?","middleEast",16],
+ ["Is research on autism growing the middle east","middleEast",16],
+ ["autism in MENA","mena",20],["autism in the GCC","gcc",6],["autism in Europe","europe",49],
+ ["autism in Italy","country:IT",1],["autism in the Nordic countries","nordic",5],
+ ["autism worldwide","worldwide",0],["autism in Europe and the Middle East",null,64],
+ ["Is children's mental health a growing field in the Middle East, and who's leading it?","middleEast",16]
+])test("country dictionary controls the full search before inference: "+sentence,async()=>{
+ const topic=sentence.includes("mental health")?"mental health":"autism";
+ const plan={...base(),topic,includeGroups:topic==="mental health"?[{preset:"children"}]:[],place:{codes:["WJ"],mode:"mentions"}};
+ const sources={topic,...(topic==="mental health"?{"includeGroups.0":"children"}:{})};
+ const app=setup([candidate(plan,sources)]),result=await app.search({sentence});
+ assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.stages.replan,undefined);
+ assert.equal(result.body.understanding.place.countryCount,count);assert.equal(result.body.understanding.place.mode,"authored");
+ if(id)assert.deepEqual(result.body.understanding.place.ids,[id]);
+ assert.equal(app.reportQueries[0].authoredCodes?.length || 0,count);
+ for(const call of app.calls){
+  if(call.data.task==="plan")assert(!Object.hasOwn(call.params.response_format.json_schema.properties.plan.properties,"place"));
+  if(call.data.plan)assert(!Object.hasOwn(call.data.plan,"place"));
+ }
+ for(const descriptor of app.sourceCalls){
+  // Semantic retrieval supports only year/type; its later membership check applies geography.
+  if(descriptor.id==="semanticPapers")continue;
+  if(count)assert(descriptor.params.filter.includes("authorships.countries:"+app.reportQueries[0].authoredCodes.join("|")));
+  else assert(!descriptor.params.filter.includes("authorships.countries:"));
+ }
+});
+for(const region of ["Europe","the Middle East","MENA","the Nordic countries"])test("mode switch preserves the dictionary region and the repeated default: "+region,async()=>{
+ const sentence="autism in "+region,reply=candidate({...base(),topic:"autism",place:{codes:["AU"],mode:"mentions"}},{topic:"autism"});
+ const app=setup([reply]),first=await app.search({sentence}),before=app.calls.length;
+ assert.equal(first.body.understanding.place.mode,"authored");
+ const switched=await app.search({sentence,mode:"mentions"});assert.equal(switched.status,200);assert.equal(app.calls.length,before);
+ assert.equal(switched.body.understanding.place.mode,"mentions");assert.deepEqual(switched.body.understanding.place.codes,first.body.understanding.place.codes);assert.deepEqual(switched.body.understanding.place.ids,first.body.understanding.place.ids);
+ assert.equal(app.reportQueries[1].authoredCodes,undefined);assert.equal(app.reportQueries[1].placeMode,"mentions");
+ const repeated=await app.search({sentence});assert.equal(repeated.body.understanding.place.mode,"authored");assert.deepEqual(app.reportQueries[2].authoredCodes,app.reportQueries[0].authoredCodes);assert.equal(app.calls.length,before);
+});
+test("model mode never changes the code default, including explicit regional subject wording",async()=>{
+ for(const [sentence,mode] of [["autism in Europe","authored"],["research about European policy","mentions"]]){
+  const topic=sentence.includes("policy")?"policy":"autism";
+  for(const invented of ["mentions","authored"]){
+   const app=setup([candidate({...base(),topic,place:{codes:["AU"],mode:invented}},{topic})]),result=await app.search({sentence});
+   assert.equal(result.status,200);assert.equal(result.body.understanding.place.mode,mode);assert.deepEqual(result.body.understanding.place.ids,["europe"]);
+  }
+ }
+});
+test("code-resolved geography cannot cause self-check rephrasing",async()=>{
+ const app=setup([candidate({...base(),topic:"autism"},{topic:"autism"})],[{ok:false,problem:"Missing region information",missing:["Middle East"]}]);
+ const result=await app.search({sentence:"autism in the Middle East"});assert.equal(result.status,200);assert.equal(result.body.aiUsage.stages.replan,undefined);assert.deepEqual(result.body.understanding.place.codes,[...REGIONS.middleEast]);
+});
 const ambiguityFixtures=JSON.parse(readFileSync(new URL("./fixtures/ambiguity-rephrase.json",import.meta.url),"utf8"));
+const blankingFixture=JSON.parse(readFileSync(new URL("./fixtures/autism-topic-blanking.json",import.meta.url),"utf8"));
+test("replay logged topic fields: autism research must not become an empty rejected topic",()=>{
+ const reply=blankingFixture.replies[0],sentence=blankingFixture.question;
+ const before=groundPlan(reply,sentence,2026);
+ assert.equal(before.plan.topic,blankingFixture.observedLogFields.rejectedPlan.topic);
+ assert.deepEqual(before.missing,blankingFixture.observedLogFields.missing);
+ const repairs=[],repaired=validateGroundedResponse(reply,sentence,2026,event=>repairs.push(event));
+ assert.equal(repaired.plan.topic,blankingFixture.observedLogFields.repairedPlan.topic);
+ assert(repaired.sources.some(source=>source.path==="topic" && source.source==="autism"));
+ const after=groundPlan(repaired,sentence,2026);
+ assert.equal(after.plan.topic,"autism research");assert.deepEqual(after.missing,[]);
+ assert(repairs.some(event=>event.reason==="recovered_literal_topic_source"));
+ // Recovering scaffold words must not legitimise an invented research subject.
+ const invented=validateGroundedResponse({...reply,plan:{...reply.plan,topic:"autism genetics research"}},sentence,2026);
+ assert.equal(groundPlan(invented,sentence,2026).plan.topic,"");
+});
+for(const [index,reply] of blankingFixture.replies.entries())test("offline autism research replay with "+(index?"no model place":"model Middle East place"),async()=>{
+ const app=setup([reply]),result=await app.search({sentence:blankingFixture.question});
+ assert.equal(result.status,200);assert.equal(result.body.understanding.labels.topic,"autism research");
+ assert.equal(result.body.understanding.place.label,"Middle East");assert.equal(result.body.understanding.place.countryCount,16);
+ assert.equal(result.body.understanding.place.mode,"authored");assert.deepEqual(result.body.understanding.place.ids,["middleEast"]);
+ assert.equal(app.calls.find(call=>call.data.task==="self-check").data.plan.topic,"autism research");
+ assert.equal(result.body.aiUsage.stages.replan,undefined);
+});
+for(const missing of [["children"],["growing"],["growth"],["growing","children"],[]])test("unquoted populations and trend self-check objections never replan: "+JSON.stringify(missing),async()=>{
+ const app=setup([blankingFixture.replies[1]],[{ok:false,problem:"Missing growth or a required population",missing}]);
+ const result=await app.search({sentence:blankingFixture.question});
+ assert.equal(result.status,200);assert.equal(result.body.aiUsage.stages.replan,undefined);
+ const check=result.body.aiUsage.checks.find(check=>check.check==="self_check");
+ assert.equal(check.outcome,"advisory");assert.deepEqual(check.blockingRequirements,[]);
+});
+test("self-check blocks only the quoted requirement, excluding an invented population",async()=>{
+ const app=setup([blankingFixture.replies[1]],[{ok:false,problem:"Missing autism and children",missing:["autism","children"]}]);
+ const result=await app.search({sentence:blankingFixture.question});
+ assert.equal(result.status,422);assert.deepEqual(result.body.failingCheck.missing,["autism"]);
+ assert(!app.calls.find(call=>call.data.feedback).data.feedback.includes("children"));
+ const check=result.body.aiUsage.checks.find(check=>check.check==="self_check");
+ assert.deepEqual(check.blockingRequirements,["autism"]);assert.deepEqual(check.ignoredRequirements,[{requirement:"children",reason:"not_quoted_from_question"}]);
+});
 for(const row of ambiguityFixtures.questions)test("clear regional trend question survives malformed ambiguity: "+row.question,async()=>{
  const app=setup([row.reply]),result=await app.search({sentence:row.question});
  assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert(!result.body.clarification);
@@ -120,7 +208,7 @@ test("422 names coverage before cleanup, retains raw ambiguity, and redacts diag
 });
 test("422 distinguishes coverage lost during cleanup from initial coverage failure",async()=>{
  const row=ambiguityFixtures.questions[0];
- const reply=candidate({...base(),topic:"research",includeGroups:[{terms:["Montenegro"]}]},{topic:"research","includeGroups.0":"autism"});
+ const reply=candidate({...base(),topic:"research",includeGroups:[{preset:"middleEast"}]},{topic:"research","includeGroups.0":"autism"});
  const app=setup([reply]),result=await app.search({sentence:row.question});
  assert.equal(result.status,422);assert.equal(result.body.failingCheck.check,"coverage_after_cleanup");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
  assert.deepEqual(result.body.failingCheck.rejectedPlan.includeGroups,[]);assert.equal(result.body.aiUsage.stages.selfCheck,undefined);
@@ -173,7 +261,7 @@ for(const reply of inventedPlace.replies)test("production preview regression: dr
  assert.equal(app.calls.filter(call=>call.data.task==="plan").length,1);
  assert.equal(result.body.understanding.place,null);
  const selfCheck=app.calls.find(call=>call.data.task==="self-check").data.plan;
- assert.deepEqual(selfCheck.place,{codes:[],mode:"mentions"});
+ assert(!Object.hasOwn(selfCheck,"place"));
  assert(selfCheck.topic.includes("screen time"));assert(selfCheck.topic.includes("language development"));
  assert(selfCheck.includeGroups.some(group=>group.preset==="children" || group.terms?.includes("toddlers")));
  assert.deepEqual(selfCheck.excludeTerms,[]); // No requested exclusions were supplied.
@@ -193,7 +281,7 @@ test("a named Gulf remains in the full service plan",async()=>{
  const app=setup([reply]),result=await app.search({sentence});
  assert.equal(result.status,200);assert.deepEqual(result.body.understanding.place.codes,[...REGIONS.gcc]);
  assert.equal(result.body.understanding.place.label,"GCC");assert.equal(result.body.understanding.place.mode,"authored");
- assert(!result.body.aiUsage.repairs.some(repair=>repair.field==="place"));
+ assert(result.body.aiUsage.repairs.some(repair=>repair.field==="place" && repair.reason==="model_place_ignored"));
 });
 test("optional plan fields repair before validation, with source indices retained",()=>{
  const sentence="battery recycling since 2020",repairs=[];
@@ -205,15 +293,15 @@ test("optional plan fields repair before validation, with source indices retaine
  assert.doesNotThrow(()=>validateAIPlan(result.plan,2026));assert(repairs.some(repair=>repair.field==="extra_keys"));
  for(const optional of [{},{synonyms:false,excludeTerms:{bad:true},years:[],sources:123},{place:null},{place:{codes:["AU"],mode:"authored"}},{place:{codes:["WZ"],mode:"authored"}}]){
   const fixed=validateGroundedResponse({plan:{topic:"battery recycling",...optional}},"battery recycling",2026);
-  assert.deepEqual(fixed.plan.place,{codes:[],mode:"mentions"});assert.equal(fixed.plan.topic,"battery recycling");
+  assert.deepEqual(fixed.plan.place,{codes:[],mode:"authored",ids:[]});assert.equal(fixed.plan.topic,"battery recycling");
  }
  for(const topic of [undefined,null,123,"",", ,","bad|topic","x".repeat(201)])assert.throws(()=>validateGroundedResponse({plan:{topic}},sentence,2026),/no usable research topic/);
 });
 test("model schema does not ask for a place when none is named",()=>{
  const noPlace=groundedPlanSchema(2026,inventedPlace.question).properties.plan;
- assert.deepEqual(noPlace.properties.place,{type:"null"});assert(!noPlace.required.includes("place"));
+ assert.equal(noPlace.properties.place,undefined);assert(!noPlace.required.includes("place"));
  const gulf=groundedPlanSchema(2026,"battery recycling in the Gulf").properties.plan.properties.place;
- assert(gulf.anyOf.some(item=>item.type==="null"));assert(gulf.anyOf[1].properties.codes.items.enum.includes("AE"));assert(!gulf.anyOf[1].properties.codes.items.enum.includes("WJ"));
+ assert.equal(gulf,undefined);
 });
 test("diagnostic previews retain 800 characters and redact before truncation",()=>{
  const secret="private-example",preview='{"api_key":"'+secret+'","text":"'+"x".repeat(850)+'"}';
@@ -301,7 +389,7 @@ test("a pipeline needing a fifteenth model call stops at fourteen with a call-li
  const broad=complete();broad.plan.synonyms=["battery reuse"];broad.sources.push({path:"synonyms.0",source:"battery recycling"});
  const bad=candidate({...base(),topic:"battery"},{topic:"battery"});let judgments=0;
  const papers=(start,count)=>Array.from({length:count},(_,i)=>({id:"https://openalex.org/W"+(start+i),display_name:"Battery recycling study "+(start+i),publication_year:2025,cited_by_count:100,authorships:[]}));
- const app=setup(["{broken",bad,broad,broad,complete()],[{ok:false,problem:"Check the intended meaning"},{ok:true}],{
+ const app=setup(["{broken",bad,broad,broad,complete()],[{ok:false,problem:"Check the intended meaning",missing:["battery recycling"]},{ok:true}],{
   judge:data=>({pass:++judgments===1?[]:data.titles.map(item=>item.id)}),
   source:descriptor=>{
    if(descriptor.id==="checkearly")return {results:papers(100,10)};
@@ -349,7 +437,7 @@ test("sources must match exact complete words; typos may ground corrected model 
 });
 test("general place grounding retains named regions and rejects an invented country",()=>{
  const p={...base(),place:{codes:["ME","AU"],mode:"authored"},includeGroups:[{terms:["montenegro"]},{terms:["middle east"]}]};
- for(const [word,region] of [["Middle East","middleEast"],["MENA","middleEast"],["Arab world","middleEast"],["GCC","gcc"],["gulf","gcc"]]){
+ for(const [word,region] of [["Middle East","middleEast"],["MENA","mena"],["Arab world","arabWorld"],["GCC","gcc"],["gulf","gcc"]]){
   const tidy=tidyPlan(p,2026,"battery recycling in "+word);assert.deepEqual(tidy.place.codes,REGIONS[region]);assert(!tidy.includeGroups.length);
  }
  assert.deepEqual(tidyPlan(p,2026,"battery recycling").place.codes,[]);
@@ -371,12 +459,12 @@ test("still-missing coverage asks for a rephrase with no source call or charged 
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.used,4);assert.equal(ledger.reserved,0);
 });
 test("self-check rejection re-plans once; both self-checks and re-plan are charged",async()=>{
- const app=setup([complete()],[{ok:false,problem:"Wrong meaning of the requested process"},{ok:true}]),result=await app.search();
+ const app=setup([complete()],[{ok:false,problem:"Wrong meaning of the requested process",missing:["battery recycling"]},{ok:true}]),result=await app.search();
  assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.stages.selfCheck.calls,2);assert.equal(result.body.aiUsage.stages.replan.calls,1);
- assert.equal(result.body.aiUsage.neurons,app.calls.length*2);assert.equal(app.calls[2].data.feedback,"Wrong meaning of the requested process");
+ assert.equal(result.body.aiUsage.neurons,app.calls.length*2);assert.equal(app.calls[2].data.feedback,"Check the requested requirement: battery recycling.");
 });
 test("a second self-check rejection clarifies without any source call",async()=>{
- const app=setup([complete()],[{ok:false,problem:"The intended meaning is unclear"}]),result=await app.search();
+ const app=setup([complete()],[{ok:false,problem:"The requested process is missing",missing:["battery recycling"]}]),result=await app.search();
  assert.equal(result.status,422);assert(!result.body.clarification);assert.equal(app.calls.length,4);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
 });
 test("legacy stored choices remain bound to their question and are verified before use",async()=>{
@@ -424,18 +512,18 @@ for(const entry of evaluationCases)test("varied grounded plan/clarification fixt
   assert.equal(result.aiUsage.stages.selfCheck.calls,1);assert(app.sourceCalls.length>0);assert.equal(result.neurons,app.calls.length*2);
  }
 });
-test("a selected ambiguous country is grounded in the explicit chosen label, without adding its namesake",async()=>{
+test("old model-generated place choices cannot override the dictionary country",async()=>{
  const entry=evaluationCases.find(item=>item.question==="Malaria research in Guinea"),app=setup([entry.mock]);
  const key="ai:clarify:v1:22222222-2222-4222-8222-222222222222";
  app.kv.values.set(key,JSON.stringify({sentence:entry.question,options:entry.mock.ambiguity.options.map(option=>({...option,question:entry.mock.ambiguity.question})),expires:new Date("2026-11-04T12:15:00Z").getTime()}));
  const chosen=await app.search({sentence:entry.question,clarification:{key,option:1}});
- assert.equal(chosen.body.papersKind,"checked");assert.deepEqual(chosen.body.understanding.place.codes,["GW"]);
+ assert.equal(chosen.body.papersKind,"checked");assert.deepEqual(chosen.body.understanding.place.codes,["GN"]);
 });
 
 
 test("coverage repair and self-check repair each get one bounded re-plan, with all calls measured",async()=>{
  const bad=candidate({...base(),topic:"battery"},{topic:"battery"});
- const app=setup([bad,complete(),complete()],[{ok:false,problem:"Check the intended meaning"},{ok:true}]),result=await app.search();
+ const app=setup([bad,complete(),complete()],[{ok:false,problem:"Check the intended meaning",missing:["battery recycling"]},{ok:true}]),result=await app.search();
  assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.stages.replan.calls,2);assert.equal(result.body.aiUsage.stages.selfCheck.calls,2);assert.equal(result.body.aiUsage.neurons,app.calls.length*2);
 });
 

@@ -173,8 +173,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       catch (caught) { return error("invalid_query", caught.message, 400); }
       let filters;
       try {
-        if (url.searchParams.getAll("exclude").length > 1 || url.searchParams.getAll("authored").length > 1) throw new Error("Use each search filter once and try again.");
-        filters = normaliseFilters({ excludeTerms: url.searchParams.has("exclude") ? JSON.parse(url.searchParams.get("exclude")) : [], authoredCodes: url.searchParams.has("authored") ? url.searchParams.get("authored").split(",") : [] });
+        if (url.searchParams.getAll("exclude").length > 1 || url.searchParams.getAll("authored").length > 1 || url.searchParams.getAll("places").length>1 || url.searchParams.getAll("placeMode").length>1) throw new Error("Use each search filter once and try again.");
+        filters = normaliseFilters({placeIds:url.searchParams.get("places")?.split(",") || [],placeMode:url.searchParams.get("placeMode") || "authored",excludeTerms: url.searchParams.has("exclude") ? JSON.parse(url.searchParams.get("exclude")) : [], authoredCodes: url.searchParams.has("authored") ? url.searchParams.get("authored").split(",") : [] });
       } catch { return error("invalid_query", "Use valid excluded terms and country codes, then try again.", 400); }
       let query;
       const subtopicId = url.searchParams.get("subtopic") || "";
@@ -189,7 +189,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       if (subtopicId && parent && parent !== parentQuery.id && parent !== legacyMultiGroupId(parentQuery)) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
       if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentName.trim() || rawQuery.trim() });
       else if (subfieldId) query.parent = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear, "", SEARCH_PRESETS, filters).id;
-      else if (query.excludeTerms?.length || query.authoredCodes?.length || query.includeTerms?.length || query.includeGroups?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
+      else if (query.excludeTerms?.length || query.authoredCodes?.length || query.placeIds?.length || query.includeTerms?.length || query.includeGroups?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
       else if (parent) query.parent = parent;
       if (query.parent === query.id) return error("invalid_query", "A topic cannot be its own parent. Choose a different parent and try again.", 400);
       if (!query.name) return error("invalid_query", "A research topic is required. Add a topic with the q parameter.", 400);
