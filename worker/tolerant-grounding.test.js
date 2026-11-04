@@ -94,3 +94,9 @@ test("'X for Y' is split into two required concepts too",()=>{
  const value=validateGroundedResponse({plan:{...base(),topic:"quantum computing for finance"},sources:[{path:"topic",source:"quantum computing for finance"}],ambiguity:null},sentence,2026);
  assert.equal(value.plan.topic,"quantum computing");assert.deepEqual(value.plan.includeGroups,[{terms:["finance"]}]);
 });
+test("splitting 'X in Y' never duplicates a group the model already made for Y",()=>{
+ const sentence="Is research on artificial intelligence in healthcare growing?";
+ const value=validateGroundedResponse({plan:{...base(),topic:"artificial intelligence in healthcare",includeGroups:[{terms:["healthcare","health care"]}]},sources:[{path:"topic",source:"artificial intelligence in healthcare"},{path:"includeGroups.0",source:"healthcare"}],ambiguity:null},sentence,2026);
+ assert.equal(value.plan.topic,"artificial intelligence");assert.equal(value.plan.includeGroups.length,1);
+ assert.deepEqual(groundPlan(value,sentence,2026).missing,[]);
+});

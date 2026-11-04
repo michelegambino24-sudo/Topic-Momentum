@@ -1063,7 +1063,9 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
       const head=questionSpan(parts[0].trim(),sentence) || fuzzySpan(parts[0],sentence),tail=questionSpan(parts[1].trim(),sentence) || fuzzySpan(parts[1],sentence);
       if(head && tail){
         topic=parts[0].trim();entry.source=head;
-        includeGroups.push({terms:[cleanTerm(parts[1].trim())]});used.push({path:"includeGroups."+(includeGroups.length-1),source:tail});
+        // The model may already have made a group for the second concept: never add it twice.
+        const wanted=questionContentWords(parts[1]),covered=includeGroups.some(group=>(group.terms||[]).some(term=>wanted.every(word=>questionContentWords(term).some(other=>globalThis.TMM_QUERY_PARSER.sameWord(word,other)))));
+        if(!covered){includeGroups.push({terms:[cleanTerm(parts[1].trim())]});used.push({path:"includeGroups."+(includeGroups.length-1),source:tail});}
         note("topic","split_topic_into_concepts","repaired");
       }
     }
