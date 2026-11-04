@@ -1,6 +1,7 @@
 import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, isTighterPlan, judgeTitles, titleSample, semanticQuery, semanticMembership, shapePapers, normaliseQuery, includeGroupsOf, cacheIsFresh, dailyCap, cleanTerm, cleanAIPlanTerms, reliabilitySamples, reliabilityCheck, checkedEvidence, EVIDENCE_NOTICES, buildQueries, groundedPlanSchema, groundPlan, reconcileGrounding, validateGroundedResponse, planRequirements, questionRequirements, passingTitleIds, verifiedExperts, expertCandidateQuery, rankExpertAuthors, openAlexUsage, dailyKey, aiFailureMessage, literalQuestionPlan, parseModelReply, aiAttemptDiagnostic, aiTimeouts, aiStopReason, tighteningFailures, safeAIDetail, selfCheckRequirements, SELF_CHECK_TIMEOUT_NOTE, expansionTerms, EXPANSION_BELOW, EXPANSION_MAX_GROWTH } from "./lib.js";
 import "../site/query-parser.js";
 import { COUNTRY_CODES, REGIONS, countryLabel } from "./countries.js";
+import {REPORT_CACHE_PREFIX,isBroadSynonym} from "./lib.js";
 
 // Officially supports JSON mode on Workers AI (gpt-oss-120b does not, and its reasoning cut answers off).
 export const AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -73,7 +74,7 @@ export async function interpretationKey(sentence, year) {
 // Binding calls, source requests and KV operations share a conservative Free-plan ledger.
 function sessionFor(binding) {
   const session = { requests: 0, reserved: false, operations: 0,
-    bump(kind) { if (this.operations >= (kind === "source" ? 44 : 48)) throw new Error("Request budget exhausted"); this.operations++; } };
+    bump(kind) { if (this.operations >= (kind === "source" ? 44 : 48)) throw Object.assign(new Error("Request budget exhausted"),{reason:"request_limit"}); this.operations++; } };
   session.store = { originalBinding: binding,
     async get(...args) { session.bump("kv"); return binding.get(...args); },
     async put(...args) { session.bump("kv"); return binding.put(...args); }
@@ -133,12 +134,18 @@ function unverified(report, reason = "evidence_unavailable") {
 }
 function overlay(report, record, understanding, cached = false) {
   const {papers,experts,accepted}=record.evidence;
-  const notices=[...(record.budget?.notes || []),accepted<3&&EVIDENCE_NOTICES.few,experts.length<3&&"Not enough checked experts for this question",record.check.lowPrecision&&EVIDENCE_NOTICES.low,record.check.trendDistorted&&EVIDENCE_NOTICES.trend].filter(Boolean);
+  const warn=record.check.lowPrecision && papers.length<3;
+  const notices=[...(record.budget?.notes || []),accepted<3&&EVIDENCE_NOTICES.few,experts.length<3&&"Not enough checked experts for this question",warn&&EVIDENCE_NOTICES.low].filter(Boolean);
   return {...report,papers,experts,papersKind:"checked",evidence:{version:3,accepted,candidates:record.evidence.candidates,notices},understanding:{...understanding,...(record.budget?.notes?.length?{note:record.budget.notes.join(" ")}: {})},
     aiUsage:cached?{neurons:0,measured:true,calls:0,cached:true,originalNeurons:record.budget?.neurons}:record.budget,
-    ...(record.check.lowPrecision?{headline:"These counts match the search terms, but many papers may be off-topic. Narrow the search before drawing conclusions."}:{})};
+    ...(warn?{headline:"The title-only sample found few direct matches. The figures count papers matching your search terms."}:{})};
 }
 export function createAIService({now,clock,locked,reserve,source,waitForAI=deadline}) {
+  const preparedKey = value => /^ai:prepared:v1:[a-f0-9-]{36}$/.test(value || "");
+  function plainPlan(sentence, year, place) {
+    const parsed=globalThis.TMM_QUERY_PARSER.parse(sentence,year);
+    return validateAIPlan({topic:parsed.topic || sentence,synonyms:(parsed.synonyms || []).filter(term=>!isBroadSynonym(parsed.topic || sentence,term)),includeGroups:(parsed.includeGroups || []).map(terms=>({terms})),excludeTerms:[],years:{from:parsed.from,to:parsed.to},place:{codes:place.codes,ids:place.ids,mode:place.mode}},year);
+  }
   async function attach(report,key,env) {
     if(!validKey(key)||!env.TMM)return unverified(report);
     try {
@@ -147,16 +154,16 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
       const compiled=compileAIPlan(record.raw,now().getUTCFullYear());
       const exact=report.id===record.queryId;
       let place=compiled.place;
-      if(place){const sameCodes=JSON.stringify(report.authoredCodes||[])===JSON.stringify(place.codes);const sameWords=includeGroupsOf(report).some(group=>JSON.stringify([...group].sort())===JSON.stringify([...place.terms].sort()));place=sameCodes?{...place,mode:"authored"}:sameWords?{...place,mode:"mentions"}:null;}
+      if(place&&!exact){const sameCodes=JSON.stringify(report.authoredCodes||[])===JSON.stringify(place.codes);const sameWords=includeGroupsOf(report).some(group=>JSON.stringify([...group].sort())===JSON.stringify([...place.terms].sort()));place=sameCodes?{...place,mode:"authored"}:sameWords?{...place,mode:"mentions"}:null;}
       const understanding={mode:"ai",key,sentence:record.sentence,labels:displayLabels(record.raw,{name:report.searchTerms?.name||report.name,synonyms:report.synonyms,excludeTerms:report.excludeTerms}),check:exact?record.check:null,place,changed:!exact};
       return exact?overlay(report,record,understanding,true):{...unverified(report,"search_changed"),understanding};
     }catch{return unverified(report);}
   }
-  async function search(input,originalEnv,report) {
+  async function search(input,originalEnv,report,pipeline=null) {
     if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(key=>!["sentence","mode","placeMode","current","clarification"].includes(key))||typeof input.sentence!=="string"||!input.sentence.trim()||input.sentence.length>1000)return failure("Enter a search sentence under 1,000 characters and try again.");
     if(input.mode!==undefined&&!["authored","mentions"].includes(input.mode))return failure("Choose Written in or Mentions and try again.");
     if(input.placeMode!==undefined && !["authored","mentions"].includes(input.placeMode))return failure("Choose a place mode and try again.");
-    if(input.current!==undefined&&input.mode===undefined)return failure("Choose a place mode before applying the current search.");
+    if(input.current!==undefined&&input.mode===undefined&&!pipeline)return failure("Choose a place mode before applying the current search.");
     if(!originalEnv.TMM)return failure("The topic storage is unavailable. Try again later.",503);
     if (input.clarification !== undefined && (!input.clarification || Object.keys(input.clarification).sort().join(",") !== "key,option" || !/^ai:clarify:v1:[a-f0-9-]{36}$/.test(input.clarification.key || "") || !Number.isInteger(input.clarification.option) || input.clarification.option < 0 || input.clarification.option > 2 || input.mode)) return failure("Choose a clarification option and try again.");
     const resolvedPlace=globalThis.TMM_PLACES.resolve(input.sentence,input.placeMode || null);
@@ -169,54 +176,61 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
       selected=pending.options[input.clarification.option];
     }
     const decision=selected?{question:selected.question,label:selected.label}:null;
-    const key=await interpretationKey(input.sentence+(decision?"\nClarified: "+JSON.stringify(decision):""),year);
+    const key=await interpretationKey(input.sentence+(pipeline?"\nStaged: "+JSON.stringify(pipeline.record?.query || input.current || {}):"")+(decision?"\nClarified: "+JSON.stringify(decision):""),year);
     let sourceSession;
     const result=await locked(originalEnv.TMM,key,async()=>{
       const session=sessionFor(originalEnv.TMM),env={...originalEnv,TMM:session.store};
+      if(pipeline?.record){session.requests=pipeline.record.requests;session.reserved=true;session.operations=2;}
       sourceSession=session;
       const day=dailyKey(now()),usageKey="ai:usage:"+day;
       const usage={neurons:0,measured:true,calls:0,byModel:{},stages:{},errors:[],repairs:[],turns:[],checks:[],ambiguities:[],notes:[]};
       let heldNeurons=AI_RESERVATION;
-      let reservedUsage=false,retryLeft=1,replans={coverage:1,selfCheck:1},countedSearch=false,clarified=false;
+      let settledNeurons=0;
+      let reservedUsage=false,retryLeft=pipeline?0:1,replans={coverage:1,selfCheck:1},countedSearch=false,clarified=false;
       const requestId=crypto.randomUUID();usage.requestId=requestId;
       const detail=value=>safeAIDetail(value,[env.OPENALEX_KEY]);
       const recordCheck=value=>{const event=detail({requestId,...value});usage.checks.push(event);console.log("AI plan check",JSON.stringify(event));return event;};
       const limits=aiTimeouts(env),controller=new AbortController(),end=clock()+limits.preparation,timer=setTimeout(()=>controller.abort(),limits.preparation);
       session.signal=controller.signal;
-      const blocked=reason=>({status:503,body:{error:"ai_unavailable",message:aiFailureMessage(reason,now()),aiReason:reason,aiUsage:usage,understood:globalThis.TMM_QUERY_PARSER.parse(input.sentence,year)}});
+      const blocked=reason=>({status:503,body:{error:"ai_unavailable",message:pipeline?.kind==="evidence" && ["ai_bad_json","ai_validation"].includes(reason)?"The AI model returned an invalid paper check. Retry the check. Your research counts are still available.":aiFailureMessage(reason,now()),aiReason:reason,aiUsage:usage,understood:globalThis.TMM_QUERY_PARSER.parse(input.sentence,year)}});
       const invokeReport=query=>{session.sourceStage="report";return report(query,env,session);};
       const settleUsage=async()=>{
         if(!reservedUsage)return;
         await locked(env.TMM,usageKey,async()=>{
           const ledger=await env.TMM.get(usageKey,"json")||{used:0,reserved:0};
-          ledger.reserved=Math.max(0,ledger.reserved-heldNeurons);ledger.used+=usage.neurons;
+          ledger.reserved=Math.max(0,ledger.reserved-heldNeurons);ledger.used+=usage.neurons-settledNeurons;
           await env.TMM.put(usageKey,JSON.stringify(ledger),{expirationTtl:172800});
-        });reservedUsage=false;
+        });reservedUsage=false;settledNeurons=usage.neurons;heldNeurons=0;
       };
       const fetchSource=async(descriptor,query)=>{
+        if(session.requests>=30)throw Object.assign(new Error("Source request limit"),{reason:"source_request_limit"});
+        if(pipeline && session.operations>=38)throw Object.assign(new Error("Request budget exhausted"),{reason:"request_limit"});
         if(controller.signal.aborted || clock()>=end)throw Object.assign(new Error("Search deadline reached"),{reason:"ai_total_deadline"});
         if(!session.reserved){if(await reserve(env,now())!==true)throw Object.assign(new Error("Source admission unavailable"),{reason:"source_limit"});session.reserved=true;}
         const url=new URL("https://api.openalex.org/works");url.search=new URLSearchParams(descriptor.params).toString();
         if(url.toString().length>3800)throw new Error("Source request too long");
-        return source(descriptor,env,session,query,controller.signal);
+        try{return await source(descriptor,env,session,query,controller.signal);}
+        catch(error){if(pipeline)error.reason ||= error.code==="search_too_complex"?"source_request_limit":"source_failed";throw error;}
       };
       const run=async(model,params,validate,stage="judging")=>{
         let attempt=0;
         while(true){
+          if(pipeline && session.operations>=34)throw Object.assign(new Error("Request budget exhausted"),{reason:"request_limit"});
           const stopped=aiStopReason(controller.signal.aborted,clock(),end,usage.calls);
           if(stopped)throw Object.assign(new Error("AI preparation stopped"),{reason:stopped});
           const bound=aiTurnBound(params,model);
           if(usage.neurons+bound>AI_NEURONS_PER_SEARCH)throw Object.assign(new Error("Checking budget exhausted"),{reason:"search_neuron_limit"});
-          if (usage.neurons+bound>heldNeurons) {
-            const additional=Math.ceil((usage.neurons+bound-heldNeurons)/AI_RESERVATION)*AI_RESERVATION;
+          if (usage.neurons-settledNeurons+bound>heldNeurons) {
+            const additional=pipeline?usage.neurons-settledNeurons+bound-heldNeurons:Math.ceil((usage.neurons+bound-heldNeurons)/AI_RESERVATION)*AI_RESERVATION;
             const extended=await locked(env.TMM,usageKey,async()=>{
-              const ledger=await env.TMM.get(usageKey,"json");
-              if(!ledger || ledger.used+ledger.reserved+additional>AI_DAILY_NEURONS)return false;
+              const ledger=await env.TMM.get(usageKey,"json") || {used:0,reserved:0};
+              if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+additional>AI_DAILY_NEURONS)return false;
               ledger.reserved+=additional;
               await env.TMM.put(usageKey,JSON.stringify(ledger),{expirationTtl:172800});return true;
             });
             if(!extended)throw Object.assign(new Error("Daily checking budget exhausted"),{reason:"daily_neuron_limit"});
             heldNeurons+=additional;
+            reservedUsage=true;
           }
           if(clock()>=end)throw Object.assign(new Error("Search deadline reached"),{reason:"ai_total_deadline"});
           session.bump("ai");usage.calls++;
@@ -257,6 +271,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
           }finally{
             turn.ms=Math.max(0,clock()-callStarted);phase.ms+=turn.ms;usage.turns.push(turn);
             console.log("AI call completed",JSON.stringify(turn));
+            if(pipeline)await settleUsage();
           }
         }
       };
@@ -361,37 +376,77 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
         return {...reliabilityCheck({matched:accepted.slice(0,early.length).filter(Boolean).length,total:early.length},{matched:accepted.slice(early.length).filter(Boolean).length,total:late.length}),titles:items.filter((_,i)=>!accepted[i]).map(item=>item.display_name)};
       };
       try{
+        if(pipeline?.kind==="prepare"){
+          let raw=plainPlan(input.sentence,year,resolvedPlace),planningReason=null;
+          let savedPlan=null;
+          try{
+            const saved=await env.TMM.get(key+":plan","json");
+            if(saved && cacheIsFresh(saved,now().getTime()))savedPlan=validateAIPlan({...saved.raw,place:{codes:resolvedPlace.codes,ids:resolvedPlace.ids,mode:resolvedPlace.mode}},year);
+          }catch{ /* A broken optional planning cache must not prevent counts. */ }
+          if(input.current){
+            const current=currentQuery(input.current,year);
+            raw=validateAIPlan({topic:current.name,synonyms:current.synonyms,includeGroups:includeGroupsOf(current).map(terms=>({terms})),place:{codes:current.authoredCodes || resolvedPlace.codes,ids:current.placeIds || resolvedPlace.ids,mode:current.placeMode || resolvedPlace.mode},excludeTerms:current.excludeTerms,years:{from:current.from,to:current.to}},year);
+          } else if(savedPlan){
+            raw=savedPlan;
+          } else try {
+            if(!env.AI)throw Object.assign(new Error("AI unavailable"),{reason:"ai_binding_unavailable"});
+            const count=await env.TMM.get("ai:count:"+day,"json") || 0;
+            if(count>=Math.min(AI_DAILY_CAP,dailyCap(env.AI_SEARCHES_PER_DAY??AI_DAILY_CAP)))throw Object.assign(new Error("Daily AI limit"),{reason:"daily_ai_limit"});
+            heldNeurons=0;
+            const planned=await run(AI_MODEL,{messages:[{role:"system",content:planInstructions+" Return a compact plan. Never add broader synonyms."},{role:"user",content:JSON.stringify({task:"plan",sentence:input.sentence,contentQuestion:resolvedPlace.withoutPlaces})}],temperature:0,max_tokens:512,response_format:{type:"json_schema",json_schema:modelSchema(groundedPlanSchema(year,input.sentence))}},value=>{
+              const repaired=validateGroundedResponse(value,input.sentence,year);
+              const grounded=groundPlan(repaired,input.sentence,year);
+              if(!grounded.plan.topic || grounded.missing.length)throw new Error("Incomplete search plan");
+              return {...repaired.plan,synonyms:repaired.plan.synonyms.filter(term=>!isBroadSynonym(repaired.plan.topic,term))};
+            },"planning");
+            raw={...planned,place:{codes:resolvedPlace.codes,ids:resolvedPlace.ids,mode:resolvedPlace.mode}};
+            await env.TMM.put(key+":plan",JSON.stringify({savedAt:now().getTime(),raw}),{expirationTtl:AI_TTL});
+          } catch(error){planningReason=error.reason || "ai_validation";}
+          // Counts have their own source deadline; a failed planner cannot cancel them.
+          session.signal=undefined;
+          const compiled=compileAIPlan(raw,year),result=await report(compiled.query,env,session);
+          if(result.status!==200)return result;
+          const token="ai:prepared:v1:"+crypto.randomUUID();
+          const record={savedAt:now().getTime(),sentence:input.sentence,raw,query:compiled.query,queryId:compiled.query.id,requests:session.requests,expertRanking:session.expertRanking || result.body.experts,planningReason};
+          let evidenceKey=token,evidenceMessage=null;
+          try{await env.TMM.put(token,JSON.stringify(record),{expirationTtl:AI_TTL});}
+          catch{evidenceKey=null;evidenceMessage="The AI check could not be saved for checking. Your research numbers are ready. Retry the AI check.";}
+          return {status:200,body:{...unverified(result.body),evidenceKey,evidenceMessage,planningReason,aiUsage:usage,understanding:{mode:"planned",sentence:input.sentence,labels:displayLabels(raw,compiled.query),place:compiled.place,check:null}}};
+        }
         const cached=await env.TMM.get(key,"json"),existing=checkedRecord(cached)&&cacheIsFresh(cached,now().getTime())?cached:null;
         if(input.mode&&!existing)return failure("This interpretation has expired. Search again before changing its place mode.");
         if(existing){
-          const compiled=compileAIPlan(existing.raw,year,input.mode||resolvedPlace.mode,input.current?currentQuery(input.current,year):null);
-          const result=await invokeReport(compiled.query);if(result.status!==200)return result;
+          const compiled=compileAIPlan(existing.raw,year,pipeline?.record?.raw.place.mode || input.mode || resolvedPlace.mode,input.current?currentQuery(input.current,year):null);
+          const result=pipeline?.record?{status:200,body:pipeline.report}:await invokeReport(compiled.query);if(result.status!==200)return result;
           const exact=result.body.id===existing.queryId;
           const understanding={mode:"ai",key,sentence:input.sentence,labels:displayLabels(existing.raw,compiled.query),place:compiled.place,check:exact?existing.check:null,changed:!exact};
           result.body=exact?overlay(result.body,existing,understanding,true):{...unverified(result.body,"search_changed"),understanding};return result;
         }
         if(!env.AI||env.AI_MODEL&&env.AI_MODEL!==AI_MODEL||env.AI_JUDGE_MODEL&&env.AI_JUDGE_MODEL!==JUDGE_MODEL)return blocked("ai_binding_unavailable");
-        if((await env.TMM.get("count:"+day,"json")||0)>=Math.min(70,dailyCap(env.NEW_TOPICS_PER_DAY)))return {status:429,body:{error:"daily_limit",message:"Daily limit reached. Try again tomorrow or browse the Library.",aiReason:"source_limit",aiUsage:usage}};
+        if(!pipeline&&(await env.TMM.get("count:"+day,"json")||0)>=Math.min(70,dailyCap(env.NEW_TOPICS_PER_DAY)))return {status:429,body:{error:"daily_limit",message:"Daily limit reached. Try again tomorrow or browse the Library.",aiReason:"source_limit",aiUsage:usage}};
         const dayKey="ai:count:"+day;
         const cap=Math.min(AI_DAILY_CAP,dailyCap(env.AI_SEARCHES_PER_DAY??AI_DAILY_CAP));
         const count=await env.TMM.get(dayKey,"json")||0;
-        if(!Number.isSafeInteger(count)||count<0||count>=cap)return blocked("daily_ai_limit");
+        if(!Number.isSafeInteger(count)||count<0||count>=cap&&!pipeline?.record?.admitted)return blocked("daily_ai_limit");
         const budget=await locked(env.TMM,usageKey,async()=>{
           const ledger=await env.TMM.get(usageKey,"json")||{used:0,reserved:0};
-          if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+AI_RESERVATION>AI_DAILY_NEURONS)return false;
-          ledger.reserved+=AI_RESERVATION;await env.TMM.put(usageKey,JSON.stringify(ledger),{expirationTtl:172800});return true;
+          const reservation=pipeline?0:AI_RESERVATION;
+          if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+reservation>AI_DAILY_NEURONS)return false;
+          heldNeurons=reservation;ledger.reserved+=reservation;await env.TMM.put(usageKey,JSON.stringify(ledger),{expirationTtl:172800});return true;
         });if(!budget)return blocked("daily_neuron_limit");reservedUsage=true;
-        const verified=await plan();if(verified.clarification)return verified.clarification;if(verified.advisory)return verified.advisory;
+        const verified=pipeline?.record?{raw:pipeline.record.raw,sources:[]}:await plan();if(verified.clarification)return verified.clarification;if(verified.advisory)return verified.advisory;
         let raw=verified.raw,finalSources=verified.sources;
         required=requirementsFor(raw);
         const admitted=await locked(env.TMM,"ai:count",async()=>{
+          if(pipeline?.record?.admitted)return true;
           const count=await env.TMM.get(dayKey,"json")||0;
           if(!Number.isSafeInteger(count)||count<0||count>=cap)return false;
           await env.TMM.put(dayKey,JSON.stringify(count+1),{expirationTtl:172800});return true;
         });if(!admitted)return blocked("daily_ai_limit");countedSearch=true;
+        if(pipeline?.record){pipeline.record.admitted=true;await env.TMM.put(pipeline.token,JSON.stringify(pipeline.record),{expirationTtl:AI_TTL});session.expertRanking=pipeline.record.expertRanking;}
         session.sourceStage="reliability";
         let check=await inspect(raw);
-        if(check.lowPrecision){
+        if(check.total>0 && check.matched/check.total<.7 && !pipeline){
           recordCheck({check:"tightening_trigger",phase:"reliability",outcome:"low_precision",matched:check.matched,total:check.total,call:usage.calls});
           const revised=await plan(raw,check.titles);if(revised.clarification)return revised.clarification;if(revised.advisory)return revised.advisory;
           if(compileAIPlan(raw,year).query.id!==compileAIPlan(revised.raw,year).query.id){
@@ -401,24 +456,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
             else {required=nextRequired;judgments.clear();}
           }
         }
-        let compiled=compileAIPlan(raw,year),result=await invokeReport(compiled.query);if(result.status!==200)return clock()>=end?blocked("ai_total_deadline"):{...result,body:{...result.body,aiReason:"source_failed",aiUsage:usage}};
-        // A small result usually means the exact wording is rare, not that the subject is: add a few safe related wordings.
-        const smallTotal=result.body.kpis?.total;
-        if(env.AI_EXPAND_SMALL==="on"&&!input.mode&&!(raw.synonyms||[]).length&&Number.isInteger(smallTotal)&&smallTotal<EXPANSION_BELOW&&end-clock()>50000){
-          try{
-            const proposed=await run(AI_MODEL,{messages:[{role:"system",content:'Task: related wordings. Give up to 5 other ways researchers write the SAME topic, each 2 to 4 words, with the same or a narrower meaning. Never broader, never a different subject, never a place. Return only {"terms":[...]}.'},
-              {role:"user",content:JSON.stringify({task:"synonyms",topic:raw.topic,question:input.sentence})}],
-              response_format:{type:"json_schema",json_schema:{type:"object",additionalProperties:false,required:["terms"],properties:{terms:{type:"array",items:{type:"string"}}}}},max_tokens:150,temperature:0},value=>{if(!Array.isArray(value?.terms))throw new Error("Invalid related wordings");return value;},"expansion");
-            const added=expansionTerms(proposed.terms,raw,input.sentence);
-            if(added.length){
-              session.allowance=14; // one more full report, only for this step
-              const widened={...raw,synonyms:added},wide=compileAIPlan(widened,year),wideResult=await invokeReport(wide.query),wideTotal=wideResult.body?.kpis?.total;
-              if(wideResult.status===200&&Number.isInteger(wideTotal)&&wideTotal>=Math.max(smallTotal+3,Math.ceil(smallTotal*1.5))&&wideTotal<=Math.max(smallTotal*EXPANSION_MAX_GROWTH,smallTotal+400)){
-                raw=widened;compiled=wide;result=wideResult;usage.notes.push("Added related wordings: "+added.join(", ")+".");
-              }
-            }
-          }catch{ /* Related wordings are a bonus: any failure here keeps the original search and never stops the checks. */ }
-        }
+        let compiled=compileAIPlan(raw,year),result=pipeline?{status:200,body:pipeline.report}:await invokeReport(compiled.query);if(result.status!==200)return clock()>=end?blocked("ai_total_deadline"):{...result,body:{...result.body,aiReason:"source_failed",aiUsage:usage}};
         session.sourceStage="candidates";
         const citedBase=buildQueries(compiled.query,year).find(item=>item.id==="papers");
         const cited=await fetchSource({...citedBase,id:"citedCandidates",params:{...citedBase.params,per_page:"30"}},compiled.query);if(!Array.isArray(cited.results))throw new Error("Invalid cited candidates");
@@ -433,6 +471,24 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
         let expertPapers=[];
         if(expertQuery){const response=await fetchSource(expertQuery,compiled.query);if(!Array.isArray(response.results))throw new Error("Invalid expert candidate papers");expertPapers=response.results.slice(0,50);}
         evidence.experts=verifiedExperts(ranked,expertPapers,await judge(expertPapers));
+        // A small result usually means the exact wording is rare, not that the subject is: add a few safe related wordings.
+        const smallTotal=result.body.kpis?.total;
+        if(env.AI_EXPAND_SMALL==="on"&&!input.mode&&!(raw.synonyms||[]).length&&Number.isInteger(smallTotal)&&smallTotal<EXPANSION_BELOW&&end-clock()>50000&&session.requests<30&&session.operations<=28){
+          try{
+            const proposed=await run(AI_MODEL,{messages:[{role:"system",content:'Task: related wordings. Give up to 5 other ways researchers write the SAME topic, each 2 to 4 words, with the same or a narrower meaning. Never broader, never a different subject, never a place. Return only {"terms":[...]}.'},
+              {role:"user",content:JSON.stringify({task:"synonyms",topic:raw.topic,question:input.sentence})}],
+              response_format:{type:"json_schema",json_schema:{type:"object",additionalProperties:false,required:["terms"],properties:{terms:{type:"array",items:{type:"string"}}}}},max_tokens:150,temperature:0},value=>{if(!Array.isArray(value?.terms))throw new Error("Invalid related wordings");return value;},"expansion");
+            const added=expansionTerms(proposed.terms,raw,input.sentence);
+            if(added.length){
+              const widened={...raw,synonyms:added},wide=compileAIPlan(widened,year);
+              const descriptor=buildQueries(wide.query,year).find(item=>item.id==="papers");
+              const proposedCount=await fetchSource({...descriptor,id:"expansionCount",params:{...descriptor.params,per_page:"1"}},wide.query),wideTotal=proposedCount.meta?.count;
+              if(Number.isInteger(wideTotal)&&wideTotal>=Math.max(smallTotal+3,Math.ceil(smallTotal*1.5))&&wideTotal<=Math.max(smallTotal*EXPANSION_MAX_GROWTH,smallTotal+400)){
+                usage.notes.push("Related wordings to try: "+added.join(", ")+".");
+              }
+            }
+          }catch{ /* Related wordings are a bonus: any failure here keeps the original search and never stops the checks. */ }
+        }
         const {titles,...reliability}=check;
         await settleUsage();
         const record={evidenceVersion:3,savedAt:now().getTime(),sentence:input.sentence,raw,sources:finalSources,decision,queryId:compiled.query.id,check:reliability,evidence,judgments:[...judgments].map(([workTitleKey,onTopic])=>({workTitleKey,onTopic})),budget:{...usage,sourceCalls:session.requests}};
@@ -440,6 +496,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
         result.body=overlay(result.body,record,{mode:"ai",key,sentence:input.sentence,labels:displayLabels(raw,compiled.query),place:compiled.place,check:reliability,changed:false});return result;
       }catch(error){if(env.ENVIRONMENT==="dev")console.warn("AI checks stopped:",String(error.message||error).slice(0,200));return blocked(clock()>=end?"ai_total_deadline":error.reason||"checking_failed");}
       finally{clearTimeout(timer);controller.abort();try{
+        if(pipeline?.record){pipeline.record.requests=session.requests;await env.TMM.put(pipeline.token,JSON.stringify(pipeline.record),{expirationTtl:AI_TTL});}
         if(clarified&&countedSearch)await locked(env.TMM,"ai:count",async()=>{
           const dayKey="ai:count:"+day,count=await env.TMM.get(dayKey,"json")||0;
           await env.TMM.put(dayKey,JSON.stringify(Math.max(0,count-1)),{expirationTtl:172800});
@@ -451,7 +508,19 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
     console.log("AI search completed",JSON.stringify({requestId:result.body.aiUsage?.requestId,status:result.status,reason:terminalReason,ms:Math.max(0,clock()-started),calls:result.body.aiUsage?.calls || 0,neurons:result.body.aiUsage?.neurons || 0,measured:result.body.aiUsage?.measured===true}));
     result.body.openalexUsage=openAlexUsage(sourceSession?.openAlexAttempts||[]);
     if(result.body.aiUsage)result.body.aiUsage.sourceCalls=result.body.openalexUsage.calls;
+    if(result.body.aiUsage)result.body.aiUsage.sourceRequestsTotal=sourceSession?.requests || 0;
     return result;
   }
-  return {search,attach};
+  async function prepare(input,env,report){return search(input,env,report,{kind:"prepare"});}
+  async function evidence(input,env){
+    if(!preparedKey(input?.key) || typeof input.id!=="string" || !env.TMM)return failure("This paper check is unavailable. Measure the topic again.");
+    return locked(env.TMM,input.key,async()=>{
+      const record=await env.TMM.get(input.key,"json");
+      if(!record || record.queryId!==input.id || !cacheIsFresh(record,now().getTime()))return failure("This paper check has expired. Measure the topic again.");
+      const cached=await env.TMM.get(REPORT_CACHE_PREFIX+record.queryId,"json");
+      if(!cached?.topic || !cacheIsFresh(cached,now().getTime()))return failure("The saved counts have expired. Measure the topic again.");
+      return search({sentence:record.sentence},env,()=>{throw new Error("Evidence must reuse the saved report");},{kind:"evidence",record,token:input.key,report:cached.topic});
+    });
+  }
+  return {search,attach,prepare,evidence};
 }

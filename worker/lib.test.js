@@ -113,7 +113,7 @@ test("years fill missing years; KPIs exclude current year from growth and last-y
   assert.equal(topic.updated, "2026-10-31");
   assert.equal(topic.field, "Computer Science");
   assert.deepEqual(Object.keys(topic), ["id", "name", "synonyms", "from", "to", "subtopicWindow", "searchTerms", "subfields", "field", "updated", "years", "kpis", "headline", "sourceQuality", "experts", "subtopics", "countries", "regionalCounts", "journals", "papers", "suggestedSynonyms", "exploreNext", "cached", "refinements"]);
-  assert(topic.headline.includes("to 249 in 2025."));
+  assert(topic.headline.includes("In 2025, 249 papers were published."));
 });
 
 test("response shapers preserve names and counts; zero-early sub-topics have null growth", () => {
@@ -372,7 +372,7 @@ test("headlines read naturally, preserve proper names and use range-specific num
   assert.match(headline("Epigenetics",kpis,2020,null,1,{from:2015,to:2020}),/^From 2015 to 2020, research on epigenetics was growing/);
   const topic=shapeTopic(query,responses(),date);
   const refreshed=presentReport({...topic,headline:"Obsolete presentation."});
-  assert.match(refreshed.headline,/^Research on lunar moss computing is a new topic:/);
+  assert.match(refreshed.headline,/^Since 2010, research on lunar moss computing has been accelerating/);
   assert.deepEqual(refreshed.years,topic.years);
   const summary=reportSummary({...topic,from:2024,to:2025,kpis:{...topic.kpis,growthLabel:"5-year growth"}});
   assert.equal(summary.sparkStartYear,2024);assert.equal(summary.spark.length,2);

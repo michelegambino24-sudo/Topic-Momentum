@@ -271,7 +271,7 @@ test("open ranges survive combined searches, sub-topics, exploration, cache-only
     return { ok: true, json: async () => shapeTopic(query, responses, new Date("2026-11-01T12:00:00Z")) };
   };
   const app = setup(fetch);
-  app.get("topic-input").value = "moss";
+  app.get("topic-input").value = "moss"; app.get("topic-input").listeners.input();
   app.get("include-input").value = "child,children";
   app.get("from-input").value = "2023";
   app.submit(); await settle();
@@ -351,7 +351,7 @@ test("bounded ranges keep both years across report links, exploration, My librar
     return { ok: true, json: async () => shapeTopic(q, responses, new Date("2026-11-01T12:00:00Z")) };
   };
   const app = setup(fetch);
-  app.get("topic-input").value = "moss";
+  app.get("topic-input").value = "moss"; app.get("topic-input").listeners.input();
   app.get("include-input").value = "child";
   app.get("from-input").value = "2015";
   app.get("to-input").value = "2020";
@@ -437,7 +437,7 @@ test("include quick-fill, searches, suggestions, sub-topics, reload and history 
     return { ok: true, json: async () => ({ ...report(app), name, includeTerms, id: name,
       ...(params.has("subtopic") ? { subtopicId: params.get("subtopic"), parent: "filtered-parent" } : {}) }) };
   });
-  app.get("topic-input").value = "neurotechnology";
+  app.get("topic-input").value = "neurotechnology"; app.get("topic-input").listeners.input();
   app.get("synonyms-input").value = "neural implant";
   app.get("children-preset").listeners.click();
   const preset = "children, child, childhood, infant, toddler, preschool, kindergarten, pediatric, early childhood";
@@ -472,7 +472,7 @@ test("My library persists compact summaries, opens variants cache-only, and remo
   const calls = [];
   const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => new URL(url).pathname === "/api/library" ? [] : data }; });
   data = { ...report(app), id: 'neurotechnology|include:["child","children"]', name: "neurotechnology + child / children", includeTerms: ["child", "children"], parent: "neurotechnology" };
-  app.get("topic-input").value = "neurotechnology";
+  app.get("topic-input").value = "neurotechnology"; app.get("topic-input").listeners.input();
   app.get("include-input").value = "child,children";
   app.submit(); await settle();
   const summaries = JSON.parse(app.stored.get("topic-momentum:my-library"));
@@ -716,7 +716,7 @@ test("site searches, adds synonyms, sends explore parent, and restores the last 
   let data;
   const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => data }; });
   data = report(app);
-  app.get("topic-input").value = "fixture topic";
+  app.get("topic-input").value = "fixture topic"; app.get("topic-input").listeners.input();
   app.get("synonyms-input").value = "alternate, alternate";
   app.submit();
   assert.equal(app.get("status").textContent, "Loading research data…");
@@ -787,7 +787,7 @@ test("sub-topic titles retain parent input terms; typing a new topic clears syno
   let data;
   const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => data }; });
   data = report(app);
-  app.get("topic-input").value = "Parent Topic";
+  app.get("topic-input").value = "Parent Topic"; app.get("topic-input").listeners.input();
   app.get("synonyms-input").value = "first, second";
   app.submit();
   await settle();
@@ -829,7 +829,7 @@ test("report hashes support parent links, browser Back/Forward, and parent form 
   let data;
   const app = setup(async (url) => { calls.push(new URL(url)); return { ok: true, json: async () => data }; });
   data = report(app);
-  app.get("topic-input").value = "Parent Topic";
+  app.get("topic-input").value = "Parent Topic"; app.get("topic-input").listeners.input();
   app.get("synonyms-input").value = "alternate";
   app.submit();
   await settle();
@@ -1103,15 +1103,15 @@ test("tooltips use the approved exact copy and natural period phrases", async ()
 test("New topic uses the actual range or five-year baseline, persists in summaries and suppresses headline rates", async () => {
   let data;
   const app=setup(async(url)=>({ok:true,json:async()=>new URL(url).pathname==='/api/library'?[]:data}));
-  for(const [from,to,baseline,count,newTopic]of [[2020,null,2020,19,true],[2020,null,2020,20,false],[2025,null,2020,19,true],[2025,null,2020,20,false],[2015,2020,2015,0,true]]) {
+  for(const [from,to,baseline,count,newTopic]of [[2020,null,2020,19,true],[2020,null,2020,20,false],[2025,null,2020,19,true],[2025,null,2020,20,false],[2015,2020,2015,0,false]]) {
     data={...report(app),id:`fixture topic|range:${from}-${to||2026}`,from,to,kpis:{...report(app).kpis,growth:.5,growthLabel:from===2025?'5-year growth':`Growth ${from}–${to||2025}`},headline:'Since 2020, research on fixture topic has been accelerating (+50.0% a year).'};
     data.years=data.years.map(item=>item.year===baseline?{...item,count}:item);
     app.submit();await settle();
     const kpis=app.get('kpis').innerHTML;
     assert.equal(kpis.includes('>New topic<span class="help"'),newTopic);
-    assert.equal(app.get('headline').textContent.includes('+50%'),!newTopic);
+    if(count)assert.equal(app.get('headline').textContent.includes('+50%'),!newTopic);
     const entry=JSON.parse(app.stored.get('topic-momentum:my-library')).find(e=>e.id===data.id);
-    assert.equal(entry.growthStartCount,count);
+    assert.equal(entry.growthStartCount,count || data.years.find(item=>item.year>baseline && item.year<(to || 2025) && item.count>0).count);
     app.navigate('#library');await settle();
     const row=app.get('library-cards').innerHTML.split('data-report-id="'+data.id+'"')[1].split('</div></article>')[0];
     assert.equal(row.includes('New topic'),newTopic);
@@ -1264,7 +1264,7 @@ test("sub-topic arrow counts explain tiny bases only in the card tooltip",async(
 
 test('loading copy changes only when the normalized query has more than five Boolean operators',async()=>{
  for(const [syn,include,complex]of [['','a,b,c,d,e',false],['','a,b,c,d,e,f',true],['alias','a,b,c,d,e',true],['alias,ALIAS,topic','a,A',false]]){
-  let finish;const app=setup(()=>new Promise(resolve=>{finish=resolve}));app.get('topic-input').value='topic';app.get('synonyms-input').value=syn;app.get('include-input').value=include;app.submit();
+  let finish;const app=setup(()=>new Promise(resolve=>{finish=resolve}));app.get('topic-input').value='topic'; app.get("topic-input").listeners.input();app.get('synonyms-input').value=syn;app.get('include-input').value=include;app.submit();
   assert.equal(app.get('status').textContent,complex?'This search is more complex, so it takes a little longer…':'Loading research data…');
   finish({ok:true,json:async()=>report(app)});await settle();assert.equal(app.get('status').textContent,'Research data loaded.');
  }
@@ -1622,7 +1622,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
   const app = setup(fetch, null, "#search", null, true);
   app.get("topic-input").value = ai.sentence; app.get("topic-input").listeners.input();
   app.submit(); await settle(); await settle();
-  assert.equal(calls[0].url.pathname, "/api/search"); assert.equal(calls[0].url.search, "");
+  assert.equal(calls[0].url.pathname, "/api/search"); assert.equal(calls[0].url.search, "?phase=prepare");
   assert.equal(calls[0].options.method, "POST");
   assert.deepEqual(JSON.parse(calls[0].options.body), { sentence: ai.sentence,placeMode:"authored" });
   assert.match(app.get("understanding-line").textContent, /Checked: 23 of 25 sample papers on-topic/);
@@ -1776,7 +1776,7 @@ test("three include groups retain every predicate through sub-topics, back links
   const calls=[];let app;
   const fetch=url=>preciseResponse(app,url,calls);
   app=setup(fetch);
-  app.get("topic-input").value="inheritance";
+  app.get("topic-input").value="inheritance"; app.get("topic-input").listeners.input();
   app.get("include-input").value="gulf states, emirati";
   app.get("add-include-group").listeners.click();
   app.get("include-input-2").value="children, child";
@@ -1856,6 +1856,7 @@ test("named groups keep compact titles, full RFC-4180 CSV groups and suggestion 
   let app;const calls=[];
   app=setup(url=>preciseResponse(app,url,calls));
   app.get("topic-input").value="inheritance";
+  app.get("topic-input").listeners.input();
   app.get("gcc-preset").listeners.click();
   app.get("add-include-group").listeners.click();
   app.get("include-input-2").value=app.context.TMM_SEARCH_PRESETS.children.terms.join(", ");
@@ -1907,7 +1908,7 @@ test("multi-group complexity switches loading copy at six joins and suggestions 
     const data=await response.json();
     return {ok:true,json:async()=>({...data,suggestedSynonyms:["children","gulf states","Neural weave"]})};
   });
-  app.get("topic-input").value="inheritance";
+  app.get("topic-input").value="inheritance"; app.get("topic-input").listeners.input();
   app.get("include-input").value="children, child, infant";
   app.get("add-include-group").listeners.click();
   app.get("include-input-2").value="gulf states, emirati";
@@ -1968,10 +1969,10 @@ test("checked evidence labels, low precision and trend warnings survive renderin
   assert.match(app.get("understanding-line").textContent,/Checked: 13 of 20/);
   assert.match(app.get("understanding-line").textContent,/Earlier: 40%; later: 90%/);
   assert.equal(app.get("evidence-notice").hidden,false);
-  assert.match(app.get("evidence-notice").textContent,/Few papers match/);assert.match(app.get("evidence-notice").textContent,/trend may be distorted/);
-  assert.match(app.get("headline").textContent,/may be off-topic/);
+  assert.match(app.get("evidence-notice").textContent,/Few papers match/);assert(!app.get("evidence-notice").textContent.includes("distorted"));
+  assert(!app.get("headline").textContent.includes("off-topic"));
   const restored=setup(()=>assert.fail("No network"),app.stored.get("topic-momentum:last-topic"));
-  assert.equal(restored.get("papers-heading").textContent,"Key papers");assert.match(restored.get("headline").textContent,/may be off-topic/);
+  assert.equal(restored.get("papers-heading").textContent,"Key papers");assert(!restored.get("headline").textContent.includes("off-topic"));
 });
 
 test("legacy semantic reports never show unverified papers or experts", () => {
@@ -1988,7 +1989,7 @@ for(const question of ["social media, kids, attention","Is children’s mental h
   const seed=setup(()=>assert.fail("No requests"));
   const app=setup(async()=>({ok:false,status:503,json:async()=>({error:"ai_unavailable",message,aiReason:"daily_ai_limit"})}),JSON.stringify(report(seed)),"#search",null,true);
   app.get("topic-input").value=question;app.get("topic-input").listeners.input();app.submit();await settle();await settle();
-  assert.equal(app.get("status").textContent,message);assert.equal(app.get("report-stage").hidden,true);
+  assert.equal(app.get("status").textContent,message);assert.equal(app.get("report-stage").hidden,false);
   assert(!app.get("papers").innerHTML.includes('<article'));assert(!app.get("experts").innerHTML.includes('class="rank-name"'));
   assert(!app.get("understanding-line").textContent.includes("Quick mode"));
 });
@@ -2052,7 +2053,7 @@ test("year boxes and the AI check switch steer Measure momentum", async () => {
   assert.equal(requests[0].body.sentence, "autism in Europe since 2018");
   assert.equal(requests[0].url.includes("/api/search"), true);
 });
-test("a failed AI interpretation is retried once, then falls back to the plain search with the unmatched words", async () => {
+test("non-transient count preparation errors never retry or start a second report", async () => {
   const calls = [];
   const app = setup(async (url, options = {}) => {
     const post = options.method === "POST"; calls.push(post ? "ai" : "plain");
@@ -2062,5 +2063,61 @@ test("a failed AI interpretation is retried once, then falls back to the plain s
   app.context.setTimeout = (fn, ms) => { if (!ms) setImmediate(fn); return 1; };
   app.get("topic-input").value = "artificial intelligence in healthcare since 2020"; app.get("topic-input").listeners.input();
   app.submit(); for (let i = 0; i < 6; i++) { await settle(); await new Promise(resolve => setTimeout(resolve, 15)); }
-  assert.deepEqual(calls.slice(0, 3), ["ai", "ai", "plain"], "one retry, then the plain search");
+  assert.deepEqual(calls, ["ai"], "a non-transient error does not retry or start another report");
+});
+
+function stagedReport(app){
+ return {...report(app),papers:[],experts:[],papersKind:"unavailable",evidenceKey:"ai:prepared:v1:offline-fixture",understanding:{mode:"planned",labels:{topic:"fixture topic",synonyms:[]},check:null}};
+}
+function checkedReport(counts){
+ return {...counts,papersKind:"checked",papers:[{title:"A relevant checked paper",year:2025,citations:40,authors:"Research author",journal:"Research journal"}],experts:[{name:"Research author",count:12}],evidence:{version:3,accepted:1,candidates:2,notices:[]},understanding:{mode:"ai",labels:{topic:"fixture topic",synonyms:[]},check:{matched:18,total:20,early:{matched:9,total:10},late:{matched:9,total:10}}}};
+}
+test("counts render before deferred evidence, which cannot replace the numbers",async()=>{
+ let counts,finish;const calls=[];
+ const app=setup(async(url,options)=>{
+  const phase=new URL(url).searchParams.get("phase");calls.push({phase,body:JSON.parse(options.body)});
+  if(phase==="prepare")return {ok:true,json:async()=>counts};
+  return new Promise(resolve=>{finish=resolve;});
+ },null,"#search",null,true);counts=stagedReport(app);
+ app.get("topic-input").value="fixture topic";app.get("topic-input").listeners.input();app.submit();await settle();
+ assert.equal(app.get("report-stage").hidden,false);assert.match(app.get("evidence-status").innerHTML,/Your numbers are ready/);
+ const numbers=app.get("kpis").innerHTML;assert.equal(calls[1].body.id,counts.id);assert.equal(calls[1].body.key,counts.evidenceKey);
+ const checked=checkedReport(counts);checked.kpis={...counts.kpis,total:999999};
+ finish({ok:true,json:async()=>checked});await settle();await settle();
+ assert.equal(app.get("kpis").innerHTML,numbers);assert.match(app.get("papers").innerHTML,/relevant checked paper/);assert.equal(app.get("evidence-status").hidden,true);
+});
+for(const reason of ["ai_call_timeout","ai_total_deadline","ai_provider_error","ai_bad_json"])test("evidence retries a transient failure once while keeping counts: "+reason,async()=>{
+ let counts,attempts=0;const app=setup(async(url)=>{
+  if(new URL(url).searchParams.get("phase")==="prepare")return {ok:true,json:async()=>counts};
+  attempts++;return attempts===1?{ok:false,json:async()=>({aiReason:reason,message:"Temporary check failure"})}:{ok:true,json:async()=>checkedReport(counts)};
+ },null,"#search",null,true);counts=stagedReport(app);
+ app.get("topic-input").value="fixture topic";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+ assert.equal(attempts,2);assert.equal(app.get("report-stage").hidden,false);assert.match(app.get("papers").innerHTML,/relevant checked paper/);
+});
+for(const reason of ["daily_ai_limit","daily_neuron_limit","source_request_limit","rephrase_required"])test("daily and request limits retain counts and offer manual Retry without automatic retry: "+reason,async()=>{
+ let counts,attempts=0;const app=setup(async(url)=>{
+  if(new URL(url).searchParams.get("phase")==="prepare")return {ok:true,json:async()=>counts};
+  attempts++;return {ok:false,json:async()=>({aiReason:reason,message:"Specific limit reason"})};
+ },null,"#search",null,true);counts=stagedReport(app);
+ app.get("topic-input").value="fixture topic";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+ assert.equal(attempts,1);assert.equal(app.get("report-stage").hidden,false);assert.match(app.get("evidence-status").innerHTML,/Specific limit reason/);assert.match(app.get("evidence-status").innerHTML,/Retry AI check/);
+ app.click({retryEvidence:"true"});await settle();assert.equal(attempts,2);
+});
+test("a stale evidence response cannot replace a newly typed topic",async()=>{
+ let counts,finish;const app=setup(async(url)=>new URL(url).searchParams.get("phase")==="prepare"?{ok:true,json:async()=>counts}:new Promise(resolve=>{finish=resolve;}),null,"#search",null,true);
+ counts=stagedReport(app);app.get("topic-input").value="fixture topic";app.get("topic-input").listeners.input();app.submit();await settle();
+ app.get("topic-input").value="battery recycling";app.get("topic-input").listeners.input();finish({ok:true,json:async()=>checkedReport(counts)});await settle();
+ assert.equal(app.get("topic-input").value,"battery recycling");assert(!app.get("papers").innerHTML.includes("relevant checked paper"));
+});
+test("new topic submitted without an input event cannot inherit old advanced chips",async()=>{
+ const calls=[];let data;const app=setup(async(url)=>{calls.push(new URL(url));return {ok:true,json:async()=>data};});
+ data={...report(app),synonyms:["old wording"],includeTerms:["islamic law"],excludeTerms:["old exclusion"],from:2017,to:2021};
+ app.submit();await settle();app.get("topic-input").value="battery recycling";app.submit();await settle();
+ const query=calls.at(-1).searchParams;assert.equal(query.get("syn"),"");assert.equal(query.has("include"),false);assert.equal(query.has("exclude"),false);assert.equal(query.get("from"),"2010");assert.equal(query.has("to"),false);
+});
+test("an explicit place overrides typed geography during the staged search",async()=>{
+ let body;const app=setup(async(_url,options)=>{body=JSON.parse(options.body);return {ok:false,json:async()=>({message:"Offline"})};},null,"#search",null,true);
+ app.get("place-select").listeners.change({target:{value:"mena"}});
+ app.get("topic-input").value="autism in Europe";app.get("topic-input").listeners.input();app.submit();await settle();
+ assert.equal(body.sentence,"autism in MENA");assert.equal(body.placeMode,"authored");
 });

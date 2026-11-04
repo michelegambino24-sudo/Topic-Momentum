@@ -87,8 +87,9 @@ test("range CAGR, fallback growth and totals use the right endpoints while prese
     if (to !== "") assert(!report.headline.includes("published in 2025") || to === 2025);
   }
   const zeroBaseline = shapeTopic(query(2010, 2020), data, date);
-  assert.equal(zeroBaseline.kpis.growth, null);
-  assert.equal(zeroBaseline.kpis.momentum, "Not enough data");
+  assert.equal(zeroBaseline.kpis.growth, 10 ** .2 - 1);
+  assert.equal(zeroBaseline.kpis.growthStartYear,2015);
+  assert.equal(zeroBaseline.kpis.momentum, "Accelerating");
 });
 
 test("range identities combine with include groups and children, and distinguish explicit current-year ends", () => {

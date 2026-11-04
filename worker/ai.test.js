@@ -371,11 +371,11 @@ test("the exact social-media/kids/attention failure never shows rejected papers 
   assert.deepEqual(result.experts.map(({name,count})=>({name,count})),[{name:"Relevant researcher",count:120}]);
   assert.equal(result.experts[0].openalexUrl, "https://openalex.org/A780000001");
   assert.equal(result.understanding.check.matched, 13); assert.equal(result.understanding.check.total,20);
-  assert(result.understanding.check.lowPrecision); assert(result.understanding.check.trendDistorted);
+  assert.equal(result.understanding.check.lowPrecision,false); assert(result.understanding.check.trendDistorted);
   assert(result.evidence.notices.includes("Few papers match this question exactly"));
-  assert(result.evidence.notices.includes("Many matching papers may be off-topic; narrow the search for reliable numbers"));
-  assert(result.evidence.notices.includes("The trend may be distorted by off-topic papers."));
-  assert.match(result.headline,/may be off-topic/);
+  assert(!result.evidence.notices.includes("Many matching papers may be off-topic; narrow the search for reliable numbers"));
+  assert(!result.evidence.notices.includes("The trend may be distorted by off-topic papers."));
+  assert(!result.headline.includes("off-topic"));
   const core = JSON.parse(app.kv.values.get("v4:topic:"+result.id)).topic;
   assert.deepEqual(result.kpis,core.kpis); assert.deepEqual(result.years,core.years); assert.deepEqual(result.countries,core.countries);
   assert(!core.evidence); assert(!core.understanding);

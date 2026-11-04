@@ -268,7 +268,7 @@ test("normal searches and saved links rebuild fresh v1 reports into v2 without c
     assert.equal(topic.cached, false);
     assert.equal(topic.from, 2010);
     assert.equal(topic.to, null);
-    assert.equal(topic.kpis.growthLabel, "Growth 2010–2025");
+    assert.equal(topic.kpis.growthLabel, "5-year growth");
     assert.equal(app.state.calls, 14);
     assert.equal(app.kv.values.get("topic:lunar moss computing"), original);
     assert.deepEqual(app.kv.writes.map((entry) => entry.key), ["count:2026-10-31", "v4:topic:lunar moss computing", "library"]);

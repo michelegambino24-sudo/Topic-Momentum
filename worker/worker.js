@@ -94,7 +94,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                   stage = "pacing";
                   const start = () => pace(controller.signal, complex, () => {
                     if (controller.signal.aborted) throw new Error("Request cancelled");
-                    if (session.requests >= MAX_SOURCE_REQUESTS + (session.allowance || 0)) throw complexityError(429);
+                    if (session.requests >= MAX_SOURCE_REQUESTS) throw complexityError(429);
                     session.bump?.("source");
                     session.requests++;
                     stage = "fetch";
@@ -304,7 +304,13 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
         let input;
         try { const text = await request.text(); if (new TextEncoder().encode(text).length > 16384) throw new Error(); input = JSON.parse(text); }
         catch { return error("invalid_query", "Send a search sentence as JSON and try again.", 400); }
-        const result = await aiService.search(input, env, async (query, activeEnv, session) => {
+        const phase=url.searchParams.get("phase");
+        if(phase!==null && !["prepare","evidence"].includes(phase))return error("invalid_query","Choose a valid search step.",400);
+        if(phase==="evidence"){
+          const result=await aiService.evidence(input,env);
+          return respond(result.body,result.status);
+        }
+        const result = await aiService[phase==="prepare"?"prepare":"search"](input, env, async (query, activeEnv, session) => {
           const result = await topicResponse(new URL("https://worker.invalid/api/topic?" + queryParams(query)), activeEnv, respond, error, session);
           return { body: await result.json(), status: result.status };
         });

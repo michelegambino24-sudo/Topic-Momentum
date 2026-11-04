@@ -7,6 +7,7 @@
   const reports = new Map();
   let requestVersion = 0;
   let requestController;
+  let evidenceController, evidenceState=null;
   let pendingClarification = null;
   const storageKey = "topic-momentum:last-topic";
   const myLibraryKey = "topic-momentum:my-library";
@@ -593,9 +594,10 @@
       $("from-input").value = String(parsed.from); $("to-input").value = parsed.to === null ? "" : String(parsed.to);
       showDraftFrom = parsed.explicitRange;
     } else {
-      if (parsed.includeGroups.length) setIncludeGroups(parsed.includeGroups);
-      if (parsed.synonyms.length) $("synonyms-input").value = parsed.synonyms.join(", ");
-      if (parsed.explicitRange) { $("from-input").value = String(parsed.from); $("to-input").value = parsed.to === null ? "" : String(parsed.to); showDraftFrom = true; }
+      // A different topic starts a fresh query, including when its input event was missed.
+      activeExclusions=[];activeAuthored=[];activeUnderstandingKey="";activeSubfield="";draftPlace=null;
+      $("synonyms-input").value=parsed.synonyms.join(", ");setIncludeGroups(parsed.includeGroups);
+      $("from-input").value=String(parsed.from);$("to-input").value=parsed.to===null?"":String(parsed.to);showDraftFrom=parsed.explicitRange;
     }
     if(parsed.resolvedPlace){draftPlace=parsed.resolvedPlace.matches.length?parsed.resolvedPlace:null;activeAuthored=draftPlace?.mode==="authored"?draftPlace.codes:[];}
     applyPickedPlace();
@@ -657,7 +659,7 @@
     const end = Math.min(range.to ?? year - 1, year - 1);
     const label = report.kpis?.growthLabel ?? report.growthLabel;
     const useRange = label && label !== "5-year growth" && end - range.from + 1 >= 3;
-    const growthStartYear = useRange ? range.from : end - 5;
+    const growthStartYear = report.kpis?.growthStartYear ?? report.growthStartYear ?? (useRange ? range.from : end - 5);
     const growthEndYear = end;
     const countFor = (target) => {
       if (Array.isArray(report.years)) return report.years.find((item) => item.year === target)?.count;
@@ -668,6 +670,18 @@
     return {growthStartYear, growthEndYear, growthStartCount:countFor(growthStartYear), growthEndCount:countFor(growthEndYear)};
   }
   function repairBoundedGrowth(report) {
+    if(report.kpis && Array.isArray(report.years)){
+      const range=reportRange(report),end=Math.min(range.to ?? Number(report.updated.slice(0,4))-1,Number(report.updated.slice(0,4))-1);
+      const start=report.kpis.growthStartYear ?? (end-range.from+1>=3?range.from:end-5);
+      if(report.years.find(item=>item.year===start)?.count===0){
+        const baseline=report.years.filter(item=>item.year>=Math.max(start,end-5)&&item.year<end&&item.count>0).sort((a,b)=>a.year-b.year)[0];
+        const last=report.years.find(item=>item.year===end)?.count;
+        if(baseline && Number.isFinite(last)){
+          const value=Math.pow(last/baseline.count,1/(end-baseline.year))-1;
+          return {...report,kpis:{...report.kpis,growth:value,growthStartYear:baseline.year,growthLabel:baseline.year===end-5?"5-year growth":`Growth ${baseline.year}–${end}`,momentum:value>=.2?"Accelerating":value>=.08?"Growing":value>=0?"Stable":"Cooling"}};
+        }
+      }
+    }
     if (report.to == null || !report.kpis || !Array.isArray(report.years)) return report;
     const range = reportRange(report), year = Number(report.updated.slice(0,4));
     const end = Math.min(range.to, year - 1);
@@ -753,7 +767,7 @@
       if (report.regionalCounts?.uae === 0) sentence = sentence.replace("from the GCC (0 from the UAE).", "from the GCC, none from the UAE.");
       sentence = sentence.replace(/([+−-]?)(\d+(?:\.\d+)?)%/g, (_, sign, value) => percent((sign === "-" || sign === "−" ? -1 : 1) * Number(value) / 100));
     }
-    if (report.understanding?.check?.lowPrecision) sentence = "These counts match the search terms, but many papers may be off-topic. Narrow the search before drawing conclusions.";
+    if (report.understanding?.check?.total>=10 && report.understanding.check.matched/report.understanding.check.total<.3 && (report.papers || []).length<3) sentence = "The title-only sample found few direct matches. The figures count papers matching your search terms.";
     return { ...report, name, ...(sentence ? { headline: sentence } : {}), ...(report.journals ? { journals: report.journals.map((item) => ({...item, name: normalJournalName(item.name)})) } : {}), ...(report.papers ? { papers: report.papers.map((item) => ({...item, journal: normalJournalName(item.journal)})) } : {}) };
   }
 
@@ -854,8 +868,8 @@
     if (context?.mode === "unavailable" || context?.mode === "quick") parts.push("AI checks unavailable.");
     else if (context?.check) {
       const { matched, total } = context.check;
-      parts.push(total ? `Checked: ${matched} of ${total} sample papers on-topic${matched / total < .7 ? " (low match)" : ""}.` : "No sample titles available to check.");
-    } else parts.push("Search changed; not checked.");
+      parts.push(total ? `Checked: ${matched} of ${total} sample papers on-topic${total>=10 && matched/total<.3 && (topic.papers || []).length<3 ? " (low match)" : ""}.` : "No sample titles available to check.");
+    } else parts.push(context?.mode==="planned"?"Counts use these terms; paper checking is separate.":"Search changed; not checked.");
     if (context?.check?.early && context?.check?.late) {
       const share = period => period.total ? Math.round(period.matched / period.total * 100) + "%" : "unavailable";
       parts.push("Earlier: " + share(context.check.early) + "; later: " + share(context.check.late));
@@ -870,7 +884,7 @@
     $("report-source").textContent = isSample ? "Sample data" : "";
     $("data-notice").textContent = isSample ? "Fictional research and illustrative numbers." : "Data from OpenAlex. Searches are cached anonymously to keep the tool free.";
     $("report-freshness").textContent = isSample ? "" : `${topic.stale ? "Saved on " + dateText(topic.updated) + ", may be out of date." : "Updated " + dateText(topic.updated) + "."}${topic.subtopicId ? " Part of " + (topic.searchTerms?.name || topic.parentName || topic.name) + "." : ""}`;
-    $("topic-input").value = topic.searchTerms?.name || topic.name;
+    $("topic-input").value = (topic.evidenceKey || topic.understanding?.mode==="planned") && topic.understanding?.sentence ? topic.understanding.sentence : topic.searchTerms?.name || topic.name;
     $("synonyms-input").value = isSample ? "" : (topic.searchTerms?.synonyms || topic.synonyms).join(", ");
     $("from-input").value = String(reportRange(topic).from);
     $("to-input").value = reportRange(topic).to === null ? "" : String(reportRange(topic).to);
@@ -878,9 +892,9 @@
     activeSubfield = topic.subfieldId || "";
     activeExclusions = topic.excludeTerms || []; activeAuthored = topic.authoredCodes || [];
     activeUnderstandingKey = topic.understanding?.key || topic.understandingKey || "";
-    pickedPlace = null; advancedDirty = false;
+    advancedDirty = false;
     draftPlace = topic.understanding?.place || (topic.placeIds?.length?globalThis.TMM_PLACES.describe(topic.placeIds,topic.placeMode):null); manualDraft = !isSample;
-    sentenceText = $("topic-input").value; draftTopic = sentenceText; draftErrors = []; draftNote = topic.understanding?.note || ""; draftLabels = []; showDraftFrom = reportRange(topic).from !== 2010;
+    sentenceText = $("topic-input").value; draftTopic = topic.searchTerms?.name || topic.name; draftErrors = []; draftNote = topic.understanding?.note || ""; draftLabels = []; showDraftFrom = reportRange(topic).from !== 2010;
     $("narrow-input").value = ""; narrowText = ""; narrowDraft = null;
     $("narrow-understood").innerHTML = ""; $("narrow-note").textContent = ""; $("narrow-note").hidden = true;
     syncOptions(true);
@@ -934,7 +948,7 @@
       if (checked) { $("experts-source-note").hidden = true; $("experts-note").textContent = "Authors ranked by their real OpenAlex paper counts for this field. Each shown author has at least one matching paper whose title passed the question check."; }
     }
     $("experts-check-note").hidden = isSample;
-    const notices = checked ? (topic.evidence?.notices || []) : [];
+    const notices = checked ? (topic.evidence?.notices || []).filter(note=>!(/off-topic|distorted/i.test(note)) || topic.understanding.check.total>=10 && topic.understanding.check.matched/topic.understanding.check.total<.3 && (topic.papers || []).length<3) : [];
     $("evidence-notice").hidden = !notices.length;
     $("evidence-notice").textContent = notices.join(" ") + (checked && (topic.evidence?.accepted < 3 || topic.experts.length < 3) ? " Try a more specific research phrase, population or year range." : "");
     const countsOnly = topic.subtopicWindow?.countsOnly ?? (topic.period === 2025);
@@ -1322,13 +1336,41 @@
   }
 
   let lastSearchOk = false;
+  function evidenceStatus(message,retry=false){
+    const node=$("evidence-status");node.hidden=!message;
+    node.innerHTML=escape(message)+(retry?' <button type="button" data-retry-evidence="true">Retry AI check</button>':'');
+  }
+  async function loadEvidence(key,id,version,attempt=0){
+    if(version!==requestVersion || topic.id!==id || window.AI_SEARCH_ENABLED===false)return;
+    evidenceState={key,id,version,loading:true};
+    evidenceStatus(attempt?"Retrying the AI paper check… Your numbers are ready.":"Your numbers are ready. Checking key papers and leading experts…");
+    const controller=new AbortController();evidenceController=controller;
+    const timer=setTimeout(()=>controller.abort(),100000);
+    try{
+      const url=new URL(window.WORKER_URL.replace(/\/$/,"")+"/api/search?phase=evidence");
+      const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},signal:controller.signal,body:JSON.stringify({key,id})});
+      const data=await response.json();
+      if(version!==requestVersion || topic.id!==id)return;
+      if(!response.ok || data.papersKind!=="checked")throw Object.assign(new Error(data.message || "The AI model did not finish the paper check. Your numbers are still available."),{reason:data.aiReason || data.error});
+      if(data.id!==id)throw new Error("The paper check returned a different search. Your numbers are still available.");
+      topic={...topic,papers:data.papers,experts:data.experts,papersKind:data.papersKind,evidence:data.evidence,understanding:data.understanding,aiUsage:data.aiUsage};
+      renderTopic();rememberReport();evidenceStatus("");evidenceState=null;
+    }catch(error){
+      if(version!==requestVersion || topic.id!==id || window.AI_SEARCH_ENABLED===false)return;
+      const reason=controller.signal.aborted?"ai_call_timeout":error.reason;
+      const transient=["ai_call_timeout","ai_total_deadline","ai_provider_error","ai_bad_json","ai_validation"].includes(reason);
+      if(attempt===0 && transient){await loadEvidence(key,id,version,1);return;}
+      evidenceState={key,id,version,loading:false};
+      evidenceStatus((controller.signal.aborted?"The AI paper check timed out. Your numbers are still available.":error.message)+" Counts stay unchanged.",true);
+    }finally{clearTimeout(timer);}
+  }
   async function search(name = $("topic-input").value, terms = synonyms(), selection = null, fromRoute = false, cacheOnly = false, include = readIncludeGroups(), from = $("from-input").value, to = $("to-input").value, subfield = activeSubfield, refinementBack = null, options = {}) {
     if (busy) return;
     const useAI = typeof options.sentence === "string" && (window.AI_SEARCH_ENABLED !== false || Boolean(options.mode));
     const exclusions = options.excludeTerms ?? activeExclusions, authored = options.authoredCodes ?? activeAuthored;
     const placeIds=options.placeIds ?? draftPlace?.ids ?? [],placeMode=options.mode || options.placeMode || draftPlace?.mode || "authored";
     const understandingKey = options.understandingKey ?? activeUnderstandingKey;
-    if (!useAI || options.mode) {
+    if (!useAI || options.mode || options.manual) {
     if (!name.trim()) { notify("Enter a research topic and try again.", true); return; }
     const currentYear = new Date().getFullYear();
     if (!/^\d{4}$/.test(String(from)) || Number(from) < 2000 || Number(from) > currentYear) { $("search-options").open = true; notify(`Enter a From year between 2000 and ${currentYear}.`, true); return; }
@@ -1344,16 +1386,8 @@
     setLoading(true);
     vanishQuery();
     const version = ++requestVersion;
+    evidenceController?.abort();evidenceState=null;evidenceStatus("");
     lastSearchOk = false;
-    // When the AI check cannot run or cannot finish, a plain keyword search still answers the question.
-    const plainFallback = reason => {
-      if (!useAI || options.mode || options.clarification || !String(name).trim()) return false;
-      setTimeout(async () => {
-        await search(name, terms, selection, fromRoute, cacheOnly, include, from, to, subfield, refinementBack, { ...options, sentence: undefined });
-        if (lastSearchOk) notify("The AI check could not run (" + reason + "), so this is a plain keyword search. Counts may include off-topic papers.", true);
-      }, 0);
-      return true;
-    };
     notify(useAI ? "Understanding and checking your search…" : queryOperatorCount(name, terms, include) > 5 ? "This search is more complex, so it takes a little longer…" : "Loading research data…", true);
     const controller = new AbortController();
     requestController = controller;
@@ -1377,12 +1411,13 @@
       if(placeIds.length){url.searchParams.set("places",globalThis.TMM_PLACES.tokens(placeIds).join(","));url.searchParams.set("placeMode",placeMode);}
       else if (authored.length) url.searchParams.set("authored", authored.join(","));
       if (understandingKey) url.searchParams.set("understanding", understandingKey);
-      const current = options.mode ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored,placeIds,placeMode,subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
+      const current = options.mode || options.manual ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored,placeIds,placeMode,subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
       if (useAI) url.search = "";
+      if(useAI && !options.mode && !options.clarification)url.searchParams.set("phase","prepare");
       let sentenceToSend = options.sentence;
       if (useAI && !options.mode && !options.clarification && typeof sentenceToSend === "string") sentenceToSend = composeSentence(sentenceToSend, from, to);
       let response;
-      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:sentenceToSend,...(draftPlace || options.placeMode?{placeMode}:{}), ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
+      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:sentenceToSend,...(draftPlace || options.placeMode?{placeMode}:{}), ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : options.manual?{current}:{})}) } : {}) }); }
       catch { throw new Error(connectionError()); }
       let data;
       try { data = await response.json(); }
@@ -1391,7 +1426,6 @@
         throw Object.assign(new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later."), { code: data.error, unmatched: Array.isArray(data.failingCheck?.missing) ? data.failingCheck.missing.filter(word => typeof word === "string").slice(0, 4) : [] });
       }
       if (version !== requestVersion) return;
-      if (useAI && data.papersKind === "unavailable" && plainFallback("the paper check did not finish")) return;
       if (useAI && data.planOnly) {
         pendingClarification = null; $("search-clarification").hidden = true;
         $("report-stage").hidden = true; $("papers").innerHTML = ""; $("experts").innerHTML = "";
@@ -1426,14 +1460,11 @@
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
       else if (saved) notify("Research data loaded.");
+      if(data.evidenceKey && useAI)void loadEvidence(data.evidenceKey,topic.id,version);
+      else if(data.evidenceMessage && useAI){evidenceState={id:topic.id,version,prepare:true,loading:false,sentence:options.sentence};evidenceStatus(data.evidenceMessage,true);}
     } catch (error) {
-      // The planner is a free model and can fail on one attempt and pass on the next: try once more before the plain search.
-      if (version === requestVersion && error.code === "rephrase_required" && useAI && !options.retried && !options.mode && !options.clarification && String(name).trim()) {
-        notify("Checking the question once more…", true);
-        setTimeout(() => search(name, terms, selection, fromRoute, cacheOnly, include, from, to, subfield, refinementBack, { ...options, retried: true }), 0);
-        return;
-      }
-      if (version === requestVersion && (!error.code || error.code === "rephrase_required") && plainFallback(error.code === "rephrase_required" ? "the question could not be fully interpreted" + (error.unmatched?.length ? "; not matched: " + error.unmatched.join(", ") : "") : String(error.message || "service problem").replace(/[.\s]+$/, "").slice(0, 120))) { /* plain search runs next */ } else if (version === requestVersion) { if(error.code === "ai_unavailable" || error.code === "rephrase_required") $("report-stage").hidden = true; notify((error.message || "The data service returned an unreadable report. Try again later.") + (error.code === "rephrase_required" && error.unmatched?.length ? " Not matched: " + error.unmatched.join(", ") + "." : ""), true); } }
+      if(version===requestVersion)notify(error.message || "The research counts could not load. Try again later.",true);
+    }
     finally {
       clearTimeout(timeout);
       if (version === requestVersion) setLoading(false);
@@ -1443,11 +1474,11 @@
   $("search-form").addEventListener("submit", (event) => {
     event.preventDefault();
     if (busy) return;
-    if ($("topic-input").value !== sentenceText) previewSentence();
-    if (window.AI_SEARCH_ENABLED !== false && !advancedDirty) {
+    if ($("topic-input").value !== sentenceText) previewSentence(true);
+    if (window.AI_SEARCH_ENABLED !== false) {
       if (!$("topic-input").value.trim()) { notify("Add a research topic, then try again.", true); return; }
       draftErrors = []; renderUnderstood();
-      search(draftTopic, synonyms(), null, false, false, readIncludeGroups(), $("from-input").value, $("to-input").value, activeSubfield, null, {sentence:$("topic-input").value});
+      search(draftTopic, synonyms(), null, false, false, readIncludeGroups(), $("from-input").value, $("to-input").value, activeSubfield, null, {sentence:$("topic-input").value,...(advancedDirty?{manual:true}:{})});
       return;
     }
     if (draftErrors.length) { notify(draftErrors[0], true); return; }
@@ -1465,6 +1496,7 @@
       aiToggle.checked = window.AI_SEARCH_ENABLED !== false;
       aiToggle.addEventListener("change", () => {
         window.AI_SEARCH_ENABLED = aiToggle.checked;
+        if(!aiToggle.checked){evidenceController?.abort();evidenceStatus("");}
         try { localStorage.setItem("tmm-ai-check", aiToggle.checked ? "on" : "off"); } catch { /* Optional convenience. */ }
         notify(aiToggle.checked ? "AI check on: experts and key papers are checked for relevance." : "AI check off: quick counts only, no checked experts or key papers.");
       });
@@ -1476,6 +1508,7 @@
     applyPickedPlace(); draftErrors = []; renderUnderstood();
   });
   $("topic-input").addEventListener("input", () => {
+    evidenceController?.abort();evidenceState=null;requestVersion++;evidenceStatus("");
     $("search-clarification").hidden = true; pendingClarification = null;
     previewSentence(true);
   });
@@ -1580,6 +1613,12 @@
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) { closeHelp(); return; }
+    if(button.dataset.retryEvidence!==undefined){
+      if(evidenceState && !evidenceState.loading){
+        if(evidenceState.prepare){search(draftTopic,synonyms(),null,false,false,readIncludeGroups(),$("from-input").value,$("to-input").value,activeSubfield,null,{sentence:evidenceState.sentence,manual:true});}
+        else void loadEvidence(evidenceState.key,evidenceState.id,evidenceState.version,1);
+      }return;
+    }
     if (button.dataset.help !== undefined) { openHelp(button); return; }
     closeHelp();
     if (button.dataset.clarify !== undefined) {

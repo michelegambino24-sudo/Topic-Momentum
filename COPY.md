@@ -608,3 +608,12 @@ This supersedes the generic AI-unavailable notice above.
 - Mentioned in title/abstract: Middle East (16 countries)
 - Worldwide (no place filter)
 - Keep the mode switch and remove button visible. Default to author locations unless the wording clearly studies the region as a subject. Switching modes keeps the same region. Explain in the tooltip that author mode uses member countries, while mentions mode uses the selected place names and demonyms.
+
+## Step 16 counts and separate paper check
+
+- Your numbers are ready. Checking key papers and leading experts…
+- Retrying the AI paper check… Your numbers are ready.
+- Retry AI check
+- Counts use these terms; paper checking is separate.
+- The title-only sample found few direct matches. The figures count papers matching your search terms.
+- Evidence failures retain the report and show their actual reason. Never describe a model failure as daily exhaustion. Never hide the numbers because papers or experts could not be checked.

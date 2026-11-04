@@ -51,7 +51,7 @@ test("variant titles and headlines preserve the combination and child-first inde
   const responses = Object.fromEntries(buildQueries(query, 2026).map(({ id }) => [id, fixture(id)]));
   const topic = shapeTopic(query, responses, date);
   assert.equal(topic.name, "neurotechnology + child / children · since 2010");
-  assert.match(topic.headline, /^Research on neurotechnology .* is a new topic:/);
+  assert.match(topic.headline, /^Since 2010, research on neurotechnology .* has been accelerating/);
   assert(topic.headline.includes("neurotechnology mentioning child or children"));
   let index = updateLibrary([], topic);
   assert.equal(index[0].variant, true);

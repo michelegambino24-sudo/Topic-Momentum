@@ -27,9 +27,10 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
     if(response instanceof Error)throw response;
     return {response,...(config.unmeasured?{}:{usage:{neurons:config.neurons?config.neurons(calls.length,data):2}})};
   }}};
-  const service=createAIService({now:()=>new Date("2026-11-04T12:00:00Z"),clock:config.clock||Date.now,waitForAI:config.waitForAI,locked:async(_kv,_key,fn)=>fn(),reserve:async()=>true,source:async descriptor=>{
+  const service=createAIService({now:()=>new Date("2026-11-04T12:00:00Z"),clock:config.clock||Date.now,waitForAI:config.waitForAI,locked:async(_kv,_key,fn)=>fn(),reserve:async()=>true,source:async (descriptor,_env,_session,query)=>{
     sourceCalls.push(descriptor);
     if(config.source)return config.source(descriptor);
+    if(descriptor.id==="expansionCount")return {meta:{count:config.total?config.total(query):100},results:[]};
     if(descriptor.id==="semanticPapers")return {results:[]};
     if(descriptor.id.startsWith("check"))return {results:[{...paper,id:descriptor.id==="checkearly"?"https://openalex.org/W2":"https://openalex.org/W3"}]};
     return {results:config.papers||[paper]};
@@ -558,8 +559,9 @@ test("a small result gets safe related wordings; broad, generic, duplicate and p
   const app = setup([complete()], [{ ok: true }], { expand: true, total: totals, synonyms: { terms: ["battery recovery", "learning", "battery recycling", "recycling in Egypt", "used cell reprocessing", "x"] } });
   const result = await app.search();
   assert.equal(result.status, 200);
-  assert.deepEqual(app.reportQueries.at(-1).synonyms, ["battery recovery", "used cell reprocessing"]);
-  assert(result.body.aiUsage.notes.some(note => note.startsWith("Added related wordings: battery recovery, used cell reprocessing")));
+  assert.deepEqual(app.reportQueries.at(-1).synonyms, []);
+  assert.equal(app.reportQueries.length,1);
+  assert(result.body.aiUsage.notes.some(note => note.startsWith("Related wordings to try: battery recovery, used cell reprocessing")));
   assert.equal(result.body.papersKind, "checked");
 });
 test("related wordings that multiply the count are discarded, and large results are never expanded", async () => {

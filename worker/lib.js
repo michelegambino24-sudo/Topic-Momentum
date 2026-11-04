@@ -323,13 +323,21 @@ export function dailyCap(value = 30) {
 export function growthWindow(report) {
   const range = rangeDetails(report, Number(report.updated.slice(0, 4)));
   const useRange = report.kpis.growthLabel !== "5-year growth" && report.from !== undefined && range.completeYears >= 3;
-  const growthStartYear = useRange ? range.from : range.lastComplete - 5;
+  const growthStartYear = report.kpis.growthStartYear ?? (useRange ? range.from : range.lastComplete - 5);
   const growthEndYear = range.lastComplete;
   return { growthStartYear, growthEndYear,
     growthStartCount: report.years.find((item) => item.year === growthStartYear)?.count,
     growthEndCount: report.years.find((item) => item.year === growthEndYear)?.count };
 }
 export function repairBoundedGrowth(report) {
+  if(report.kpis && Array.isArray(report.years)){
+    const range=rangeDetails(report,Number(report.updated.slice(0,4))),start=report.kpis.growthStartYear ?? (range.completeYears>=3?range.from:range.lastComplete-5);
+    const baseline=growthBaseline(report.years,start,range.lastComplete);
+    if(baseline!==start){
+      const value=growth(report.years.find(item=>item.year===baseline)?.count,report.years.find(item=>item.year===range.lastComplete)?.count,range.lastComplete-baseline);
+      return {...report,kpis:{...report.kpis,growth:value,growthStartYear:baseline,growthLabel:baseline===range.lastComplete-5?"5-year growth":`Growth ${baseline}–${range.lastComplete}`,momentum:momentum(value)}};
+    }
+  }
   if (report.to == null || !report.kpis || !Array.isArray(report.years)) return report;
   const range = rangeDetails(report, Number(report.updated.slice(0, 4)));
   const first = report.years.find((item) => item.year === range.lastComplete - 5)?.count;
@@ -626,7 +634,7 @@ export function presentReport(report) {
   }
 
   return { ...report, name, ...(report.kpis && Array.isArray(report.years) ? { refinements: refinementCandidates(report) } : {}),
-    ...(typeof report.headline === "string" ? { headline: report.understanding?.check?.lowPrecision ? "These counts match the search terms, but many papers may be off-topic. Narrow the search before drawing conclusions." : report.kpis && report.from !== undefined && Array.isArray(report.years)
+    ...(typeof report.headline === "string" ? { headline: report.understanding?.check?.total>=10 && report.understanding.check.matched/report.understanding.check.total<.3 && (report.papers || []).length<3 ? "The title-only sample found few direct matches. The figures count papers matching your search terms." : report.kpis && report.from !== undefined && Array.isArray(report.years)
       ? headline(reportLabel(report.headlineName || baseName, terms), { ...report.kpis, ...growthWindow(report) }, Math.max(report.from, Math.min(report.to ?? Number(report.updated.slice(0, 4)) - 1, Number(report.updated.slice(0, 4)) - 1)), report.regionalCounts, report.kpis.total, report, terms)
       : legacyHeadline } : {}),
     ...(Array.isArray(report.suggestedSynonyms) ? { suggestedSynonyms: filterSuggestedTerms(report.suggestedSynonyms, { name: baseName, synonyms: report.synonyms, ...includeFields(terms) }) } : {}) };
@@ -680,6 +688,10 @@ export function shapeRegionalCounts(uae, gcc) {
   if (![uae, gcc].every((response) => validCount(response?.meta?.count))) throw new Error("Invalid source response");
   return { uae: uae.meta.count, gcc: gcc.meta.count };
 }
+export function growthBaseline(years,start,end) {
+  if(years.find(item=>item.year===start)?.count!==0)return start;
+  return years.filter(item=>item.year>=Math.max(start,end-5)&&item.year<end&&item.count>0).sort((a,b)=>a.year-b.year)[0]?.year ?? start;
+}
 
 export function shapeTopic(query, responses, date) {
   const currentYear = date.getUTCFullYear();
@@ -688,10 +700,12 @@ export function shapeTopic(query, responses, date) {
   const countFor = (year) => years.find((item) => item.year === year)?.count ?? 0;
   const growth5y = growth(countFor(range.lastComplete - 5), countFor(range.lastComplete), 5);
   const rangeGrowth = range.completeYears >= 3;
-  const selectedGrowth = rangeGrowth ? growth(countFor(range.from), countFor(range.lastComplete), range.lastComplete - range.from) : growth5y;
-  const growthLabel = rangeGrowth ? `Growth ${range.from}–${range.lastComplete}` : "5-year growth";
+  const originalStart=rangeGrowth?range.from:range.lastComplete-5;
+  const growthStartYear=growthBaseline(years,originalStart,range.lastComplete);
+  const selectedGrowth = growth(countFor(growthStartYear), countFor(range.lastComplete), range.lastComplete-growthStartYear);
+  const growthLabel = growthStartYear!==originalStart ? growthStartYear===range.lastComplete-5?"5-year growth":`Growth ${growthStartYear}–${range.lastComplete}` : rangeGrowth ? `Growth ${range.from}–${range.lastComplete}` : "5-year growth";
   const kpis = { total: years.filter((item) => item.year >= range.from && item.year <= range.end).reduce((sum, item) => sum + item.count, 0),
-    lastYear: countFor(range.completeYears ? range.lastComplete : range.end), growth5y, growth: selectedGrowth, growthLabel, momentum: momentum(selectedGrowth) };
+    lastYear: countFor(range.completeYears ? range.lastComplete : range.end), growth5y, growth: selectedGrowth, growthLabel, ...(growthStartYear!==originalStart?{growthStartYear}:{}), momentum: momentum(selectedGrowth) };
   const subtopicCountsOnly = range.completeYears < 2;
   const subtopics = shapeSubtopics(responses.early, responses.late).map((item) => subtopicCountsOnly ? { ...item, growth: null } : item);
   const regionalCounts = shapeRegionalCounts(responses.uae, responses.gcc);
@@ -767,7 +781,7 @@ export function reliabilitySamples(query, year, seed = 1) {
 }
 export function reliabilityCheck(early, late) {
   const matched = early.matched + late.matched, total = early.total + late.total;
-  const lowPrecision = total > 0 && matched / total < .7;
+  const lowPrecision = total >= 10 && matched / total < .3;
   const trendDistorted = early.total > 0 && late.total > 0 && Math.abs(early.matched / early.total - late.matched / late.total) > .25 + Number.EPSILON;
   return { matched, total, early, late, lowPrecision, trendDistorted };
 }
@@ -841,6 +855,9 @@ export function dailyReset(date) {
   return {at:next.toISOString(),rome};
 }
 export function aiFailureMessage(reason, date) {
+  if(reason==="source_failed")return "The research source could not load papers for the AI check. Retry the check; your research counts are still available.";
+  if(["request_limit","source_request_limit","search_too_complex"].includes(reason))return "The paper check reached its request limit. Your research counts are still available.";
+  if(["ai_provider_error","checking_failed"].includes(reason))return "The AI model could not finish the paper check. Retry the check; your research counts are still available.";
   if (["daily_ai_limit", "daily_neuron_limit"].includes(reason)) return `Today's AI checks are used up. They reset at ${dailyReset(date).rome} (Rome time). Saved reports and the Library still work.`;
   if (reason === "search_neuron_limit") return "This question needs more AI checking than one search allows. Shorten the question and try again. Saved reports and the Library still work.";
   if (["ai_timeout","ai_call_timeout"].includes(reason)) return "An AI call took too long. Try again later. Saved reports and the Library still work.";
@@ -1220,6 +1237,7 @@ export function expansionTerms(candidates, raw, sentence = "", limit = 4) {
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;
     const term = cleanTerm(candidate);
+    if(isBroadSynonym(raw.topic,term))continue;
     const words = term.split(" ").filter(Boolean);
     if (!term || term.length > 60 || words.length < 2 || words.length > 4) continue;
     if (!words.every(word => /^[a-z0-9][a-z0-9-]*$/.test(word))) continue;
@@ -1230,4 +1248,7 @@ export function expansionTerms(candidates, raw, sentence = "", limit = 4) {
     if (out.length === limit) break;
   }
   return out;
+}
+export function isBroadSynonym(topic,term){
+  return /^(?:artificial intelligence|ai)$/i.test(topic.trim()) && /^(?:machine learning|deep learning|data science|technology|computer science)$/i.test(term.trim());
 }
