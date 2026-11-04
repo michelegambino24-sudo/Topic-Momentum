@@ -167,7 +167,7 @@ test("exactly 70 percent does not tighten; zero valid titles do not invent a per
 });
 
 test("invalid JSON, invalid plans, quota and timeout stop after one retry with no unchecked results", async()=>{
-  for(const reply of [data.invalidJSON,{...data.plan,unexpected:true},new Error(data.quotaError),()=>new Promise(()=>{})]){
+  for(const reply of [data.invalidJSON,{...data.plan,topic:null},new Error(data.quotaError),()=>new Promise(()=>{})]){
     const app=setup([reply,reply],{env:{AI_TIMEOUT_MS:"1"}}),response=await app.search();assert.equal(response.status,503);
     const body=await response.json();assert.equal(body.error,"ai_unavailable");assert(!body.papers);assert(!body.experts);assert(app.aiCalls.length>=1&&app.aiCalls.length<=2);assert.equal(app.calls.length,0);
     assert(![...app.kv.values.keys()].some(key=>key.startsWith("ai:search:")));
@@ -251,8 +251,8 @@ test("semantic membership constrains semantic candidates while cited matches are
   assert(app.calls.every(url => !url.searchParams.has("rerank")));
 });
 
-test("invalid tightening re-plans once and clarifies rather than silently keeping a disputed plan", async () => {
-  const wider = clone(data.plan); wider.years.from = 2010;
+test("topic-changing tightening re-plans once and asks for a rephrase", async () => {
+  const wider = clone(data.plan); wider.topic = "another research topic";
   const app = setup([data.plan, judgments(10), wider, wider]);
   const result = await (await app.search()).json();
   assert.equal(result.error,"rephrase_required"); assert(!result.clarification); assert(!result.papers);

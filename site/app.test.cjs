@@ -2013,3 +2013,12 @@ test("clarification shows one escaped question with native buttons, and submits 
  const html=source("app.html");assert.match(html,/id="search-clarification"[^>]*role="group"[^>]*aria-labelledby="clarification-question"/);
  const css=source("styles.css");assert.match(css,/search-clarification button\{min-height:44px/);assert.match(css,/search-clarification button:focus-visible/);
 });
+test("self-check advisory shows the returned plan persistently and hides old paper/expert lists",async()=>{
+ const seed=setup(()=>assert.fail("No requests"));
+ const message="Your search plan is ready, but its final AI self-check took too long.";
+ const app=setup(async()=>({ok:true,json:async()=>({planOnly:true,message,plan:{topic:"screen time <safe>",includeGroups:[{terms:["language development"]},{preset:"children"}],place:{codes:[],mode:"mentions"},years:{from:2020,to:null},excludeTerms:[]}})}),JSON.stringify(report(seed)),"#search",null,true);
+ app.get("topic-input").value="How is screen time research changing?";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
+ assert.equal(app.get("report-stage").hidden,true);assert.equal(app.get("status").hidden,false);
+ assert.match(app.get("status").textContent,/Search plan: screen time <safe>/);assert.match(app.get("status").textContent,/language development/);assert.match(app.get("status").textContent,/self-check took too long/);
+ assert.equal(app.get("papers").innerHTML,"");assert.equal(app.get("experts").innerHTML,"");assert.equal(app.get("search-clarification").hidden,true);
+});

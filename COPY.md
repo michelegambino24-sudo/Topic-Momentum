@@ -583,3 +583,14 @@ This supersedes the generic AI-unavailable notice above.
 - Timeout: The AI check took too long. Try again later. Saved reports and the Library still work.
 - Other AI failures: The AI check could not finish. Try again later or rephrase your question. Saved reports and the Library still work.
 - Unresolved coverage/self-check: Please rephrase your question so every requirement is clear. Return an error, not an empty clarification.
+
+- Invalid model JSON or unusable topic: The AI returned an invalid search plan. Rephrase your question and try again. Saved reports and the Library still work.
+
+
+## Step 16 timeout and plan-only notices
+
+- Call timeout: An AI call took too long. Try again later. Saved reports and the Library still work.
+- Total deadline: The search reached its total time limit. Try again later. Saved reports and the Library still work.
+- Call-count limit: This question needed too many AI checks. Shorten the question and try again. Saved reports and the Library still work.
+- Advisory self-check timeout: Your search plan is ready, but its final AI self-check took too long. Paper and expert lists are unavailable until the checks finish. Try the question again later.
+- Plan-only presentation: Search plan: {topic and filters}. {advisory notice} Display as plain text, persist the note and show no paper/expert list.

@@ -1,6 +1,6 @@
 // Pure query and response logic. No credentials or network calls belong here.
 import "../site/search-presets.js";
-import { COUNTRY_CODES, placeDetails } from "./countries.js";
+import { COUNTRY_CODES, placeDetails, countryLabel } from "./countries.js";
 
 export const SEARCH_PRESETS = globalThis.TMM_SEARCH_PRESETS;
 export const includeGroupIdentity = (groups, presets = SEARCH_PRESETS) => globalThis.TMM_PRESET_IDENTITIES.encode(groups, presets);
@@ -759,6 +759,15 @@ export function checkedEvidence(candidates, judgments) {
 
 // Question-grounded plans: model output may refine terms, never erase an intent.
 export const dailyKey = date => date.toISOString().slice(0, 10);
+export function aiTimeouts(env) {
+  const duration=(value,fallback)=>Number.isSafeInteger(Number(value)) && Number(value)>0?Number(value):fallback;
+  return {planning:duration(env.AI_TIMEOUT_MS,25000),checking:duration(env.AI_CHECK_TIMEOUT_MS,12000),preparation:duration(env.AI_PREPARATION_MS,90000)};
+}
+export function aiStopReason(aborted, currentTime, deadline, calls) {
+  if(aborted || currentTime>=deadline)return "ai_total_deadline";
+  return calls>=14?"ai_call_limit":null;
+}
+export const SELF_CHECK_TIMEOUT_NOTE = "Your search plan is ready, but its final AI self-check took too long. Paper and expert lists are unavailable until the checks finish. Try the question again later.";
 export function parseModelReply(value) {
   if (typeof value !== "string") return value;
   const text=value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -786,7 +795,7 @@ export function aiAttemptDiagnostic({stage,attempt,call,category,error,parseable
     return text.replace(/\bBearer\s+[^\s,"'}]+/gi,"Bearer [redacted]").replace(/((?:api[_-]?key|authorization|(?:access[_-]?)?token|secret|password)["']?\s*[:=]\s*["']?)([^\s,"'}]+)/gi,"$1[redacted]")
       .replace(/\b(?:sk-|sk_)[a-zA-Z0-9_-]+/g,"[redacted]");
   };
-  return {stage,attempt,call,category,errorName:redact(error.name || "Error").slice(0,60),message:redact(error.detail || error.message).slice(0,160),parseableJSON,replyPreview:redact(rawReply).slice(0,300)};
+  return {stage,attempt,call,category,errorName:redact(error.name || "Error").slice(0,60),message:redact(error.detail || error.message).slice(0,160),parseableJSON,replyPreview:redact(rawReply).slice(0,800)};
 }
 export function dailyReset(date) {
   const next = new Date(date);
@@ -797,7 +806,10 @@ export function dailyReset(date) {
 export function aiFailureMessage(reason, date) {
   if (["daily_ai_limit", "daily_neuron_limit"].includes(reason)) return `Today's AI checks are used up. They reset at ${dailyReset(date).rome} (Rome time). Saved reports and the Library still work.`;
   if (reason === "search_neuron_limit") return "This question needs more AI checking than one search allows. Shorten the question and try again. Saved reports and the Library still work.";
-  if (reason === "ai_timeout") return "The AI check took too long. Try again later. Saved reports and the Library still work.";
+  if (["ai_timeout","ai_call_timeout"].includes(reason)) return "An AI call took too long. Try again later. Saved reports and the Library still work.";
+  if (reason === "ai_total_deadline") return "The search reached its total time limit. Try again later. Saved reports and the Library still work.";
+  if (reason === "ai_call_limit") return "This question needed too many AI checks. Shorten the question and try again. Saved reports and the Library still work.";
+  if (["ai_validation","ai_bad_json"].includes(reason)) return "The AI returned an invalid search plan. Rephrase your question and try again. Saved reports and the Library still work.";
   return "The AI check could not finish. Try again later or rephrase your question. Saved reports and the Library still work.";
 }
 export function questionRequirements(sentence, year) {
@@ -805,12 +817,23 @@ export function questionRequirements(sentence, year) {
   return { topic: parts.concepts[0] || "", focus: parts.concepts.slice(1), population: parts.population.map(item=>item.label), place: parts.place.map(item=>item.label) };
 }
 // Sources are verbatim spans, not a second vocabulary of hand-written concepts.
-const QUESTION_SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving increasing help helps learn leading field since from between until during written authored excluding without except s".split(" "));
+const QUESTION_SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing help helps learn leading field since from between until during written authored excluding without except s".split(" "));
 export const questionContentWords = sentence => [...new Set((String(sentence).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(word => !QUESTION_SCAFFOLD.has(word)))];
-export function groundedPlanSchema(year) {
+export function questionHasPlace(sentence, year) {
+  if(globalThis.TMM_QUERY_PARSER.questionParts(sentence,year).place.length)return true;
+  const words=value=>String(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();
+  const text=" "+words(sentence)+" ",names=new Intl.DisplayNames(["en"],{type:"region"});
+  return [...COUNTRY_CODES].some(code=>[names.of(code),countryLabel(code)].some(name=>text.includes(" "+words(name)+" ")));
+}
+export function groundedPlanSchema(year, sentence = null) {
   const object = properties => ({type:"object",additionalProperties:false,required:Object.keys(properties),properties});
   const text = {type:"string",minLength:1,maxLength:1000};
-  const candidate = object({plan:aiPlanSchema(year),sources:{type:"array",maxItems:40,items:object({path:{type:"string",maxLength:80},source:text})}});
+  const plan=aiPlanSchema(year);
+  const namedPlace=sentence===null || questionHasPlace(sentence,year);
+  plan.properties.place=namedPlace?{anyOf:[{type:"null"},plan.properties.place]}:{type:"null"};
+  if(namedPlace)plan.properties.place.anyOf[1].properties.codes.items={type:"string",enum:[...COUNTRY_CODES]};
+  plan.required=plan.required.filter(key=>key!=="place");
+  const candidate = object({plan,sources:{type:"array",maxItems:40,items:object({path:{type:"string",maxLength:80},source:text})}});
   return object({...candidate.properties,ambiguity:{anyOf:[{type:"null"},object({question:{...text,maxLength:180},options:{type:"array",minItems:2,maxItems:3,items:object({label:{...text,maxLength:80},...candidate.properties})}})]}});
 }
 export function groundPlan(candidate, sentence, year) {
@@ -855,8 +878,103 @@ export function reconcileGrounding(grounded, plan, sentence) {
   const covered=new Set(sources.flatMap(entry=>questionContentWords(entry.source)));
   return {plan,sources,missing:questionContentWords(sentence).filter(word=>!covered.has(word))};
 }
-export function validateGroundedResponse(value, sentence, year) {
-  if (!exactObject(value,["plan","sources","ambiguity"])) throw new Error("Invalid grounded response");
+// Repair the model boundary only; cached/internal plans still use the strict validator.
+export function repairGroundedResponse(value, sentence, year, record = () => {}) {
+  const raw=value?.plan ?? value;
+  const usable=(term,max=80)=>typeof term==="string" && term.trim() && term.length<=max && !/[\x00-\x1f\x7f|{}[\]\\]/.test(term);
+  const cleanTrend=value=>globalThis.TMM_QUERY_PARSER.cleanTrendTerm(value,sentence);
+  const topic=typeof raw?.topic==="string"?cleanTrend(raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", ")):"";
+  if(!usable(topic,200))throw new Error("The model reply has no usable research topic.");
+  const note=(field,reason,action="dropped_or_repaired")=>record({field,action,reason});
+  const sourceInput=value?.sources ?? raw.sources;
+  const entries=Array.isArray(sourceInput)?sourceInput:sourceInput && typeof sourceInput==="object"?Object.entries(sourceInput).map(([path,source])=>({path,source})):[];
+  const sources=new Map();
+  for(const entry of entries.slice(0,40))if(typeof entry?.path==="string" && entry.path.length<=80 && typeof entry.source==="string" && entry.source.trim() && entry.source.length<=1000){
+    const path=entry.path.replace(/^plan\./,"").replace(/\[(\d+)\]/g,".$1");
+    if(!sources.has(path))sources.set(path,entry.source);
+  }
+  if(JSON.stringify(entries)!==JSON.stringify(sourceInput))note("sources","invalid_source_entries");
+  const used=[];
+  const retain=(target,original=target)=>{if(sources.has(original))used.push({path:target,source:sources.get(original)});};
+  retain("topic");
+  // A literal topic supplies its own source if the optional sources field is absent/broken.
+  if(!used.length){const start=sentence.indexOf(topic);if(start>=0)used.push({path:"topic",source:sentence.slice(start,start+topic.length)});}
+  const list=(field,max,length=80)=>{
+    const result=[];
+    for(const [index,item] of (Array.isArray(raw[field])?raw[field]:[]).entries())if(usable(item,length)){
+      const term=cleanTerm(field==="synonyms"?cleanTrend(item):item);
+      if(term && result.length<max && !result.includes(term)){retain(field+"."+result.length,field+"."+index);result.push(term);}
+    }
+    if(JSON.stringify(result)!==JSON.stringify(raw[field]))note(field,"invalid_or_duplicate_terms");
+    return result;
+  };
+  const synonyms=list("synonyms",5),exclusions=list("excludeTerms",6,120),includeGroups=[];
+  for(const [index,group] of (Array.isArray(raw.includeGroups)?raw.includeGroups:[]).entries()){
+    let cleaned=null;
+    if(typeof group?.preset==="string" && Object.hasOwn(SEARCH_PRESETS,group.preset))cleaned={preset:group.preset};
+    else if(Array.isArray(group?.terms)){
+      const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).filter(Boolean).map(cleanTerm))].slice(0,8);
+      if(terms.length)cleaned={terms};
+    }
+    if(cleaned && includeGroups.length<3 && !includeGroups.some(item=>JSON.stringify(item)===JSON.stringify(cleaned))){
+      retain("includeGroups."+includeGroups.length,"includeGroups."+index);includeGroups.push(cleaned);
+    }
+  }
+  if(JSON.stringify(includeGroups)!==JSON.stringify(raw.includeGroups))note("includeGroups","invalid_or_duplicate_groups");
+  const namedPlace=questionHasPlace(sentence,year);
+  const suppliedCodes=raw.place?.codes;
+  const validCodes=Array.isArray(suppliedCodes)?[...new Set(suppliedCodes.filter(code=>COUNTRY_CODES.has(code)))].slice(0,64):[];
+  let place={codes:[],mode:"mentions"};
+  if(namedPlace && validCodes.length){place={codes:validCodes,mode:raw.place.mode==="authored"?"authored":"mentions"};retain("place");}
+  if(raw.place!=null && (JSON.stringify(place)!==JSON.stringify(raw.place)))note("place",!namedPlace?"no_named_place":!validCodes.length?"invalid_codes":"invalid_place_fields",place.codes.length?"repaired":"dropped");
+  const parsedYear=input=>Number.isInteger(input)?input:typeof input==="string" && /^\d{4}$/.test(input)?Number(input):null;
+  const requested=globalThis.TMM_QUERY_PARSER.questionParts(sentence,year);
+  let years={from:parsedYear(raw.years?.from) ?? 2010,to:parsedYear(raw.years?.to)};
+  try{validateRange(years.from,years.to,year);}catch{years={from:2010,to:null};}
+  let rangeSource=null;
+  if(requested.explicitRange){
+    try{
+      validateRange(requested.from,requested.to,year);
+      years={from:requested.from,to:requested.to};
+      rangeSource=sentence.match(/\b(?:since|from|after)\s+\d{4}\b|\bbetween\s+\d{4}\s+and\s+\d{4}\b/i)?.[0] || null;
+    }catch{ /* Invalid requested dates remain uncovered and require rephrasing. */ }
+  }
+  if(JSON.stringify(years)!==JSON.stringify(raw.years))note("years","invalid_years");
+  for(const field of ["from","to"])if(years[field]!==null){
+    if(rangeSource)used.push({path:"years."+field,source:rangeSource});
+    else if(years[field]===parsedYear(raw.years?.[field]))retain("years."+field);
+  }
+  const excludeTerms=exclusions.filter(term=>term!==cleanTerm(topic) && !synonyms.includes(term));
+  if(excludeTerms.length!==exclusions.length){
+    note("excludeTerms","conflicting_exclusions");
+    const old=used.filter(entry=>entry.path.startsWith("excludeTerms."));
+    for(let i=used.length-1;i>=0;i--)if(used[i].path.startsWith("excludeTerms."))used.splice(i,1);
+    excludeTerms.forEach((term,index)=>{const source=old.find(entry=>entry.path==="excludeTerms."+exclusions.indexOf(term));if(source)used.push({...source,path:"excludeTerms."+index});});
+  }
+  const plan=validateAIPlan({topic,synonyms,includeGroups,place,excludeTerms,years},year);
+  if(Object.keys(raw).some(key=>!["topic","synonyms","includeGroups","place","excludeTerms","years"].includes(key)) || (value?.plan && Object.keys(value).some(key=>!["plan","sources","ambiguity"].includes(key))))note("extra_keys","unexpected_fields");
+  let ambiguity=null;
+  if(value?.ambiguity!=null){
+    const proposed=value.ambiguity;
+    if(typeof proposed.question==="string" && proposed.question.trim() && proposed.question.length<=180 && Array.isArray(proposed.options) && proposed.options.length>=2 && proposed.options.length<=3){
+      try{
+        const labels=new Set();
+        const options=proposed.options.map(option=>{
+          if(typeof option?.label!=="string" || !option.label.trim() || option.label.length>80 || labels.has(option.label))throw new Error("Invalid option");
+          labels.add(option.label);
+          const repaired=repairGroundedResponse({...option,ambiguity:null},sentence,year,record);
+          const grounded=groundPlan(repaired,sentence,year);
+          if(!grounded.plan.topic || grounded.missing.length)throw new Error("Incomplete option");
+          return {label:option.label,plan:repaired.plan,sources:repaired.sources};
+        });
+        ambiguity={question:proposed.question,options};
+      }catch{note("ambiguity","invalid_options");}
+    }else note("ambiguity","invalid_options");
+  }
+  return {plan,sources:used,ambiguity};
+}
+export function validateGroundedResponse(value, sentence, year, record) {
+  value=repairGroundedResponse(value,sentence,year,record);
   groundPlan(value,sentence,year);
   if (value.ambiguity !== null) {
     const ambiguity=value.ambiguity;

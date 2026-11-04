@@ -197,7 +197,13 @@
   // Shared question analysis for the deterministic parser, plan coverage and title judge.
   // Only question scaffolding is discarded; concepts survive even when a model omits them.
   const PRIMARY_SCHOOL = ["primary school", "elementary school", "primary pupils", "elementary students", "grade school"];
-  const SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning related how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving increasing bigger before fast field fields topic topics area areas domain domains help helps learn learning leading lead know evidence relationship relationships affect affects effect effects impact impacts during used applied treat treating disease written authored".split(" "));
+  const SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning related how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing bigger before fast field fields topic topics area areas domain domains help helps learn learning leading lead know evidence relationship relationships affect affects effect effects impact impacts during used applied treat treating disease written authored".split(" "));
+  function cleanTrendTerm(value, question) {
+    const text=String(value).trim();
+    const trendQuestion=/\b(?:changing|growing|developing|evolving|trends)\s*(?:since\s+\d{4})?\s*[?.!]*$/i.test(question) || /\btrends\s+(?:in|on)\b/i.test(question);
+    if(!trendQuestion)return text;
+    return text.replace(/^trends\s+(?:in|on|for)\s+/i, "").replace(/(?:\b(?:changing|growing|developing|evolving|trends)\b[\s,;]*)+$/gi, "").trim();
+  }
   function questionParts(sentence, currentYear) {
     const text = String(sentence).replace(/[’‘]/g,"'").replace(/\bchildrens\b/gi,"children").replace(/\bwho's\b/gi,"who is").replace(/\b(children|kids|women|teens|teenagers|students)'s?\b/gi,"$1");
     let rest = text.replace(/\b(?:excluding|exclude|except|without)\b[\s\S]*$/i, "");
@@ -229,7 +235,7 @@
     rest=rest.replace(/\b(?:excluding|exclude|except|without)\b[\s\S]*$/i,"");
     // Structural connectors create AND concepts, unlike alternatives inside a concept.
     const chunks=rest.split(/[,;?]|\b(?:for|to|during|help|helps|links|affect|affects|and)\b/gi);
-    const concepts=chunks.map(chunk=>clean(chunk).split(/\s+/).filter(word=>!SCAFFOLD.has(word.toLowerCase().replace(/[^\p{L}\p{N}]/gu,""))).join(" ").replace(/[^\p{L}\p{N}\s-]/gu," ").trim()).filter(Boolean);
+    const concepts=chunks.map(chunk=>clean(cleanTrendTerm(chunk, sentence)).split(/\s+/).filter(word=>!SCAFFOLD.has(word.toLowerCase().replace(/[^\p{L}\p{N}]/gu,""))).join(" ").replace(/[^\p{L}\p{N}\s-]/gu," ").trim()).filter(Boolean);
     const recognized=/^\s*(?:how\b|what\s+research\b|which\s+researchers\b|does\b|is\b[\s\S]*\bgrowing\b)/i.test(text) || /^\s*childrens\b/i.test(sentence);
     return {question:String(sentence),concepts:[...new Set(concepts)],population,place,from,to,explicitRange,recognized};
   }
@@ -244,5 +250,5 @@
     return {topic:parts.concepts[0] || "",synonyms:[],includeGroups:groups.slice(0,3).map(item=>item.terms),groups:groups.slice(0,3),from:parts.from,to:parts.to,explicitRange:parts.explicitRange,spans:[],ignored:overflow?groups.slice(3).map(item=>item.label):[],errors:[...(!parts.concepts.length?["Add a research topic, then try again."]:[]),...(rangeError?[rangeError]:[])],note:overflow?"This question has more than three required groups. Narrow it before searching.":""};
   }
 
-  globalThis.TMM_QUERY_PARSER = Object.freeze({ parse, merge, countries, people, focusTerms, key, questionParts, PRIMARY_SCHOOL });
+  globalThis.TMM_QUERY_PARSER = Object.freeze({ parse, merge, countries, people, focusTerms, key, questionParts, cleanTrendTerm, PRIMARY_SCHOOL });
 })();

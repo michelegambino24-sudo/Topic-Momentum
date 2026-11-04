@@ -1287,6 +1287,15 @@
         throw Object.assign(new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later."), { code: data.error });
       }
       if (version !== requestVersion) return;
+      if (useAI && data.planOnly) {
+        pendingClarification = null; $("search-clarification").hidden = true;
+        $("report-stage").hidden = true; $("papers").innerHTML = ""; $("experts").innerHTML = "";
+        const plan=data.plan,groups=(plan.includeGroups || []).map(group=>group.preset ? window.TMM_SEARCH_PRESETS[group.preset].label : group.terms.join(" or "));
+        const places=(plan.place?.codes || []).map(code=>new Intl.DisplayNames(["en"],{type:"region"}).of(code));
+        const summary=[plan.topic,...groups.map(group=>"About: "+group),...(places.length?["Place: "+places.join(", ")]:[]),"Since "+plan.years.from,...(plan.years.to?["Until "+plan.years.to]:[]),...(plan.excludeTerms?.length?["Excluding: "+plan.excludeTerms.join(", ")]:[])].join(" · ");
+        notify("Search plan: "+summary+". "+data.message,true);
+        return;
+      }
       if (useAI && data.clarification) {
         pendingClarification = {sentence:options.sentence, ...data.clarification};
         $("report-stage").hidden = true;

@@ -13,7 +13,8 @@ AI_JUDGE_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
 # Daily usage is settled to measured neurons, never a fixed estimate per attempt.
 # 9000 neurons/day; 600 initially reserved, grown before calls up to 2400/search.
 # Unused reservations are refunded. At most 50 admitted attempts/day.
-AI_TIMEOUT_MS = "12000"
+AI_TIMEOUT_MS = "25000"
+AI_CHECK_TIMEOUT_MS = "12000"
 AI_PREPARATION_MS = "90000"
 
 [[kv_namespaces]]

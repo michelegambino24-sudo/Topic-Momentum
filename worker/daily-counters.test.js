@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {dailyKey,dailyReset,aiFailureMessage,aiAttemptDiagnostic,parseModelReply,validateAIPlan} from "./lib.js";
+import {dailyKey,dailyReset,aiFailureMessage,aiAttemptDiagnostic,parseModelReply,validateAIPlan,aiTimeouts,aiStopReason} from "./lib.js";
 import {inspectCounters} from "../tools/daily-counters.mjs";
 import "../site/query-parser.js";
 
@@ -41,4 +41,14 @@ test("reply framing accepts complete objects with braces in strings and rejects 
 test("model topics cannot retain empty comma parts",()=>{
  const plan={topic:"social media, , attention",synonyms:[],includeGroups:[],place:{codes:[],mode:"mentions"},excludeTerms:[],years:{from:2010,to:null}};
  assert.equal(validateAIPlan(plan,2026).topic,"social media, attention");
+});
+test("call limit is distinct from deadlines and timeout settings have safe defaults",()=>{
+ assert.equal(aiStopReason(false,100,1000,13),null);
+ assert.equal(aiStopReason(false,100,1000,14),"ai_call_limit");
+ assert.equal(aiStopReason(false,1000,1000,14),"ai_total_deadline");
+ assert.equal(aiStopReason(true,100,1000,0),"ai_total_deadline");
+ assert.deepEqual(aiTimeouts({}),{planning:25000,checking:12000,preparation:90000});
+ assert.deepEqual(aiTimeouts({AI_TIMEOUT_MS:"25000",AI_CHECK_TIMEOUT_MS:"8000",AI_PREPARATION_MS:"60000"}),{planning:25000,checking:8000,preparation:60000});
+ assert.deepEqual(aiTimeouts({AI_TIMEOUT_MS:-1,AI_CHECK_TIMEOUT_MS:"bad",AI_PREPARATION_MS:0}),{planning:25000,checking:12000,preparation:90000});
+ assert.notEqual(aiFailureMessage("ai_call_limit",new Date()),aiFailureMessage("ai_call_timeout",new Date()));
 });

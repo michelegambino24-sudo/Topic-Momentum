@@ -236,6 +236,9 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           if (complex) complexSearches++;
 
           const controller = new AbortController();
+          const abortPreparation = () => controller.abort();
+          session.signal?.addEventListener("abort", abortPreparation, {once:true});
+          if(session.signal?.aborted)controller.abort();
           const timeout = setTimeout(() => controller.abort(), 20000);
           try {
             const dev = env.ENVIRONMENT === "dev";
@@ -265,7 +268,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
             if (caught.code === "search_too_complex") return error(caught.code, COMPLEX_SEARCH_MESSAGE, caught.status);
             // Responses never include upstream details; development logs are sanitised above.
             return error("source_unavailable", "The research data source is unavailable. Try again later.", 502);
-          } finally { clearTimeout(timeout); if (complex) complexSearches--; }
+          } finally { clearTimeout(timeout); session.signal?.removeEventListener("abort", abortPreparation); if (complex) complexSearches--; }
         });
       } catch { return storageError(); }
   }

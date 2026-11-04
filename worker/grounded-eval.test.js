@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {tidyPlan,createAIService,AI_MODEL,JUDGE_MODEL,judgeParameters} from "./ai.js";
-import {groundPlan,questionContentWords,planRequirements,passingTitleIds,compileAIPlan,rankExpertAuthors,includeGroupsOf} from "./lib.js";
+import {groundPlan,questionContentWords,planRequirements,passingTitleIds,compileAIPlan,rankExpertAuthors,includeGroupsOf,validateGroundedResponse,validateAIPlan,groundedPlanSchema,aiAttemptDiagnostic,aiFailureMessage} from "./lib.js";
 import {MemoryKV} from "./kv-fixture.js";
 import {checkExpectation,evaluationCases,formatEvaluation} from "../tools/eval-questions.mjs";
 import {REGIONS} from "./countries.js";
@@ -24,8 +24,9 @@ function setup(plans=[complete()],checks=[{ok:true}],config={}){
     if(response instanceof Error)throw response;
     return {response,...(config.unmeasured?{}:{usage:{neurons:2}})};
   }}};
-  const service=createAIService({now:()=>new Date("2026-11-04T12:00:00Z"),clock:Date.now,locked:async(_kv,_key,fn)=>fn(),reserve:async()=>true,source:async descriptor=>{
+  const service=createAIService({now:()=>new Date("2026-11-04T12:00:00Z"),clock:config.clock||Date.now,waitForAI:config.waitForAI,locked:async(_kv,_key,fn)=>fn(),reserve:async()=>true,source:async descriptor=>{
     sourceCalls.push(descriptor);
+    if(config.source)return config.source(descriptor);
     if(descriptor.id==="semanticPapers")return {results:[]};
     if(descriptor.id.startsWith("check"))return {results:[{...paper,id:descriptor.id==="checkearly"?"https://openalex.org/W2":"https://openalex.org/W3"}]};
     return {results:config.papers||[paper]};
@@ -62,8 +63,8 @@ test("daily guard denies a reservation extension before another model call",asyn
 test("malformed JSON and invalid responses retain distinct diagnostics after retry",async()=>{
  for(const [reply,category] of [["{broken","bad_json"],[{wrong:true},"validation"],[new Error("AI timeout"),"timeout"],[new Error("provider failed"),"provider_error"]]){
   const app=setup([reply]),result=await app.search();
-  assert.equal(result.status,503);assert.equal(app.calls.length,2);assert(!result.body.message.includes("used up"));
-  assert.equal(result.body.aiUsage.errors.length,2);assert(result.body.aiUsage.errors.every(error=>error.category===category));
+  assert.equal(result.status,503);assert.equal(app.calls.length,category==="timeout"?1:2);assert(!result.body.message.includes("used up"));
+  assert.equal(result.body.aiUsage.errors.length,category==="timeout"?1:2);assert(result.body.aiUsage.errors.every(error=>error.category===category));
  }
 });
 test("fenced JSON and plan-prefixed source paths remain grounded and complete",async()=>{
@@ -78,6 +79,157 @@ test("literal single-concept question recovers missing topic/year sources withou
 });
 
 const malformedFixtures=JSON.parse(readFileSync(new URL("./fixtures/planner-reply-failures.json",import.meta.url),"utf8"));
+const inventedPlace=JSON.parse(readFileSync(new URL("./fixtures/invented-place-replies.json",import.meta.url),"utf8"));
+for(const reply of inventedPlace.replies)test("production preview regression: drop "+reply.plan.place.codes[0]+" and keep toddler research",async()=>{
+ // Confirm the original strict check, then exercise the repaired service boundary.
+ assert.throws(()=>validateAIPlan(reply.plan,2026),/Invalid interpretation/);
+ assert.doesNotThrow(()=>validateAIPlan({...reply.plan,place:{codes:[],mode:"mentions"}},2026));
+ const app=setup([reply]),result=await app.search({sentence:inventedPlace.question});
+ assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");
+ assert.equal(app.calls.filter(call=>call.data.task==="plan").length,1);
+ assert.equal(result.body.understanding.place,null);
+ const selfCheck=app.calls.find(call=>call.data.task==="self-check").data.plan;
+ assert.deepEqual(selfCheck.place,{codes:[],mode:"mentions"});
+ assert(selfCheck.topic.includes("screen time"));assert(selfCheck.topic.includes("language development"));
+ assert(selfCheck.includeGroups.some(group=>group.preset==="children" || group.terms?.includes("toddlers")));
+ assert.deepEqual(selfCheck.excludeTerms,[]); // No requested exclusions were supplied.
+ assert(result.body.aiUsage.repairs.some(repair=>repair.field==="place" && repair.action==="dropped" && repair.reason==="no_named_place"));
+});
+for(const row of malformedFixtures.questions)test("invented place survives no further than repair: "+row.question,async()=>{
+ const reply=structuredClone(row.reply);reply.plan.place={codes:["WJ"],mode:"authored"};
+ const app=setup([reply]),result=await app.search({sentence:row.question});
+ assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert.equal(result.body.understanding.place,null);
+ assert.equal(app.calls.filter(call=>call.data.task==="plan").length,1);
+ assert.equal(result.body.aiUsage.errors.length,0);assert(result.body.aiUsage.repairs.some(repair=>repair.field==="place" && repair.action==="dropped"));
+});
+test("a named Gulf remains in the full service plan",async()=>{
+ const row=malformedFixtures.questions.find(row=>row.question.includes("sleep")),reply=structuredClone(row.reply);
+ const sentence=row.question.replace(/\?$/, " in the Gulf?");
+ reply.plan.place={codes:[...REGIONS.gcc],mode:"authored"};reply.sources.push({path:"place",source:"Gulf"});
+ const app=setup([reply]),result=await app.search({sentence});
+ assert.equal(result.status,200);assert.deepEqual(result.body.understanding.place.codes,[...REGIONS.gcc]);
+ assert.equal(result.body.understanding.place.label,"GCC");assert.equal(result.body.understanding.place.mode,"authored");
+ assert(!result.body.aiUsage.repairs.some(repair=>repair.field==="place"));
+});
+test("optional plan fields repair before validation, with source indices retained",()=>{
+ const sentence="battery recycling since 2020",repairs=[];
+ const raw={...base(),extra:"ignored",sources:{topic:"battery recycling"},synonyms:[null,"recovered batteries","recovered batteries"],includeGroups:[{terms:[]},{terms:[null,"material recovery","material recovery"]}],excludeTerms:["battery recycling",17,"toxins"],years:{from:"2020",to:"invalid"}};
+ const result=validateGroundedResponse({plan:raw,unexpected:true,sources:[{path:"topic",source:"battery recycling",extra:true},{path:"synonyms.1",source:"battery recycling"},{path:"includeGroups.1",source:"recycling"},{path:"excludeTerms.2",source:"recycling"},{path:"years.from",source:"2020"},null],ambiguity:{bad:true}},sentence,2026,repair=>repairs.push(repair));
+ assert.deepEqual(result.plan.synonyms,["recovered batteries"]);assert.deepEqual(result.plan.includeGroups,[{terms:["material recovery"]}]);
+ assert.deepEqual(result.plan.excludeTerms,["toxins"]);assert.deepEqual(result.plan.years,{from:2020,to:null});assert.equal(result.ambiguity,null);
+ assert(!Object.hasOwn(result.plan,"extra"));assert(result.sources.some(item=>item.path==="synonyms.0"));assert(result.sources.some(item=>item.path==="includeGroups.0"));assert(result.sources.some(item=>item.path==="excludeTerms.0"));
+ assert.doesNotThrow(()=>validateAIPlan(result.plan,2026));assert(repairs.some(repair=>repair.field==="extra_keys"));
+ for(const optional of [{},{synonyms:false,excludeTerms:{bad:true},years:[],sources:123},{place:null},{place:{codes:["AU"],mode:"authored"}},{place:{codes:["WZ"],mode:"authored"}}]){
+  const fixed=validateGroundedResponse({plan:{topic:"battery recycling",...optional}},"battery recycling",2026);
+  assert.deepEqual(fixed.plan.place,{codes:[],mode:"mentions"});assert.equal(fixed.plan.topic,"battery recycling");
+ }
+ for(const topic of [undefined,null,123,"",", ,","bad|topic","x".repeat(201)])assert.throws(()=>validateGroundedResponse({plan:{topic}},sentence,2026),/no usable research topic/);
+});
+test("model schema does not ask for a place when none is named",()=>{
+ const noPlace=groundedPlanSchema(2026,inventedPlace.question).properties.plan;
+ assert.deepEqual(noPlace.properties.place,{type:"null"});assert(!noPlace.required.includes("place"));
+ const gulf=groundedPlanSchema(2026,"battery recycling in the Gulf").properties.plan.properties.place;
+ assert(gulf.anyOf.some(item=>item.type==="null"));assert(gulf.anyOf[1].properties.codes.items.enum.includes("AE"));assert(!gulf.anyOf[1].properties.codes.items.enum.includes("WJ"));
+});
+test("diagnostic previews retain 800 characters and redact before truncation",()=>{
+ const secret="private-example",preview='{"api_key":"'+secret+'","text":"'+"x".repeat(850)+'"}';
+ const result=aiAttemptDiagnostic({stage:"planning",attempt:1,call:1,category:"validation",error:new Error(secret),parseableJSON:true,rawReply:preview,secrets:[secret]});
+ assert.equal(result.replyPreview.length,800);assert(!JSON.stringify(result).includes(secret));assert(result.replyPreview.includes("[redacted]"));
+ assert(aiFailureMessage("ai_validation",new Date()).includes("invalid search plan"));assert(!aiFailureMessage("ai_validation",new Date()).includes("used up"));
+});
+test("place drops are written to Workers console logs without raw values",async t=>{
+ const logs=[];t.mock.method(console,"log",(...args)=>logs.push(args));
+ const app=setup([inventedPlace.replies[0]]);await app.search({sentence:inventedPlace.question});
+ const messages=logs.filter(args=>args[0]==="AI plan repaired").map(args=>JSON.parse(args[1]));
+ assert(messages.some(item=>item.field==="place" && item.action==="dropped" && item.reason==="no_named_place"));
+ assert(!JSON.stringify(messages).includes("WJ"));
+});
+test("repair missing or reversed optional years from an explicit requested range",()=>{
+ for(const years of [undefined,{from:2025,to:2000},{from:"not a year",to:[]},{from:2010,to:null}]){
+  const value=validateGroundedResponse({plan:{...base(),years}},"battery recycling since 2020",2026);
+  assert.deepEqual(value.plan.years,{from:2020,to:null});
+  assert.equal(groundPlan(value,"battery recycling since 2020",2026).missing.length,0);
+ }
+});
+test("configured planning/check deadlines and per-call timings are logged and accounted",async t=>{
+ let time=0;const budgets=[],logs=[];
+ t.mock.method(console,"log",(...args)=>logs.push(args));
+ const app=setup([complete()],[{ok:true}],{clock:()=>time,waitForAI:async(action,ms)=>{budgets.push(ms);time+=17;return action();}});
+ app.env.AI_TIMEOUT_MS="25000";app.env.AI_CHECK_TIMEOUT_MS="7000";app.env.AI_PREPARATION_MS="60000";
+ const result=await app.search(),usage=result.body.aiUsage;
+ assert.equal(result.status,200);assert.equal(budgets[0],25000);assert(budgets.slice(1).every(ms=>ms===7000));
+ assert.equal(usage.turns.length,app.calls.length);assert(usage.turns.every(turn=>turn.ms===17 && turn.outcome==="success" && turn.measured && turn.neurons===2 && turn.model));
+ assert.equal(usage.stages.planning.ms,17);assert.equal(usage.totalMs,app.calls.length*17);
+ assert.equal(usage.turns.reduce((sum,turn)=>sum+turn.neurons,0),usage.neurons);
+ assert.equal(logs.filter(args=>args[0]==="AI call completed").length,app.calls.length);
+ assert(logs.some(args=>args[0]==="AI search completed" && JSON.parse(args[1]).reason==="completed"));
+});
+test("planning timeout is charged once with no automatic retry",async()=>{
+ let time=0;
+ const app=setup([complete()],[{ok:true}],{clock:()=>time,waitForAI:async(action,ms,reason)=>{await action();time+=ms;throw Object.assign(new Error("Slow call"),{reason});}});
+ const result=await app.search();assert.equal(result.status,503);assert.equal(result.body.aiReason,"ai_call_timeout");assert.equal(app.calls.length,1);
+ assert.equal(result.body.aiUsage.turns.length,1);const turn=result.body.aiUsage.turns[0];assert.equal(turn.ms,25000);assert.equal(turn.measured,false);assert.equal(turn.outcome,"timeout");
+ assert.equal(turn.neurons,result.body.aiUsage.neurons);assert.equal(result.body.aiUsage.stages.planning.neurons,turn.neurons);
+});
+test("total preparation limit shortens a planning call and has its own terminal reason",async()=>{
+ let time=0;
+ const app=setup([complete()],[{ok:true}],{clock:()=>time,waitForAI:async(action,ms,reason)=>{assert.equal(ms,4000);await action();time+=ms;throw Object.assign(new Error("Slow call"),{reason});}});
+ app.env.AI_PREPARATION_MS="4000";
+ const result=await app.search();assert.equal(result.body.aiReason,"ai_total_deadline");assert.equal(app.calls.length,1);
+ assert.equal(result.body.aiUsage.turns[0].reason,"ai_total_deadline");
+});
+test("self-check timeout returns the valid plan and a note, without unchecked lists or source work",async()=>{
+ let time=0,turn=0;
+ const app=setup([complete()],[{ok:true}],{clock:()=>time,waitForAI:async(action,ms,reason)=>{
+   const response=await action();if(++turn===2){time+=ms;throw Object.assign(new Error("Slow self-check"),{reason});}time+=10000;return response;
+ }});
+ const result=await app.search();assert.equal(result.status,200);assert.equal(result.body.planOnly,true);assert.equal(result.body.aiReason,"self_check_timeout");
+ assert.equal(result.body.plan.topic,"battery recycling");assert.match(result.body.message,/self-check took too long/);assert.deepEqual(result.body.papers,[]);assert.deepEqual(result.body.experts,[]);
+ assert.equal(app.calls.length,2);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
+ assert(![...app.kv.values.keys()].some(key=>key.startsWith("ai:search:")));
+ const usage=result.body.aiUsage;assert.equal(usage.advisoryReason,"ai_call_timeout");assert.equal(usage.turns[1].ms,12000);assert.equal(usage.turns[1].measured,false);
+ assert.equal(JSON.parse(app.kv.values.get("ai:usage:2026-11-04")).reserved,0);
+});
+test("total deadline during self-check also preserves the valid plan",async()=>{
+ let time=0,turn=0;
+ const app=setup([complete()],[{ok:true}],{clock:()=>time,waitForAI:async(action,ms,reason)=>{
+   const response=await action();if(++turn===2){assert.equal(reason,"ai_total_deadline");assert.equal(ms,1000);time+=ms;throw Object.assign(new Error("Deadline"),{reason});}time+=1000;return response;
+ }});
+ app.env.AI_PREPARATION_MS="2000";
+ const result=await app.search();assert.equal(result.status,200);assert.equal(result.body.planOnly,true);assert.equal(result.body.aiUsage.advisoryReason,"ai_total_deadline");
+});
+test("judge timeout is not retried and records its source phase",async()=>{
+ const app=setup([complete()],[{ok:true}],{judge:()=>new Error("AI timeout")});
+ const result=await app.search();assert.equal(result.body.aiReason,"ai_call_timeout");
+ const turns=result.body.aiUsage.turns.filter(turn=>turn.stage==="judging");assert.equal(turns.length,1);assert.equal(turns[0].phase,"reliability");
+ assert(!result.body.papers);assert(!result.body.experts);
+});
+test("model topic groups lose trend suffixes before grounding and self-check",async()=>{
+ const sentence="How is research on screen time and language development in toddlers changing?";
+ const reply=candidate({...base(),topic:"screen time changing",includeGroups:[{terms:["language development changing"]},{preset:"children"}]},{topic:"screen time","includeGroups.0":"language development","includeGroups.1":"toddlers"});
+ const app=setup([reply]),result=await app.search({sentence});
+ assert.equal(result.status,200);assert.equal(result.body.name,"screen time");
+ const plan=app.calls.find(call=>call.data.task==="self-check").data.plan;
+ assert.deepEqual(plan.includeGroups[0],{terms:["language development"]});assert.equal(plan.topic,"screen time");
+ assert(!JSON.stringify(result.body.includeGroups).includes("changing"));
+});
+test("a pipeline needing a fifteenth model call stops at fourteen with a call-limit reason",async()=>{
+ const broad=complete();broad.plan.synonyms=["battery reuse"];broad.sources.push({path:"synonyms.0",source:"battery recycling"});
+ const bad=candidate({...base(),topic:"battery"},{topic:"battery"});let judgments=0;
+ const papers=(start,count)=>Array.from({length:count},(_,i)=>({id:"https://openalex.org/W"+(start+i),display_name:"Battery recycling study "+(start+i),publication_year:2025,cited_by_count:100,authorships:[]}));
+ const app=setup(["{broken",bad,broad,broad,complete()],[{ok:false,problem:"Check the intended meaning"},{ok:true}],{
+  judge:data=>({pass:++judgments===1?[]:data.titles.map(item=>item.id)}),
+  source:descriptor=>{
+   if(descriptor.id==="checkearly")return {results:papers(100,10)};
+   if(descriptor.id==="checklate")return {results:papers(200,10)};
+   if(descriptor.id==="semanticPapers" || descriptor.id==="semanticMembership")return {results:papers(400,30)};
+   if(descriptor.id==="expertCandidates")return {results:papers(500,50)};
+   return {results:papers(300,30)};
+  }
+ });
+ const result=await app.search();assert.equal(result.status,503);assert.equal(result.body.aiReason,"ai_call_limit");
+ assert.equal(app.calls.length,14);assert.equal(result.body.aiUsage.turns.length,14);assert(!result.body.message.includes("time"));
+});
 for(const row of malformedFixtures.questions)for(const variant of malformedFixtures.variants)test(`planner replay: ${variant}: ${row.question}`,async()=>{
  const reply=structuredClone(row.reply);
  let bad;
@@ -88,15 +240,20 @@ for(const row of malformedFixtures.questions)for(const variant of malformedFixtu
  if(variant==="wrongType"){reply.plan.synonyms="not an array";bad=reply;}
  if(variant==="truncated")bad=JSON.stringify(reply).slice(0,-15);
  const app=setup([bad]),result=await app.search({sentence:row.question});
- if(["markdown","trailingText"].includes(variant)) {
+ if(["markdown","trailingText","missingFields","wrongType"].includes(variant)) {
   assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.errors.length,0);
+ } else if(variant==="emptyGroup") {
+  assert.equal(result.status,422);assert.equal(result.body.aiUsage.errors.length,0);assert.equal(app.sourceCalls.length,0);
+  assert(result.body.aiUsage.repairs.some(repair=>repair.field==="includeGroups"));
+  const repair=setup([bad,row.reply]),fixed=await repair.search({sentence:row.question});
+  assert.equal(fixed.status,200);assert.equal(fixed.body.papersKind,"checked");
  } else {
   assert.equal(result.status,503);assert.equal(app.calls.length,2);assert.equal(app.sourceCalls.length,0);
   assert(!result.body.message.includes("used up"));
   assert.equal(result.body.aiUsage.errors.length,2);
   assert(result.body.aiUsage.errors.every(error=>error.parseableJSON===(variant!=="truncated")));
   assert.deepEqual(result.body.aiUsage.errors.map(error=>error.attempt),[1,2]);
-  assert(result.body.aiUsage.errors.every(error=>error.replyPreview.length<=300 && error.stage==="planning"));
+  assert(result.body.aiUsage.errors.every(error=>error.replyPreview.length<=800 && error.stage==="planning"));
   const repair=setup([bad,row.reply]),fixed=await repair.search({sentence:row.question});
   assert.equal(fixed.status,200);assert.equal(fixed.body.papersKind,"checked");
  }
@@ -117,7 +274,7 @@ test("missing coverage triggers one AI re-plan with exact missed words before co
  const bad=candidate({...base(),topic:"battery"},{topic:"battery"});
  const app=setup([bad,complete()]),result=await app.search();
  assert.equal(result.status,200);assert.equal(result.body.papersKind,"checked");
- assert.equal(app.calls[1].data.feedback,"You missed: recycling, 2020");
+ assert.equal(app.calls[1].data.feedback,"You missed: recycling");
  assert.equal(result.body.aiUsage.stages.replan.calls,1);assert.equal(result.body.aiUsage.stages.selfCheck.calls,1);
  assert.equal(result.body.aiUsage.neurons,app.calls.length*2);
  assert.equal(Object.values(result.body.aiUsage.stages).reduce((sum,stage)=>sum+stage.neurons,0),result.body.aiUsage.neurons);
@@ -151,9 +308,9 @@ test("one ambiguity carries ready plans; selection uses stored options, verifies
  const tampered=await app.search({sentence:"other question",clarification:{key:start.body.clarification.key,option:0}});assert.equal(tampered.status,400);
  const forged=await app.search({sentence,clarification:{key:start.body.clarification.key,option:0,plan:base()}});assert.equal(forged.status,400);
 });
-test("invalid ambiguity counts/options cannot bypass strict source grounding",async()=>{
+test("invalid optional ambiguity is dropped without fake choices",async()=>{
  const app=setup([{...complete(),ambiguity:{question:"Choose?",options:[{label:"Only one",...complete()}]}}]);
- assert.equal((await app.search()).status,503);assert.equal(app.sourceCalls.length,0);
+ const result=await app.search();assert.equal(result.status,200);assert(!result.body.clarification);assert(result.body.aiUsage.repairs.some(repair=>repair.field==="ambiguity"));
 });
 test("general judge passes only explicit model-approved IDs; no concept-specific lexical overrides",async()=>{
  const question="Does gamification help primary school pupils learn mathematics?";

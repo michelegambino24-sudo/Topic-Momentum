@@ -8,6 +8,17 @@ const fixtures = JSON.parse(readFileSync(__dirname + "/query-parser-fixtures.jso
 const currentYear = 2026;
 const refine = text => parse(text, currentYear, { refinement: true });
 const base = () => ({ topic: "inheritance", synonyms: ["estate"], includeGroups: [["school"]], from: 2015, to: 2025, subfieldId: "3308", subtopicId: "T123" });
+test("trend question cleanup preserves language development and subject phrases",()=>{
+ const parser=globalThis.TMM_QUERY_PARSER;
+ for(const trend of ["changing","growing","developing","evolving","trends"]){
+  const question="How is research on screen time and language development in toddlers "+trend+"?";
+  assert.equal(parser.cleanTrendTerm("language development "+trend,question),"language development");
+  assert(parser.questionParts(question,2026).concepts.includes("language development"));
+ }
+ assert.equal(parser.cleanTrendTerm("growing media","How is research on growing media developing?"),"growing media");
+ assert.equal(parser.cleanTrendTerm("developing countries","research on developing countries"),"developing countries");
+ assert.equal(parser.cleanTrendTerm("language development","How is research evolving?"),"language development");
+});
 
 for (const row of fixtures) test("sentence fixture: " + row.sentence, () => {
   const result = parse(row.sentence, currentYear);

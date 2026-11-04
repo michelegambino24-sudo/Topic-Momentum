@@ -7,6 +7,7 @@ export const questions = evaluationCases.map(item=>item.question);
 export function formatEvaluation(question, data, status = 200) {
   const openalex=data.openalexUsage || null;
   if (status !== 200) return { question, status, openalex, error: data.message || data.error || "The Worker could not complete this search.", neurons: data.aiUsage?.neurons ?? null, measured: data.aiUsage?.measured === true, aiNotUsedReason: data.aiReason || data.error || "request_failed", aiUsage:data.aiUsage || null, plan: data.understood ? {topic:data.understood.topic,includeGroups:data.understood.includeGroups,from:data.understood.from,to:data.understood.to} : null };
+  if(data.planOnly)return {question,openalex,mode:"plan_only",plan:data.plan,note:data.message,neurons:data.aiUsage?.neurons??null,measured:data.aiUsage?.measured===true,aiUsage:data.aiUsage||null,aiNotUsedReason:data.aiReason};
   if(data.clarification)return {question,openalex,mode:"clarification",clarification:data.clarification,neurons:data.aiUsage?.neurons??null,measured:data.aiUsage?.measured===true,aiUsage:data.aiUsage||null,aiNotUsedReason:"clarification"};
   const ready=data.papersKind==="checked" && data.evidence?.version===3 && data.understanding?.mode==="ai" && data.understanding?.check;
   return { question, openalex, mode: data.understanding?.mode || "not_used", neurons: data.aiUsage?.neurons ?? null, measured: data.aiUsage?.measured === true, aiUsage: data.aiUsage || null, aiNotUsedReason: data.understanding?.mode === "ai" ? null : data.aiReason || data.understanding?.reason || "no_checked_evidence", cached: data.cached === true,
@@ -38,15 +39,19 @@ export function checkExpectation(result, expected = {}, clarification = null) {
   return {pass:errors.length===0,errors};
 }
 export function combineUsage(usages) {
-  const total={neurons:0,calls:0,sourceCalls:0,measured:true,byModel:{},stages:{},errors:[]};
+  const total={neurons:0,calls:0,sourceCalls:0,measured:true,byModel:{},stages:{},errors:[],repairs:[],turns:[],totalMs:0};
   for(const usage of usages){
     if(!usage || !Number.isFinite(usage.neurons) || usage.neurons<0){total.measured=false;continue;}
     if(Number.isInteger(usage.sourceCalls)&&usage.sourceCalls>=0&&total.sourceCalls!==null)total.sourceCalls+=usage.sourceCalls;else total.sourceCalls=null;
     total.errors.push(...(usage.errors||[]));
+    total.repairs.push(...(usage.repairs||[]));
+    total.turns.push(...(usage.turns||[]));total.totalMs+=usage.totalMs||0;
+    if(usage.terminalReason)total.terminalReason=usage.terminalReason;
+    if(usage.advisoryReason)total.advisoryReason=usage.advisoryReason;
     total.neurons+=usage.neurons;total.calls+=usage.calls||0;total.measured&&=usage.measured===true;
     for(const [model,cost] of Object.entries(usage.byModel||{}))total.byModel[model]=(total.byModel[model]||0)+cost;
     for(const [stage,part] of Object.entries(usage.stages||{})){
-      const target=total.stages[stage] ||= {calls:0,neurons:0};target.calls+=part.calls;target.neurons+=part.neurons;
+      const target=total.stages[stage] ||= {calls:0,neurons:0};target.calls+=part.calls;target.neurons+=part.neurons;target.ms=(target.ms||0)+(part.ms||0);
     }
   }
   return total;

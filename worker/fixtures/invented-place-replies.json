@@ -1,0 +1,115 @@
+{
+  "question": "How is research on screen time and language development in toddlers changing?",
+  "provenance": "Visible plan fields are transcribed from owner-supplied production reply previews. Missing years (WJ), sources and ambiguity tails are reconstructed for offline replay, not recovered logs.",
+  "replies": [
+    {
+      "plan": {
+        "topic": "screen time and language development in toddlers",
+        "synonyms": [
+          "digital media use",
+          "language skills",
+          "young children"
+        ],
+        "includeGroups": [
+          {
+            "terms": [
+              "toddlers",
+              "infants",
+              "preschoolers"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [
+            "WJ"
+          ],
+          "mode": "authored"
+        },
+        "excludeTerms": [
+          "adolescents",
+          "adults"
+        ],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "screen time and language development in toddlers"
+        },
+        {
+          "path": "synonyms.0",
+          "source": "screen time"
+        },
+        {
+          "path": "synonyms.1",
+          "source": "language development"
+        },
+        {
+          "path": "synonyms.2",
+          "source": "toddlers"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "toddlers"
+        }
+      ],
+      "ambiguity": null
+    },
+    {
+      "plan": {
+        "topic": "screen time and language development in toddlers",
+        "synonyms": [
+          "digital media use",
+          "language skills",
+          "young children"
+        ],
+        "includeGroups": [
+          {
+            "terms": [
+              "toddlers",
+              "infants",
+              "preschoolers"
+            ]
+          }
+        ],
+        "place": {
+          "codes": [
+            "WZ"
+          ],
+          "mode": "authored"
+        },
+        "excludeTerms": [],
+        "years": {
+          "from": 2010,
+          "to": null
+        }
+      },
+      "sources": [
+        {
+          "path": "topic",
+          "source": "screen time and language development in toddlers"
+        },
+        {
+          "path": "synonyms.0",
+          "source": "screen time"
+        },
+        {
+          "path": "synonyms.1",
+          "source": "language development"
+        },
+        {
+          "path": "synonyms.2",
+          "source": "toddlers"
+        },
+        {
+          "path": "includeGroups.0",
+          "source": "toddlers"
+        }
+      ],
+      "ambiguity": null
+    }
+  ]
+}
