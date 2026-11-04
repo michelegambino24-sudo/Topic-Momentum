@@ -404,7 +404,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
         let compiled=compileAIPlan(raw,year),result=await invokeReport(compiled.query);if(result.status!==200)return clock()>=end?blocked("ai_total_deadline"):{...result,body:{...result.body,aiReason:"source_failed",aiUsage:usage}};
         // A small result usually means the exact wording is rare, not that the subject is: add a few safe related wordings.
         const smallTotal=result.body.kpis?.total;
-        if(env.AI_EXPAND_SMALL==="on"&&!input.mode&&!(raw.synonyms||[]).length&&Number.isInteger(smallTotal)&&smallTotal<EXPANSION_BELOW){
+        if(env.AI_EXPAND_SMALL==="on"&&!input.mode&&!(raw.synonyms||[]).length&&Number.isInteger(smallTotal)&&smallTotal<EXPANSION_BELOW&&end-clock()>50000){
           try{
             const proposed=await run(AI_MODEL,{messages:[{role:"system",content:'Task: related wordings. Give up to 5 other ways researchers write the SAME topic, each 2 to 4 words, with the same or a narrower meaning. Never broader, never a different subject, never a place. Return only {"terms":[...]}.'},
               {role:"user",content:JSON.stringify({task:"synonyms",topic:raw.topic,question:input.sentence})}],
@@ -417,7 +417,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
                 raw=widened;compiled=wide;result=wideResult;usage.notes.push("Added related wordings: "+added.join(", ")+".");
               }
             }
-          }catch(error){if(error.reason)throw error;}
+          }catch{ /* Related wordings are a bonus: any failure here keeps the original search and never stops the checks. */ }
         }
         session.sourceStage="candidates";
         const citedBase=buildQueries(compiled.query,year).find(item=>item.id==="papers");

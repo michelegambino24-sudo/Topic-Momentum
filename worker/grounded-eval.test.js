@@ -582,3 +582,11 @@ test("related wordings that add almost nothing are not kept", async () => {
   assert.deepEqual(result.body.synonyms, []);
   assert(!result.body.aiUsage.notes.some(note => note.startsWith("Added related")));
 });
+
+test("a failing related-wordings step never stops the checked search", async () => {
+  const app = setup([complete()], [{ ok: true }], { expand: true, total: () => 40, synonyms: new Error("model down") });
+  const result = await app.search();
+  assert.equal(result.status, 200);
+  assert.equal(result.body.papersKind, "checked");
+  assert.deepEqual(result.body.synonyms, []);
+});
