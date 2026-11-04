@@ -971,7 +971,7 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     const stripped=term.replace(/\s+(?:research|studies|study|papers|literature|publications)$/i,"").replace(/^(?:research|studies)\s+(?:on|about|into)\s+/i,"").trim();
     return stripped && questionContentWords(stripped).length?stripped:term;
   };
-  const topic=typeof raw?.topic==="string"?plain(cleanTrend(raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", "))):"";
+  let topic=typeof raw?.topic==="string"?plain(cleanTrend(raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", "))):"";
   if(!usable(topic,200))throw new Error("The model reply has no usable research topic.");
   const note=(field,reason,action="dropped_or_repaired")=>record({field,action,reason});
   const sourceInput=value?.sources ?? raw.sources;
@@ -1052,6 +1052,18 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     const old=used.filter(entry=>entry.path.startsWith("excludeTerms."));
     for(let i=used.length-1;i>=0;i--)if(used[i].path.startsWith("excludeTerms."))used.splice(i,1);
     excludeTerms.forEach((term,index)=>{const source=old.find(entry=>entry.path==="excludeTerms."+exclusions.indexOf(term));if(source)used.push({...source,path:"excludeTerms."+index});});
+  }
+  // "microplastics in human health" searched as one literal phrase finds almost nothing: it is two concepts that must both appear.
+  {
+    const parts=topic.split(/\s+in\s+(?!(?:vitro|vivo|situ|silico|utero)\b)/i),entry=used.find(item=>item.path==="topic");
+    if(parts.length===2 && entry && includeGroups.length<3 && questionContentWords(parts[0]).length && questionContentWords(parts[1]).length){
+      const head=questionSpan(parts[0].trim(),sentence) || fuzzySpan(parts[0],sentence),tail=questionSpan(parts[1].trim(),sentence) || fuzzySpan(parts[1],sentence);
+      if(head && tail){
+        topic=parts[0].trim();entry.source=head;
+        includeGroups.push({terms:[cleanTerm(parts[1].trim())]});used.push({path:"includeGroups."+(includeGroups.length-1),source:tail});
+        note("topic","split_topic_into_concepts","repaired");
+      }
+    }
   }
   const plan=validateAIPlan({topic,synonyms,includeGroups,place,excludeTerms,years},year);
   if(Object.keys(raw).some(key=>!["topic","synonyms","includeGroups","place","excludeTerms","years"].includes(key)) || (value?.plan && Object.keys(value).some(key=>!["plan","sources","ambiguity"].includes(key))))note("extra_keys","unexpected_fields");

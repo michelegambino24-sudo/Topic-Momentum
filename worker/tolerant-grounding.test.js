@@ -76,3 +76,11 @@ test("framing words the person did not type as a phrase are not searched as a li
  const kept=validateGroundedResponse({plan:{...base(),topic:"operations research"},sources:[{path:"topic",source:"operations research"}],ambiguity:null},"Is operations research growing?",2026);
  assert.equal(kept.plan.topic,"operations research");
 });
+test("'X in Y' becomes two required concepts instead of one rare literal phrase",()=>{
+ const sentence="is rearch on microplastcs in human helth growing?";
+ const value=validateGroundedResponse({plan:{...base(),topic:"microplastcs in human helth"},sources:[{path:"topic",source:"microplastcs in human helth"}],ambiguity:null},sentence,2026);
+ assert.equal(value.plan.topic,"microplastcs");assert.deepEqual(value.plan.includeGroups,[{terms:["human helth"]}]);
+ assert.deepEqual(groundPlan(value,sentence,2026).missing,[]);
+ const vitro=validateGroundedResponse({plan:{...base(),topic:"cells in vitro"},sources:[{path:"topic",source:"cells in vitro"}],ambiguity:null},"Is research on cells in vitro growing?",2026);
+ assert.equal(vitro.plan.topic,"cells in vitro");
+});
