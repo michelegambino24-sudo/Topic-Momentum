@@ -100,3 +100,9 @@ test("splitting 'X in Y' never duplicates a group the model already made for Y",
  assert.equal(value.plan.topic,"artificial intelligence");assert.equal(value.plan.includeGroups.length,1);
  assert.deepEqual(groundPlan(value,sentence,2026).missing,[]);
 });
+test("a keyword group that only repeats a place is dropped; 'arab region' is a known place",()=>{
+ const sentence="digital innovation in the Arab region since 2020";
+ assert.equal(places.resolve(sentence).matches.length,1);
+ const value=validateGroundedResponse({plan:{...base(),topic:"digital innovation",includeGroups:[{terms:["arab region","arab world"]}]},sources:[{path:"topic",source:"digital innovation"},{path:"includeGroups.0",source:"Arab region"}],ambiguity:null},sentence,2026);
+ assert.equal(value.plan.includeGroups.length,0);
+});

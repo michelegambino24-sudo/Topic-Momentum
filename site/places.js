@@ -26,7 +26,7 @@
   ],
   "arabWorld": [
     "Arab world",
-    "arab world|arab countries|arab states|arab nations",
+    "arab world|arab region|arab countries|arab states|arab nations",
     "DZ BH KM DJ EG IQ JO KW LB LY MR MA OM PS QA SA SO SD SY TN AE YE"
   ],
   "levant": [

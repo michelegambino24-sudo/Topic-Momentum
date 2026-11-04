@@ -1015,6 +1015,8 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     // A group quoting only framing words ("rising", "growing", "advancements") is the model inventing a requirement.
     const quoted=sources.get("includeGroups."+index);
     if(quoted && !questionContentWords(quoted).length){note("includeGroups","trend_wording_group_dropped","dropped");continue;}
+    // A group whose terms only name a place is the model repeating the place that code already resolves.
+    if(Array.isArray(group?.terms) && group.terms.length && group.terms.every(term=>{const place=globalThis.TMM_PLACES.resolve(String(term));return place.matches.length>0 && !questionContentWords(place.withoutPlaces).length;})){note("includeGroups","place_group_dropped","dropped");continue;}
     if(typeof group?.preset==="string" && Object.hasOwn(SEARCH_PRESETS,group.preset))cleaned={preset:group.preset};
     else if(Array.isArray(group?.terms)){
       const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).map(plain).filter(Boolean).map(cleanTerm).filter(term=>questionContentWords(term).length))].slice(0,8);

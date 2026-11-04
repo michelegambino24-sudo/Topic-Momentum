@@ -25,6 +25,36 @@
   let cacheOnlyView = false;
   let activeSubfield = "";
   let activeExclusions = [], activeAuthored = [], activeUnderstandingKey = "", draftPlace = null, manualDraft = true;
+  // A place chosen in the "Where" list always wins over a place written in the search bar. null = not chosen yet.
+  let pickedPlace = null;
+  const POPULAR_PLACES = ["worldwide", "country:US", "europe", "middleEast", "mena", "gcc", "country:AE", "country:SA", "africa", "asia"];
+  function placeName(id) { return id === "country:US" ? "USA" : id === "worldwide" ? "Worldwide (no filter)" : globalThis.TMM_PLACES.byId[id].label; }
+  function buildPlaceSelect() {
+    const select = document.getElementById("place-select"), places = globalThis.TMM_PLACES;
+    if (!select || !places || select.dataset.built) return;
+    const option = id => `<option value="${id}">${escape(placeName(id))}</option>`, byName = (a, b) => placeName(a).localeCompare(placeName(b));
+    const regions = Object.keys(places.regions).filter(id => !POPULAR_PLACES.includes(id)).sort(byName);
+    const countries = Object.keys(places.byId).filter(id => id.startsWith("country:") && !POPULAR_PLACES.includes(id)).sort(byName);
+    select.innerHTML = `<optgroup label="Popular">${POPULAR_PLACES.map(option).join("")}</optgroup><optgroup label="Regions">${regions.map(option).join("")}</optgroup><optgroup label="Countries">${countries.map(option).join("")}</optgroup><option value="custom" disabled hidden>Places from your text</option>`;
+    select.dataset.built = "1";
+  }
+  function applyPickedPlace() {
+    if (pickedPlace === null) return;
+    const mode = draftPlace?.mode || "authored";
+    draftPlace = globalThis.TMM_PLACES.describe([pickedPlace], mode);
+    activeAuthored = mode === "authored" && pickedPlace !== "worldwide" ? draftPlace.codes : [];
+  }
+  function syncPlaceSelect() {
+    try { drawPlaceSelect(); } catch { /* The list is a convenience on top of the sentence. */ }
+  }
+  function drawPlaceSelect() {
+    const select = document.getElementById("place-select");
+    if (!select || !select.options || typeof select.options[Symbol.iterator] !== "function") return;
+    buildPlaceSelect();
+    const ids = draftPlace?.ids || [];
+    const value = pickedPlace !== null ? pickedPlace : ids.length === 1 ? ids[0] : ids.length > 1 ? "custom" : "worldwide";
+    select.value = [...select.options].some(item => item.value === value) ? value : "worldwide";
+  }
   let draftTopic = "", sentenceText = "", draftErrors = [], draftNote = "", draftLabels = [], showDraftFrom = false;
   let narrowDraft = null, narrowText = "";
   const parser = window.TMM_QUERY_PARSER;
@@ -525,6 +555,7 @@
     const spelling = window.TMM_SPELL?.ready && checked.trim() ? window.TMM_SPELL.suggest(checked).slice(0, 2) : [];
     for (const { word, suggestion } of spelling) chips.push(`<button class="chip spell-chip" type="button" data-spell-word="${escape(word)}" data-spell-to="${escape(suggestion)}"${busy ? " disabled" : ""}>Did you mean <strong>${escape(suggestion)}</strong>?</button>`);
     $("understood-chips").innerHTML = chips.join("");
+    syncPlaceSelect();
     $("query-note").textContent = [...draftErrors, draftNote].filter(Boolean).join(" ");
     $("query-note").hidden = !$("query-note").textContent;
   }
@@ -545,6 +576,7 @@
       if (parsed.explicitRange) { $("from-input").value = String(parsed.from); $("to-input").value = parsed.to === null ? "" : String(parsed.to); showDraftFrom = true; }
     }
     if(parsed.resolvedPlace){draftPlace=parsed.resolvedPlace.matches.length?parsed.resolvedPlace:null;activeAuthored=draftPlace?.mode==="authored"?draftPlace.codes:[];}
+    applyPickedPlace();
     renderSynonyms(); renderUnderstood();
   }
   function currentNarrowSearch() {
@@ -824,6 +856,7 @@
     activeSubfield = topic.subfieldId || "";
     activeExclusions = topic.excludeTerms || []; activeAuthored = topic.authoredCodes || [];
     activeUnderstandingKey = topic.understanding?.key || topic.understandingKey || "";
+    pickedPlace = null;
     draftPlace = topic.understanding?.place || (topic.placeIds?.length?globalThis.TMM_PLACES.describe(topic.placeIds,topic.placeMode):null); manualDraft = !isSample;
     sentenceText = $("topic-input").value; draftTopic = sentenceText; draftErrors = []; draftNote = topic.understanding?.note || ""; draftLabels = []; showDraftFrom = reportRange(topic).from !== 2010;
     $("narrow-input").value = ""; narrowText = ""; narrowDraft = null;
@@ -1324,8 +1357,13 @@
       if (understandingKey) url.searchParams.set("understanding", understandingKey);
       const current = options.mode ? { name, synonyms: terms, includeGroups: groupsOf(include), from: Number(from), to: to == null || to === "" ? null : Number(to), excludeTerms: exclusions, authoredCodes: authored,placeIds,placeMode,subfieldId: subfield, ...(selection ? {subtopicId:selection.id,subtopicName:selection.name} : {}) } : undefined;
       if (useAI) url.search = "";
+      let sentenceToSend = options.sentence;
+      if (useAI && pickedPlace !== null && !options.mode && !options.clarification && typeof sentenceToSend === "string") {
+        const typedWithoutPlace = globalThis.TMM_PLACES.resolve(sentenceToSend).withoutPlaces.trim();
+        if (typedWithoutPlace) sentenceToSend = typedWithoutPlace + (pickedPlace === "worldwide" ? "" : " in " + globalThis.TMM_PLACES.byId[pickedPlace].label);
+      }
       let response;
-      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:options.sentence,...(draftPlace || options.placeMode?{placeMode}:{}), ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
+      try { response = await fetch(url, { signal: controller.signal, ...(useAI ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sentence:sentenceToSend,...(draftPlace || options.placeMode?{placeMode}:{}), ...(options.clarification ? {clarification:options.clarification} : {}), ...(options.mode ? {mode:options.mode,current} : {})}) } : {}) }); }
       catch { throw new Error(connectionError()); }
       let data;
       try { data = await response.json(); }
@@ -1390,6 +1428,12 @@
     if (!draftTopic.trim()) { notify("Add a research topic, then try again.", true); return; }
     renderSynonyms();
     search(draftTopic, synonyms());
+  });
+  try { buildPlaceSelect(); } catch { /* See syncPlaceSelect. */ }
+  document.getElementById("place-select")?.addEventListener?.("change", event => {
+    if (busy) { syncPlaceSelect(); return; }
+    pickedPlace = event.target.value === "custom" ? null : event.target.value;
+    applyPickedPlace(); draftErrors = []; renderUnderstood();
   });
   $("topic-input").addEventListener("input", () => {
     $("search-clarification").hidden = true; pendingClarification = null;
@@ -1526,11 +1570,12 @@
       if (kind === "exclude") activeExclusions = activeExclusions.filter((_, i) => i !== index);
       if (kind === "place" && draftPlace?.ids) {
         $("topic-input").value=globalThis.TMM_PLACES.resolve(activeUnderstandingKey && topic.understanding?.sentence || $("topic-input").value).withoutPlaces;
+        pickedPlace = null;
         previewSentence(true);$("topic-input").focus();return;
       }
       if (kind === "place") {
         if (draftPlace?.mode === "mentions") setIncludeGroups(readIncludeGroups().filter(group => parser.key(group) !== parser.key(draftPlace.terms)));
-        activeAuthored = []; draftPlace = null;
+        activeAuthored = []; draftPlace = null; pickedPlace = null;
       }
       draftErrors = []; renderSynonyms(); renderUnderstood(); $("topic-input").focus();
       return;

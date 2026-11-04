@@ -538,3 +538,14 @@ footer{color:var(--secondary)}
 .place-choice .place-option{min-height:36px}
 .place-choice .place-option.is-selected{font-weight:600;background:rgba(127,127,127,.28);border-color:currentColor;cursor:default}
 .place-choice .place-option:not(.is-selected){opacity:.85;border-style:dashed}
+
+.scope-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 24px;margin:12px 0 0}
+.scope-place{display:flex;flex-direction:column;gap:4px;font-size:.875rem}
+.scope-place select{min-height:40px;min-width:220px;max-width:100%}
+.scope-years{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px}
+.scope-years-title{font-size:.875rem;align-self:center}
+.scope-years .range-controls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px;margin:0;padding:0}
+.scope-years .range-fields{display:flex;gap:10px}
+
+.scope-place select{width:240px}
+.scope-row{align-items:flex-end}
