@@ -411,8 +411,9 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
               response_format:{type:"json_schema",json_schema:{type:"object",additionalProperties:false,required:["terms"],properties:{terms:{type:"array",items:{type:"string"}}}}},max_tokens:150,temperature:0},value=>{if(!Array.isArray(value?.terms))throw new Error("Invalid related wordings");return value;},"expansion");
             const added=expansionTerms(proposed.terms,raw,input.sentence);
             if(added.length){
+              session.allowance=14; // one more full report, only for this step
               const widened={...raw,synonyms:added},wide=compileAIPlan(widened,year),wideResult=await invokeReport(wide.query),wideTotal=wideResult.body?.kpis?.total;
-              if(wideResult.status===200&&Number.isInteger(wideTotal)&&wideTotal>=smallTotal&&wideTotal<=Math.max(smallTotal*EXPANSION_MAX_GROWTH,smallTotal+400)){
+              if(wideResult.status===200&&Number.isInteger(wideTotal)&&wideTotal>=Math.max(smallTotal+3,Math.ceil(smallTotal*1.5))&&wideTotal<=Math.max(smallTotal*EXPANSION_MAX_GROWTH,smallTotal+400)){
                 raw=widened;compiled=wide;result=wideResult;usage.notes.push("Added related wordings: "+added.join(", ")+".");
               }
             }

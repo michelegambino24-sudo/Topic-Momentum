@@ -94,7 +94,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                   stage = "pacing";
                   const start = () => pace(controller.signal, complex, () => {
                     if (controller.signal.aborted) throw new Error("Request cancelled");
-                    if (session.requests >= MAX_SOURCE_REQUESTS) throw complexityError(429);
+                    if (session.requests >= MAX_SOURCE_REQUESTS + (session.allowance || 0)) throw complexityError(429);
                     session.bump?.("source");
                     session.requests++;
                     stage = "fetch";

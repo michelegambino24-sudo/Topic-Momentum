@@ -575,3 +575,10 @@ test("related wordings that multiply the count are discarded, and large results 
   await off.search();
   assert(!off.calls.some(call => call.data.task === "synonyms"));
 });
+
+test("related wordings that add almost nothing are not kept", async () => {
+  const app = setup([complete()], [{ ok: true }], { expand: true, total: query => query.synonyms.length ? 41 : 40, synonyms: { terms: ["battery recovery"] } });
+  const result = await app.search();
+  assert.deepEqual(result.body.synonyms, []);
+  assert(!result.body.aiUsage.notes.some(note => note.startsWith("Added related")));
+});
