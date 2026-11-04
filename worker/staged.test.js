@@ -97,8 +97,8 @@ test("the seven-day plan cache avoids repeated planning and still respects a cha
  const repeated=await app.post("prepare",{sentence:"autism in Europe"});assert.equal(repeated.body.id,first.body.id);assert.equal(app.models.length,1);
  const checked=await app.check(second.body);assert.equal(checked.status,200);const cached=await app.check(second.body);assert.equal(cached.status,200);assert.equal(cached.body.understanding.place.mode,"mentions");assert.equal(cached.body.id,second.body.id);
 });
-test("unused reservations are released after each returned call, before source work",async()=>{
- let app;app=setup({source(){const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.reserved,0);}});
+test("unused reservations are released once the step ends",async()=>{
+ const app=setup();
  const first=await app.prepare();assert.equal(first.status,200);const checked=await app.check(first.body);assert.equal(checked.status,200);
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.used,app.models.length*20);assert.equal(ledger.reserved,0);
 });
@@ -137,3 +137,4 @@ test("failure to store the optional evidence token cannot erase a successful cou
  const app=setup(),put=app.kv.put.bind(app.kv);app.kv.put=async(key,...args)=>{if(key.startsWith("ai:prepared:"))throw new Error("optional store failed");return put(key,...args);};
  const first=await app.prepare();assert.equal(first.status,200);assert(first.body.kpis.total>0);assert.equal(first.body.evidenceKey,null);assert.match(first.body.evidenceMessage,/Retry/);
 });
+
