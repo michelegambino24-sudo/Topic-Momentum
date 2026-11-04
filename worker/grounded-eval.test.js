@@ -10,6 +10,8 @@ const base=()=>({topic:"battery recycling",synonyms:[],includeGroups:[],place:{c
 const candidate=(plan,sources)=>({plan,sources:Object.entries(sources).map(([path,source])=>({path,source})),ambiguity:null});
 const question="How is research on battery recycling developing since 2020?";
 const complete=()=>candidate({...base(),years:{from:2020,to:null}},{topic:"battery recycling","years.from":"2020"});
+// Quotes the question but searches for something else: only a semantic self-check can catch this.
+const mismatched=()=>candidate({...base(),topic:"lithium cells",years:{from:2020,to:null}},{topic:"battery recycling","years.from":"2020"});
 const payload=params=>JSON.parse(params.messages?.[1]?.content||params.prompt.split("<|im_start|>user\n")[1].split("\n/no_think")[0]);
 function setup(plans=[complete()],checks=[{ok:true}],config={}){
   const kv=new MemoryKV(),calls=[],sourceCalls=[],judges=[],reportQueries=[];
@@ -163,10 +165,10 @@ for(const missing of [["children"],["growing"],["growth"],["growing","children"]
 test("self-check blocks only the quoted requirement, excluding an invented population",async()=>{
  const app=setup([blankingFixture.replies[1]],[{ok:false,problem:"Missing autism and children",missing:["autism","children"]}]);
  const result=await app.search({sentence:blankingFixture.question});
- assert.equal(result.status,422);assert.deepEqual(result.body.failingCheck.missing,["autism"]);
- assert(!app.calls.find(call=>call.data.feedback).data.feedback.includes("children"));
+ // "autism" is already in the plan, so a model objection to it cannot block the search; "children" was never asked.
+ assert.equal(result.status,200);
  const check=result.body.aiUsage.checks.find(check=>check.check==="self_check");
- assert.deepEqual(check.blockingRequirements,["autism"]);assert.deepEqual(check.ignoredRequirements,[{requirement:"children",reason:"not_quoted_from_question"}]);
+ assert.deepEqual(check.blockingRequirements,[]);assert.deepEqual(check.ignoredRequirements,[{requirement:"autism",reason:"covered_by_plan"},{requirement:"children",reason:"not_quoted_from_question"}]);
 });
 for(const row of ambiguityFixtures.questions)test("clear regional trend question survives malformed ambiguity: "+row.question,async()=>{
  const app=setup([row.reply]),result=await app.search({sentence:row.question});
@@ -220,11 +222,10 @@ for(const withAmbiguity of [true,false])test("replay supplied sequence: successf
  let time=0,index=0;const durations=[4000,4000,1800,16500];
  const app=setup([bad,good,bad],[{ok:false,problem:"The requested condition is missing",missing:["autism"]}],{clock:()=>time,neurons:call=>[2,35,2,139][call-1],waitForAI:async action=>{time+=durations[index++];return action();}});
  const result=await app.search({sentence:row.question}),usage=result.body.aiUsage;
- assert.equal(result.status,422);assert.deepEqual(usage.turns.map(turn=>turn.stage),["planning","replan","selfCheck","replan"]);
- assert.equal(usage.turns[1].neurons,35);assert.equal(usage.turns[2].ms,1800);assert.equal(usage.turns[2].outcome,"success");assert.equal(usage.turns[2].semanticOk,false);
- assert.equal(usage.turns[3].neurons,139);assert.equal(usage.turns[3].ms,16500);
- assert(usage.checks.some(check=>check.check==="replan_trigger" && check.trigger==="self_check"));
- assert.equal(result.body.failingCheck.check,"coverage_before_cleanup");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
+ // The repaired plan already contains "autism": the model's objection is ignored instead of failing the search.
+ assert.equal(result.status,200);assert.equal(usage.turns[0].stage,"planning");assert.equal(usage.turns[1].stage,"replan");
+ const check=usage.checks.find(check=>check.check==="self_check");
+ assert.deepEqual(check.blockingRequirements,[]);assert.deepEqual(check.ignoredRequirements,[{requirement:"autism",reason:"covered_by_plan"}]);
 });
 test("a semantic self-check pass can precede a later tightening-constraint 422",async()=>{
  const row=ambiguityFixtures.questions[0],good=structuredClone(row.reply),bad=structuredClone(row.reply);
@@ -235,10 +236,14 @@ test("a semantic self-check pass can precede a later tightening-constraint 422",
  assert.equal(result.body.failingCheck.check,"tightening_constraints");assert.deepEqual(result.body.failingCheck.missing,["topic"]);assert.equal(result.body.failingCheck.phase,"tightening");
 });
 test("422 explicitly identifies semantic self-check rejection and the model's missing concept",async()=>{
+ const app=setup([mismatched()],[{ok:false,problem:"Missing the requested process",missing:["battery recycling"]}]),result=await app.search();
+ assert.equal(result.status,422);assert.equal(result.body.failingCheck.check,"self_check");assert.deepEqual(result.body.failingCheck.missing,["battery recycling"]);
+ assert.equal(result.body.failingCheck.rejectedPlan.topic,"lithium cells");assert.equal(result.body.aiUsage.turns.filter(turn=>turn.stage==="selfCheck").length,2);
+});
+test("a self-check objection to a concept the plan already contains is ignored, however the question is phrased",async()=>{
  const row=ambiguityFixtures.questions[0],good=structuredClone(row.reply);good.ambiguity=null;
  const app=setup([good],[{ok:false,problem:"Missing the requested condition",missing:["autism"]}]),result=await app.search({sentence:row.question});
- assert.equal(result.status,422);assert.equal(result.body.failingCheck.check,"self_check");assert.deepEqual(result.body.failingCheck.missing,["autism"]);
- assert.equal(result.body.failingCheck.rejectedPlan.topic,"autism");assert.equal(result.body.aiUsage.turns.filter(turn=>turn.stage==="selfCheck").length,2);
+ assert.equal(result.status,200);assert.equal(result.body.name,"autism");
 });
 test("a self-check complaining only about trend wording is advisory",async()=>{
  const row=ambiguityFixtures.questions[0],app=setup([row.reply],[{ok:false,problem:"The meaning of growing is ambiguous",missing:["growing"]}]),result=await app.search({sentence:row.question});
@@ -386,10 +391,10 @@ test("model topic groups lose trend suffixes before grounding and self-check",as
  assert(!JSON.stringify(result.body.includeGroups).includes("changing"));
 });
 test("a pipeline needing a fifteenth model call stops at fourteen with a call-limit reason",async()=>{
- const broad=complete();broad.plan.synonyms=["battery reuse"];broad.sources.push({path:"synonyms.0",source:"battery recycling"});
+ const broad=mismatched();broad.plan.synonyms=["battery reuse"];broad.sources.push({path:"synonyms.0",source:"battery recycling"});
  const bad=candidate({...base(),topic:"battery"},{topic:"battery"});let judgments=0;
  const papers=(start,count)=>Array.from({length:count},(_,i)=>({id:"https://openalex.org/W"+(start+i),display_name:"Battery recycling study "+(start+i),publication_year:2025,cited_by_count:100,authorships:[]}));
- const app=setup(["{broken",bad,broad,broad,complete()],[{ok:false,problem:"Check the intended meaning",missing:["battery recycling"]},{ok:true}],{
+ const app=setup(["{broken",bad,broad,broad,mismatched()],[{ok:false,problem:"Check the intended meaning",missing:["battery recycling"]},{ok:true}],{
   judge:data=>({pass:++judgments===1?[]:data.titles.map(item=>item.id)}),
   source:descriptor=>{
    if(descriptor.id==="checkearly")return {results:papers(100,10)};
@@ -459,12 +464,12 @@ test("still-missing coverage asks for a rephrase with no source call or charged 
  const ledger=JSON.parse(app.kv.values.get("ai:usage:2026-11-04"));assert.equal(ledger.used,4);assert.equal(ledger.reserved,0);
 });
 test("self-check rejection re-plans once; both self-checks and re-plan are charged",async()=>{
- const app=setup([complete()],[{ok:false,problem:"Wrong meaning of the requested process",missing:["battery recycling"]},{ok:true}]),result=await app.search();
+ const app=setup([mismatched()],[{ok:false,problem:"Wrong meaning of the requested process",missing:["battery recycling"]},{ok:true}]),result=await app.search();
  assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.stages.selfCheck.calls,2);assert.equal(result.body.aiUsage.stages.replan.calls,1);
  assert.equal(result.body.aiUsage.neurons,app.calls.length*2);assert.equal(app.calls[2].data.feedback,"Check the requested requirement: battery recycling.");
 });
 test("a second self-check rejection clarifies without any source call",async()=>{
- const app=setup([complete()],[{ok:false,problem:"The requested process is missing",missing:["battery recycling"]}]),result=await app.search();
+ const app=setup([mismatched()],[{ok:false,problem:"The requested process is missing",missing:["battery recycling"]}]),result=await app.search();
  assert.equal(result.status,422);assert(!result.body.clarification);assert.equal(app.calls.length,4);assert.equal(app.sourceCalls.length,0);assert(!app.kv.values.has("ai:count:2026-11-04"));
 });
 test("legacy stored choices remain bound to their question and are verified before use",async()=>{
@@ -523,7 +528,7 @@ test("old model-generated place choices cannot override the dictionary country",
 
 test("coverage repair and self-check repair each get one bounded re-plan, with all calls measured",async()=>{
  const bad=candidate({...base(),topic:"battery"},{topic:"battery"});
- const app=setup([bad,complete(),complete()],[{ok:false,problem:"Check the intended meaning",missing:["battery recycling"]},{ok:true}]),result=await app.search();
+ const app=setup([bad,mismatched(),complete()],[{ok:false,problem:"Check the intended meaning",missing:["battery recycling"]},{ok:true}]),result=await app.search();
  assert.equal(result.body.papersKind,"checked");assert.equal(result.body.aiUsage.stages.replan.calls,2);assert.equal(result.body.aiUsage.stages.selfCheck.calls,2);assert.equal(result.body.aiUsage.neurons,app.calls.length*2);
 });
 

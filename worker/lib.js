@@ -842,7 +842,25 @@ export function questionRequirements(sentence, year) {
 }
 // Sources are verbatim spans, not a second vocabulary of hand-written concepts.
 const QUESTION_SCAFFOLD = new Set("a an the and or of on in for to with as about regarding concerning how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing help helps learn leading field since from between until during written authored excluding without except s".split(" "));
-export const questionContentWords = sentence => [...new Set((String(sentence).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(word => !QUESTION_SCAFFOLD.has(word)))];
+// Filler, typos of "research"/"region" and plurals never count as required concepts.
+export const questionContentWords = sentence => {
+  const parser=globalThis.TMM_QUERY_PARSER;
+  return [...new Set(parser.wordsIn(sentence).filter(word => !QUESTION_SCAFFOLD.has(word) && !parser.isFiller(word)))];
+};
+const planTexts = plan => [plan?.topic, ...(plan?.synonyms || []), ...(plan?.excludeTerms || []), ...(plan?.includeGroups || []).flatMap(group => group?.terms || [])].filter(text => typeof text === "string" && text);
+// Question words the plan does not cover. A word is covered by an exact or tolerant match (plural, typo,
+// hyphen/space, acronym such as PTSD = post traumatic stress disorder) in a quoted source or in the plan itself.
+export function uncoveredWords(sentence, sources, plan, placeText = sentence) {
+  const parser=globalThis.TMM_QUERY_PARSER;
+  const texts=[...sources.map(entry=>entry.source), ...globalThis.TMM_PLACES.resolve(placeText).matches.map(hit=>hit.source), ...planTexts(plan)].map(text=>parser.wordsIn(text)).filter(words=>words.length);
+  const all=parser.wordsIn(sentence);
+  const covered=new Set();
+  all.forEach((word,index)=>{
+    if(texts.some(words=>words.some(other=>parser.sameWord(word,other)) || words.some((_,start)=>{for(let size=2;size<=6&&start+size<=words.length;size++)if(parser.isAcronymOf(word,words.slice(start,start+size)))return true;return false;})))covered.add(word);
+    for(let size=2;size<=6&&index+size<=all.length;size++)if(texts.some(words=>words.some(other=>parser.isAcronymOf(other,all.slice(index,index+size)))))all.slice(index,index+size).forEach(part=>covered.add(part));
+  });
+  return questionContentWords(sentence).filter(word=>!covered.has(word));
+}
 export function questionHasPlace(sentence, year) { return globalThis.TMM_PLACES.resolve(sentence).matches.length>0; }
 export function groundedPlanSchema(year, sentence = null) {
   const object = properties => ({type:"object",additionalProperties:false,required:Object.keys(properties),properties});
@@ -880,8 +898,7 @@ export function groundPlan(candidate, sentence, year) {
   if(raw.place.ids)keep("place");
   const excludeTerms = select(raw.excludeTerms,"excludeTerms.");
   const years = {from:keep("years.from")?raw.years.from:2010,to:keep("years.to")?raw.years.to:null};
-  const covered = new Set(used.flatMap(entry=>questionContentWords(entry.source)).concat(globalThis.TMM_PLACES.resolve(sentence).matches.flatMap(hit=>questionContentWords(hit.source))));
-  const missing = questionContentWords(sentence).filter(word=>!covered.has(word));
+  const missing = uncoveredWords(sentence, used, {topic,synonyms,includeGroups,excludeTerms});
   return {plan:{topic,synonyms,includeGroups,place,excludeTerms,years},sources:used,missing};
 }
 export function reconcileGrounding(grounded, plan, sentence) {
@@ -894,8 +911,30 @@ export function reconcileGrounding(grounded, plan, sentence) {
   });
   if(plan.place.codes.length || plan.place.ids?.length)retain("place");
   for(const field of ["from","to"])if(plan.years[field]!==null)retain("years."+field);
-  const covered=new Set(sources.flatMap(entry=>questionContentWords(entry.source)).concat(globalThis.TMM_PLACES.resolve(sentence).matches.flatMap(hit=>questionContentWords(hit.source))));
-  return {plan,sources,missing:questionContentWords(sentence).filter(word=>!covered.has(word))};
+  return {plan,sources,missing:uncoveredWords(sentence,sources,plan)};
+}
+// A quoted source that is not letter-for-letter in the question ("post traumatic" vs "post-traumatic", a plural,
+// a typo, an acronym) is repaired to the literal span of the question it stands for.
+export function fuzzySpan(source, sentence) {
+  const parser=globalThis.TMM_QUERY_PARSER;
+  if(typeof source!=="string" || !source.trim() || typeof sentence!=="string")return "";
+  const target=parser.wordsIn(source).filter(word=>!QUESTION_SCAFFOLD.has(word) && !parser.isFiller(word));
+  if(!target.length)return "";
+  const tokens=[...sentence.matchAll(/[\p{L}\p{N}]+/gu)].map(match=>({text:match[0],start:match.index,end:match.index+match[0].length}));
+  const slice=(first,last)=>sentence.slice(tokens[first].start,tokens[last].end);
+  if(target.length===1){
+    const word=target[0],direct=tokens.findIndex(token=>parser.sameWord(token.text,word));
+    if(direct>=0)return slice(direct,direct);
+    for(let start=0;start<tokens.length;start++)for(let size=2;size<=6&&start+size<=tokens.length;size++)if(parser.isAcronymOf(word,tokens.slice(start,start+size).map(token=>parser.fold(token.text))))return slice(start,start+size-1);
+    return "";
+  }
+  const acronym=tokens.findIndex(token=>parser.isAcronymOf(parser.fold(token.text),target));
+  const found=target.map(word=>tokens.findIndex(token=>parser.sameWord(token.text,word)));
+  if(found.every(index=>index>=0)){
+    const first=Math.min(...found),last=Math.max(...found);
+    if(last-first+1<=target.length*2+2)return slice(first,last);
+  }
+  return acronym>=0?slice(acronym,acronym):"";
 }
 // Repair the model boundary only; cached/internal plans still use the strict validator.
 function questionSpan(source,sentence) {
@@ -908,14 +947,15 @@ function questionSpan(source,sentence) {
   return "";
 }
 // A model objection cannot create a requirement the user did not state.
-export function selfCheckRequirements(check, sentence) {
+export function selfCheckRequirements(check, sentence, plan = null) {
   const blocking=[],ignored=[];
   for(const requirement of check.missing || []){
-    const source=questionSpan(requirement.trim(),sentence);
+    const source=questionSpan(requirement.trim(),sentence) || fuzzySpan(requirement,sentence);
     const place=globalThis.TMM_PLACES.resolve(requirement);
+    const alreadyCovered=Boolean(plan) && uncoveredWords(requirement,[],plan,sentence).length===0;
     const trendOnly=/^(?:growing|growth|changing|developing|evolving|trends?)$/i.test(requirement.trim());
     const placeOnly=place.matches.length>0 && !questionContentWords(place.withoutPlaces).length;
-    if(!source || trendOnly || placeOnly || !questionContentWords(requirement).length)ignored.push({requirement,reason:!source?"not_quoted_from_question":placeOnly?"geography_resolved_by_code":"trend_or_scaffolding"});
+    if(!source || trendOnly || placeOnly || alreadyCovered || !questionContentWords(requirement).length)ignored.push({requirement,reason:!source?"not_quoted_from_question":placeOnly?"geography_resolved_by_code":alreadyCovered?"covered_by_plan":"trend_or_scaffolding"});
     else blocking.push(source);
   }
   return {blocking:[...new Set(blocking)],ignored};
@@ -937,21 +977,28 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
   }
   if(JSON.stringify(entries)!==JSON.stringify(sourceInput))note("sources","invalid_source_entries");
   const used=[];
-  const retain=(target,original=target)=>{if(sources.has(original))used.push({path:target,source:sources.get(original)});};
+  // A quoted source that is not letter-for-letter in the question is repaired only to the literal span that holds
+  // every content word of the item it supports, so an invented word can never borrow a neighbour's quote.
+  const retain=(target,original=target,text="")=>{
+    if(!sources.has(original))return;
+    let source=sources.get(original);
+    if(text && !questionSpan(source,sentence)){const alt=fuzzySpan(text,sentence);if(alt){source=alt;note("sources."+target.replace(/\.\d+$/,""),"recovered_literal_source","repaired");}}
+    used.push({path:target,source});
+  };
   retain("topic");
   // A literal topic supplies its own source if the optional sources field is absent/broken.
   if(!used.length || !questionSpan(used[0].source,sentence)){
     // A model can add scaffolding ("autism research") to a literal topic.
     // Recover only when every remaining content word forms one exact question span.
     const content=questionContentWords(topic).join(" ");
-    const span=questionSpan(topic,sentence) || (content && questionSpan(content,sentence));
+    const span=questionSpan(topic,sentence) || (content && questionSpan(content,sentence)) || fuzzySpan(topic,sentence);
     if(span){used.splice(0,used.length,{path:"topic",source:span});note("sources.topic","recovered_literal_topic_source","repaired");}
   }
   const list=(field,max,length=80)=>{
     const result=[];
     for(const [index,item] of (Array.isArray(raw[field])?raw[field]:[]).entries())if(usable(item,length)){
       const term=cleanTerm(field==="synonyms"?cleanTrend(item):item);
-      if(term && result.length<max && !result.includes(term)){retain(field+"."+result.length,field+"."+index);result.push(term);}
+      if(term && result.length<max && !result.includes(term)){retain(field+"."+result.length,field+"."+index,term);result.push(term);}
     }
     if(JSON.stringify(result)!==JSON.stringify(raw[field]))note(field,"invalid_or_duplicate_terms");
     return result;
@@ -961,11 +1008,11 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     let cleaned=null;
     if(typeof group?.preset==="string" && Object.hasOwn(SEARCH_PRESETS,group.preset))cleaned={preset:group.preset};
     else if(Array.isArray(group?.terms)){
-      const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).filter(Boolean).map(cleanTerm))].slice(0,8);
+      const terms=[...new Set(group.terms.filter(term=>usable(term)).map(cleanTrend).filter(Boolean).map(cleanTerm).filter(term=>questionContentWords(term).length))].slice(0,8);
       if(terms.length)cleaned={terms};
     }
     if(cleaned && includeGroups.length<3 && !includeGroups.some(item=>JSON.stringify(item)===JSON.stringify(cleaned))){
-      retain("includeGroups."+includeGroups.length,"includeGroups."+index);includeGroups.push(cleaned);
+      retain("includeGroups."+includeGroups.length,"includeGroups."+index,cleaned.terms?.[0] || "");includeGroups.push(cleaned);
     }
   }
   if(JSON.stringify(includeGroups)!==JSON.stringify(raw.includeGroups))note("includeGroups","invalid_or_duplicate_groups");
@@ -983,12 +1030,14 @@ export function repairGroundedResponse(value, sentence, year, record = () => {})
     try{
       validateRange(requested.from,requested.to,year);
       years={from:requested.from,to:requested.to};
-      rangeSource=sentence.match(/\b(?:since|from|after)\s+\d{4}\b|\bbetween\s+\d{4}\s+and\s+\d{4}\b/i)?.[0] || null;
+      const quoted=requested.rangeSources || {};
+      rangeSource={from:quoted.from && sentence.includes(quoted.from)?quoted.from:null,to:quoted.to && sentence.includes(quoted.to)?quoted.to:null};
+      rangeSource=rangeSource.from || rangeSource.to?rangeSource:{from:sentence.match(/\b(?:since|from|after)\s+\d{4}\b|\bbetween\s+\d{4}\s+and\s+\d{4}\b/i)?.[0] || null,to:null};
     }catch{ /* Invalid requested dates remain uncovered and require rephrasing. */ }
   }
   if(JSON.stringify(years)!==JSON.stringify(raw.years))note("years","invalid_years");
   for(const field of ["from","to"])if(years[field]!==null){
-    if(rangeSource)used.push({path:"years."+field,source:rangeSource});
+    if(rangeSource && (rangeSource[field] || rangeSource.from || rangeSource.to))used.push({path:"years."+field,source:rangeSource[field] || rangeSource.from || rangeSource.to});
     else if(years[field]===parsedYear(raw.years?.[field]))retain("years."+field);
   }
   const excludeTerms=exclusions.filter(term=>term!==cleanTerm(topic) && !synonyms.includes(term));

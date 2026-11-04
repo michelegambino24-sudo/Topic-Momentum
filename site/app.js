@@ -1291,7 +1291,7 @@
       try { data = await response.json(); }
       catch { throw new Error("The data service returned an unreadable report. Try again later."); }
       if (!response.ok) {
-        throw Object.assign(new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later."), { code: data.error });
+        throw Object.assign(new Error(typeof data.message === "string" && data.message.trim() ? data.message : "The data service could not complete the search. Try again later."), { code: data.error, unmatched: Array.isArray(data.failingCheck?.missing) ? data.failingCheck.missing.filter(word => typeof word === "string").slice(0, 4) : [] });
       }
       if (version !== requestVersion) return;
       if (useAI && data.planOnly) {
@@ -1327,7 +1327,7 @@
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
       else if (saved) notify("Research data loaded.");
-    } catch (error) { if (version === requestVersion) { if(error.code === "ai_unavailable") $("report-stage").hidden = true; notify(error.message || "The data service returned an unreadable report. Try again later.", true); } }
+    } catch (error) { if (version === requestVersion) { if(error.code === "ai_unavailable" || error.code === "rephrase_required") $("report-stage").hidden = true; notify((error.message || "The data service returned an unreadable report. Try again later.") + (error.code === "rephrase_required" && error.unmatched?.length ? " Not matched: " + error.unmatched.join(", ") + "." : ""), true); } }
     finally {
       clearTimeout(timeout);
       if (version === requestVersion) setLoading(false);

@@ -198,15 +198,80 @@
     const noChange = from === current.from && to === current.to && JSON.stringify(groups.map(key)) === JSON.stringify((current.includeGroups || []).map(key));
     return { ...current, includeGroups: groups, from, to, ignored, errors: [...new Set(errors)], note: notes(ignored), noChange };
   }
+  // ---- Tolerant word matching, shared by the browser preview and the Worker's coverage check ----
+  // Typos, plurals, hyphen/space differences and acronyms must never become "missing requirements".
+  const fold = value => String(value).normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+  const wordsIn = value => fold(value).match(/[\p{L}\p{N}]+/gu) || [];
+  // Optimal string alignment distance (insert, delete, substitute, swap neighbours), stopping early past max.
+  function editDistance(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let before = null, previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i++) {
+      const current = [i];
+      let best = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        let value = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
+        if (before && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) value = Math.min(value, before[j - 2] + 1);
+        current.push(value);
+        if (value < best) best = value;
+      }
+      if (best > max) return max + 1;
+      before = previous; previous = current;
+    }
+    return previous[b.length];
+  }
+  function stemOf(word) {
+    if (word.length > 4 && word.endsWith("ies")) return word.slice(0, -3) + "y";
+    if (/(?:ches|shes|xes|zes|sses)$/.test(word)) return word.slice(0, -2);
+    if (word.length > 5 && word.endsWith("ing")) return word.slice(0, -3);
+    if (word.length > 4 && word.endsWith("ed")) return word.slice(0, -2);
+    return word.length > 3 && word.endsWith("s") && !/(?:ss|us|is)$/.test(word) ? word.slice(0, -1) : word;
+  }
+  // Same word despite plural, small typo or a swapped letter. Numbers and short words must match exactly.
+  function sameWord(left, right) {
+    const a = fold(left), b = fold(right);
+    if (a === b) return true;
+    const sa = stemOf(a), sb = stemOf(b);
+    if (sa === sb) return true;
+    if (/\d/.test(a + b) || Math.min(sa.length, sb.length) < 5 || sa[0] !== sb[0]) return false;
+    const max = Math.min(sa.length, sb.length) >= 8 ? 2 : 1;
+    return editDistance(sa, sb, max) <= max;
+  }
+  const INITIAL_SKIP = new Set(["of", "and", "the", "for", "in", "on", "with", "to"]);
+  const initials = (parts, skip) => parts.filter(part => !(skip && INITIAL_SKIP.has(part))).map(part => part[0]).join("");
+  // "ptsd" is the acronym of "post traumatic stress disorder" (either spelling of the hyphen).
+  const isAcronymOf = (word, parts) => parts.length >= 2 && /^\p{L}{2,8}$/u.test(word) && (initials(parts, false) === word || initials(parts, true) === word);
+  const COVERAGE_FILLER = new Set(("a an the and or of on in for to with as about regarding concerning how what which why when where who whose does do did is are was were be been being can could will would should may might its it their they them this that these those " +
+    "research researcher researchers studies study links link growing grow grows grew growth developing develop developed development(s) evolving evolve changing change changes trend trends trending trended increasing increase increased decreasing decrease decreased rising rise rises rose risen booming boom expanding expand expanded emerging emerge emergence popular popularity momentum traction output volume amount progress advancing advance advances overview current currently latest recent recently lately new newest today nowadays now days past last decade decades year years month months since from until between during before after " +
+    "field fields topic topics area areas region regions countries country nations nation zone zones part parts world global general generally overall main major key leading top important significant significantly really very quite rather just only also still even already yet ever never too than then if while whether because by at into onto over under among across along around above below per via vs versus like such well often usually mostly mainly largely " +
+    "paper papers article articles publication publications literature relationship relationships relation affect affects affected effect effects impact impacts written authored " +
+    "tell show shows give gives list please me us my our we you your i im ive there any some many much more most less few lot lots types all every each both across become becomes becoming became get gets getting got go goes going keep keeps keeping continue continues start starts started begin begins around within throughout among throughout worldwide globally rapidly slowly steadily fast quickly sharply").replace("development(s)", "").split(/\s+/).filter(Boolean));
+  // Research-vocabulary words a typo of which is never a topic ("rearch", "reserach", "studdies", "countires").
+  const TYPO_TARGETS = ["research", "researchers", "researcher", "studies", "publications", "literature", "countries", "region", "regions"];
+  function isFiller(word) {
+    const w = fold(word);
+    if (!w) return true;
+    if (COVERAGE_FILLER.has(w) || COVERAGE_FILLER.has(stemOf(w))) return true;
+    if (/\d/.test(w) || w.length < 6) return false;
+    return TYPO_TARGETS.some(target => {
+      const d = editDistance(w, target, 2);
+      return d === 1 || d === 2 && target.length >= 8 && w[0] === target[0];
+    });
+  }
+  const GEOGRAPHY_NOUNS = new Set("region regions area areas countries country nations nation zone zones part parts all every any across".split(" "));
+
   // Shared question analysis for the deterministic parser, plan coverage and title judge.
   // Only question scaffolding is discarded; concepts survive even when a model omits them.
   const PRIMARY_SCHOOL = ["primary school", "elementary school", "primary pupils", "elementary students", "grade school"];
   const SCAFFOLD = new Set("a an the and or of on in for to with about regarding concerning related how what which why when where who whose does do did is are was were be been can could will would should may might its it their they them this that these those research researchers studies study links growing developing evolving changing trends increasing bigger before fast field fields topic topics area areas domain domains help helps learn learning leading lead know evidence relationship relationships affect affects effect effects impact impacts during used applied treat treating disease written authored".split(" "));
+  // Safe extra framing words for concept extraction only (never topic words on their own).
+  const EXTRA_SCAFFOLD = new Set("rising rise rose increased increase booming boom expanding emerging emergence trending trend popular lately recently currently current today nowadays overall general generally state".split(" "));
   function cleanTrendTerm(value, question) {
     const text=String(value).trim();
-    const trendQuestion=/\b(?:is|how|research)\b[\s\S]*\bgrowing\b/i.test(question) || /\b(?:changing|growing|developing|evolving|trends)\s*(?:since\s+\d{4})?\s*[?.!]*$/i.test(question) || /\btrends\s+(?:in|on)\b/i.test(question);
+    const trendQuestion=/\b(?:is|how|research)\b[\s\S]*\b(?:growing|rising|booming|expanding|increasing)\b/i.test(question) || /\b(?:changing|growing|developing|evolving|trends|trending|rising|increasing)\s*(?:since\s+\d{4})?\s*[?.!]*$/i.test(question) || /\btrends\s+(?:in|on)\b/i.test(question);
     if(!trendQuestion)return text;
-    const cleaned=text.replace(/^trends\s+(?:in|on|for)\s+/i, "").replace(/(?:\b(?:changing|growing|developing|evolving|trends)\b[\s,;]*)+$/gi, "").trim();
+    const cleaned=text.replace(/^trends\s+(?:in|on|for)\s+/i, "").replace(/(?:\b(?:changing|growing|developing|evolving|trends|trending|rising|increasing|booming|expanding)\b[\s,;]*)+$/gi, "").trim();
     return !/\bgrowth\b/i.test(question)?cleaned.replace(/\s+growth$/i, ""):cleaned;
   }
   function questionParts(sentence, currentYear) {
@@ -236,14 +301,20 @@
       if(!resolution && pattern.test(rest)){place.push({label:country.label,terms:[...country.terms]});rest=rest.replace(pattern," ");}
     }
     let from=2010,to=null,explicitRange=false;
-    rest=rest.replace(/\b(?:since|from|after)\s+(\d{4})\b/gi,(match,year)=>{from=+year+(/^after/i.test(match)?1:0);explicitRange=true;return " ";});
-    rest=rest.replace(/\bbetween\s+(\d{4})\s+and\s+(\d{4})\b/gi,(_,a,b)=>{from=+a;to=+b;explicitRange=true;return " ";});
+    const rangeSources={from:null,to:null};
+    rest=rest.replace(/\bbetween\s+(\d{4})\s+and\s+(\d{4})\b|\b(\d{4})\s*(?:to|until|through|[-–—])\s*(\d{4})\b/gi,(match,a,b,c,d)=>{from=+(a||c);to=+(b||d);explicitRange=true;rangeSources.from=rangeSources.to=match;return " ";});
+    rest=rest.replace(/\b(?:since|from|after)\s+(\d{4})\b/gi,(match,year)=>{from=+year+(/^after/i.test(match)?1:0);explicitRange=true;rangeSources.from=match;return " ";});
+    rest=rest.replace(/\b(?:until|through|up\s+to|before)\s+(\d{4})\b/gi,(match,year)=>{to=+year-(/^before/i.test(match)?1:0);explicitRange=true;rangeSources.to=match;return " ";});
+    rest=rest.replace(/\b(?:in\s+the\s+|over\s+the\s+|during\s+the\s+)?(?:last|past)\s+(\d{1,2})\s+years?\b/gi,(match,count)=>{from=currentYear-Number(count);explicitRange=true;rangeSources.from=match.trim();return " ";});
+    rest=rest.replace(/\bin\s+(\d{4})\b/gi,(match,year)=>{if(explicitRange)return match;from=to=+year;explicitRange=true;rangeSources.from=rangeSources.to=match;return " ";});
     rest=rest.replace(/\b(?:excluding|exclude|except|without)\b[\s\S]*$/i,"");
     // Structural connectors create AND concepts, unlike alternatives inside a concept.
     const chunks=rest.split(/[,;?]|\b(?:for|to|during|help|helps|links|affect|affects|and)\b/gi);
-    const concepts=chunks.map(chunk=>clean(cleanTrendTerm(chunk, sentence)).split(/\s+/).filter(word=>!SCAFFOLD.has(word.toLowerCase().replace(/[^\p{L}\p{N}]/gu,""))).join(" ").replace(/[^\p{L}\p{N}\s-]/gu," ").trim()).filter(Boolean);
-    const recognized=/^\s*(?:how\b|what\s+research\b|which\s+researchers\b|does\b|is\b[\s\S]*\bgrowing\b)/i.test(text) || /^\s*childrens\b/i.test(sentence);
-    return {question:String(sentence),concepts:[...new Set(concepts)],population,place,from,to,explicitRange,recognized,...(resolution?{resolution}:{})};
+    const placeNamed=Boolean(resolution?.matches.length);
+    const scaffold=word=>{const plain=fold(word).replace(/[^\p{L}\p{N}]/gu,"");return SCAFFOLD.has(plain) || EXTRA_SCAFFOLD.has(plain) || placeNamed && GEOGRAPHY_NOUNS.has(plain) || plain.length>=6 && TYPO_TARGETS.some(target=>{const d=editDistance(plain,target,2);return d===1 || d===2 && target.length>=8 && plain[0]===target[0];});};
+    const concepts=chunks.map(chunk=>clean(cleanTrendTerm(chunk, sentence)).split(/\s+/).filter(word=>!scaffold(word)).join(" ").replace(/[^\p{L}\p{N}\s-]/gu," ").trim()).filter(Boolean);
+    const recognized=/^\s*(?:how\b|what\s+(?:research|studies|work|is\s+known|do\s+we\s+know)\b|which\s+researchers\b|does\b|(?:is|are|has|have|was|were)\b[\s\S]*\b(?:grow\w*|increas\w*|ris\w*|expand\w*|boom\w*|develop\w*|chang\w*|evolv\w*|trend\w*|popular\w*|emerg\w*)\b)/i.test(text) || /^\s*childrens\b/i.test(sentence);
+    return {question:String(sentence),concepts:[...new Set(concepts)],population,place,from,to,explicitRange,rangeSources,recognized,...(resolution?{resolution}:{})};
   }
   function parsedQuestion(parts,year) {
     const groups=[];
@@ -256,5 +327,5 @@
     return {...(parts.resolution?{resolvedPlace:parts.resolution}:{}),topic:parts.concepts[0] || "",synonyms:[],includeGroups:groups.slice(0,3).map(item=>item.terms),groups:groups.slice(0,3),from:parts.from,to:parts.to,explicitRange:parts.explicitRange,spans:[],ignored:overflow?groups.slice(3).map(item=>item.label):[],errors:[...(!parts.concepts.length?["Add a research topic, then try again."]:[]),...(rangeError?[rangeError]:[])],note:overflow?"This question has more than three required groups. Narrow it before searching.":""};
   }
 
-  globalThis.TMM_QUERY_PARSER = Object.freeze({ parse, merge, countries, people, focusTerms, key, questionParts, cleanTrendTerm, PRIMARY_SCHOOL });
+  globalThis.TMM_QUERY_PARSER = Object.freeze({ parse, merge, countries, people, focusTerms, key, questionParts, cleanTrendTerm, PRIMARY_SCHOOL, fold, wordsIn, editDistance, stemOf, sameWord, isAcronymOf, isFiller, GEOGRAPHY_NOUNS });
 })();

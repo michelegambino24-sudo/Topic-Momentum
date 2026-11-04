@@ -169,12 +169,14 @@
       return /^\s+as\s+(?:a\s+)?topic\b/i.test(after) || direct && (/^\s+(?:policy|policies|politics|history|culture|economy|economies|geography)\b/i.test(after) || /\babout\s+(?:the\s+)?$/i.test(before) && /^\s*[?.!]?\s*$/.test(after));
     });
     const ids=[...new Set(hits.map(hit=>hit.id))],description=describe(ids,mode || (subject?"mentions":"authored"));
-    let mask=text;for(const hit of [...hits].sort((a,b)=>b.start-a.start))mask=mask.slice(0,hit.start)+" ".repeat(hit.end-hit.start)+mask.slice(hit.end);
+    // "the MENA area", "Europe region", "Gulf countries": the noun after a place only restates the place.
+    const noun=(value,end)=>value.slice(end).match(/^\s+(?:area|areas|region|regions|countries|nations|zone)\b/i)?.[0].length || 0;
+    let mask=text;for(const hit of [...hits].sort((a,b)=>b.start-a.start)){const end=hit.end+noun(mask,hit.end);mask=mask.slice(0,hit.start)+" ".repeat(end-hit.start)+mask.slice(end);}
     let without=text;
     for(const hit of [...hits].sort((a,b)=>b.start-a.start)){
       const prefix=without.slice(0,hit.start),lead=prefix.match(/\b(?:(?:in|across|of|within|from|throughout)\s+(?:the\s+)?|the\s+)$/i);
       const start=lead?hit.start-lead[0].length:hit.start;
-      without=without.slice(0,start)+" "+without.slice(hit.end);
+      without=without.slice(0,start)+" "+without.slice(hit.end+noun(without,hit.end));
     }
     without=without.replace(/\s+/g," ").replace(/\s+(?:and|or)\s*([?.!]|$)/gi,"$1").replace(/\s+([?.!])/g,"$1").trim();
     return {...description,matches:hits,mask,withoutPlaces:without};
