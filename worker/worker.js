@@ -67,7 +67,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
     });
   }
   async function reserveTopic(env, date) {
-    const cap = Math.min(30, dailyCap(env.NEW_TOPICS_PER_DAY));
+    const cap = Math.min(70, dailyCap(env.NEW_TOPICS_PER_DAY));
     const countKey = "count:" + dailyKey(date);
           return await locked(env.TMM, countKey, async () => {
             const count = await env.TMM.get(countKey, "json") ?? 0;

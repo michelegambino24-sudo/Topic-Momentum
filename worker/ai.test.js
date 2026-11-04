@@ -281,10 +281,10 @@ test("restored context for edited filters clears evidence but retains a switchab
   assert.equal(app.aiCalls.length,4);
 });
 
-test("deploy configuration pins only the free model and the 30/50 caps", () => {
+test("deploy configuration pins only the free model and the 70/70 caps", () => {
   const configuration = readFileSync(new URL("./wrangler.toml", import.meta.url), "utf8");
-  assert.match(configuration, /NEW_TOPICS_PER_DAY = "30"/);
-  assert.match(configuration, /AI_SEARCHES_PER_DAY = "50"/);
+  assert.match(configuration, /NEW_TOPICS_PER_DAY = "70"/);
+  assert.match(configuration, /AI_SEARCHES_PER_DAY = "70"/);
   assert.match(configuration, /\[ai\]\s+binding = "AI"/);
   assert.match(configuration, /AI_MODEL = "@cf\/meta\/llama-3\.3-70b-instruct-fp8-fast"/);
 });

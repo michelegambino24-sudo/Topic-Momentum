@@ -2052,3 +2052,15 @@ test("year boxes and the AI check switch steer Measure momentum", async () => {
   assert.equal(requests[0].body.sentence, "autism in Europe since 2018");
   assert.equal(requests[0].url.includes("/api/search"), true);
 });
+test("a failed AI interpretation is retried once, then falls back to the plain search with the unmatched words", async () => {
+  const calls = [];
+  const app = setup(async (url, options = {}) => {
+    const post = options.method === "POST"; calls.push(post ? "ai" : "plain");
+    if (post) return { ok: false, json: async () => ({ error: "rephrase_required", message: "Please rephrase.", failingCheck: { missing: ["healthcare"] } }) };
+    return { ok: false, json: async () => ({ error: "daily_limit", message: "Plain search stub" }) };
+  }, null, "#search", null, true);
+  app.context.setTimeout = (fn, ms) => { if (!ms) setImmediate(fn); return 1; };
+  app.get("topic-input").value = "artificial intelligence in healthcare since 2020"; app.get("topic-input").listeners.input();
+  app.submit(); for (let i = 0; i < 6; i++) { await settle(); await new Promise(resolve => setTimeout(resolve, 15)); }
+  assert.deepEqual(calls.slice(0, 3), ["ai", "ai", "plain"], "one retry, then the plain search");
+});

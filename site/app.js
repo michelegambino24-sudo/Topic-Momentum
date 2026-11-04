@@ -1426,7 +1426,14 @@
       route(false);
       if (topic.kpis.total === 0) { clearTimeout(noticeTimer); $("status").hidden = true; }
       else if (saved) notify("Research data loaded.");
-    } catch (error) { if (version === requestVersion && (!error.code || error.code === "rephrase_required") && plainFallback(error.code === "rephrase_required" ? "the question could not be fully interpreted" : String(error.message || "service problem").replace(/[.\s]+$/, "").slice(0, 120))) { /* plain search runs next */ } else if (version === requestVersion) { if(error.code === "ai_unavailable" || error.code === "rephrase_required") $("report-stage").hidden = true; notify((error.message || "The data service returned an unreadable report. Try again later.") + (error.code === "rephrase_required" && error.unmatched?.length ? " Not matched: " + error.unmatched.join(", ") + "." : ""), true); } }
+    } catch (error) {
+      // The planner is a free model and can fail on one attempt and pass on the next: try once more before the plain search.
+      if (version === requestVersion && error.code === "rephrase_required" && useAI && !options.retried && !options.mode && !options.clarification && String(name).trim()) {
+        notify("Checking the question once more…", true);
+        setTimeout(() => search(name, terms, selection, fromRoute, cacheOnly, include, from, to, subfield, refinementBack, { ...options, retried: true }), 0);
+        return;
+      }
+      if (version === requestVersion && (!error.code || error.code === "rephrase_required") && plainFallback(error.code === "rephrase_required" ? "the question could not be fully interpreted" + (error.unmatched?.length ? "; not matched: " + error.unmatched.join(", ") : "") : String(error.message || "service problem").replace(/[.\s]+$/, "").slice(0, 120))) { /* plain search runs next */ } else if (version === requestVersion) { if(error.code === "ai_unavailable" || error.code === "rephrase_required") $("report-stage").hidden = true; notify((error.message || "The data service returned an unreadable report. Try again later.") + (error.code === "rephrase_required" && error.unmatched?.length ? " Not matched: " + error.unmatched.join(", ") + "." : ""), true); } }
     finally {
       clearTimeout(timeout);
       if (version === requestVersion) setLoading(false);

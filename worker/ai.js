@@ -100,7 +100,7 @@ export const QWEN_JUDGE = "@cf/qwen/qwen3-30b-a3b-fp8";
 export const AI_NEURONS_PER_SEARCH = 2400; // Hard ceiling; unknown usage stays conservatively charged.
 export const AI_RESERVATION = 600; // Grow before calls and refund unused allowance.
 export const AI_DAILY_NEURONS = 9000;
-export const AI_DAILY_CAP = 50;
+export const AI_DAILY_CAP = 70;
 export const AI_LIMIT_MESSAGE = "Today's AI checks are used up. They reset at 01:00 (Rome time). Saved reports and the Library still work.";
 export function aiTurnBound(params, model = AI_MODEL) {
   const input = new TextEncoder().encode(JSON.stringify(params.messages || params.prompt) + JSON.stringify(params.response_format)).length + 256;
@@ -371,7 +371,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
           result.body=exact?overlay(result.body,existing,understanding,true):{...unverified(result.body,"search_changed"),understanding};return result;
         }
         if(!env.AI||env.AI_MODEL&&env.AI_MODEL!==AI_MODEL||env.AI_JUDGE_MODEL&&env.AI_JUDGE_MODEL!==JUDGE_MODEL)return blocked("ai_binding_unavailable");
-        if((await env.TMM.get("count:"+day,"json")||0)>=Math.min(30,dailyCap(env.NEW_TOPICS_PER_DAY)))return {status:429,body:{error:"daily_limit",message:"Daily limit reached. Try again tomorrow or browse the Library.",aiReason:"source_limit",aiUsage:usage}};
+        if((await env.TMM.get("count:"+day,"json")||0)>=Math.min(70,dailyCap(env.NEW_TOPICS_PER_DAY)))return {status:429,body:{error:"daily_limit",message:"Daily limit reached. Try again tomorrow or browse the Library.",aiReason:"source_limit",aiUsage:usage}};
         const dayKey="ai:count:"+day;
         const cap=Math.min(AI_DAILY_CAP,dailyCap(env.AI_SEARCHES_PER_DAY??AI_DAILY_CAP));
         const count=await env.TMM.get(dayKey,"json")||0;
