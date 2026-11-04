@@ -92,7 +92,7 @@ test("twelve query descriptors use the specified filters, date windows and limit
   assert.equal(byId.papers.sort, "cited_by_count:desc");
   assert.equal(byId.papers.per_page, "6");
   assert.equal(byId.papers.select, "id,display_name,publication_year,cited_by_count,doi,authorships,primary_location");
-  for (const item of all) { assert(item.params.filter.startsWith('title_and_abstract.search:("lunar moss computing" OR "moon moss circuits"),')); assert(!("api_key" in item.params)); }
+  for (const item of all) { assert(item.params.filter.startsWith('title_and_abstract.search:("lunar moss computing" OR "moon moss circuits" OR (lunar AND moss AND computing)),')); assert(!("api_key" in item.params)); }
 });
 
 test("growth handles zero baseline, zero final count, five-year CAGR and all momentum boundaries", () => {
@@ -471,4 +471,14 @@ test("long custom groups are shortened in titles and headlines", async () => {
   assert.equal(shortGroup(pupils, " or "), "pupils (and 4 similar terms)");
   assert.equal(shortGroup(["child", "infant"], " or "), "child or infant");
   assert.equal(headlineSubject("gamification", pupils), "gamification mentioning pupils (and 4 similar terms)");
+});
+
+test("long topics also match their words in any order; short topics and place words stay exact", async () => {
+  const lib = await import("./lib.js");
+  const make = (name, synonyms = "") => lib.normaliseQuery(name, synonyms, "", "", 2010, "", 2026, "", lib.SEARCH_PRESETS, {});
+  assert.equal(lib.buildSearchExpression(make("CRISPR gene therapy")), '("crispr gene therapy" OR (crispr AND gene AND therapy))');
+  assert.equal(lib.buildSearchExpression(make("renewable energy")), '("renewable energy")');
+  assert.equal(lib.buildSearchExpression(make("heart failure in children")), '("heart failure in children")');
+  assert.equal(lib.buildSearchExpression(make("single-cell rna sequencing")), '("single-cell rna sequencing")');
+  assert(lib.buildSearchExpression(make("CRISPR gene therapy", "genome editing")).includes('OR "genome editing"'));
 });

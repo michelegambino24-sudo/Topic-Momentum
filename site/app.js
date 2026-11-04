@@ -826,7 +826,7 @@
   }
 
   function renderRefinements() {
-    refineChoices = isSample ? [] : (topic.refinements || []).slice(0, 5);
+    refineChoices = isSample ? [] : (topic.refinements || []).slice(0, 7);
     $("refine-bar").hidden = isSample;
     $("refine-chips").hidden = !refineChoices.length;
     $("refine-chips").innerHTML = refineChoices.map((choice, index) => {

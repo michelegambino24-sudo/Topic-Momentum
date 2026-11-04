@@ -360,7 +360,7 @@ test('complex retries honor cooldown and count core/fallback attempts in the sam
 test('retry exhaustion never exceeds thirty source calls or two retries per query',async(t)=>{
  t.mock.method(console,'error',()=>{});const include='child,children,childhood,infant,toddler,preschool';const q=normaliseQuery('lunar moss computing','','',include),timing=virtualTiming(),attempts=new Map();let calls=0;
  const worker=createWorker(async url=>{calls++;const d=complexSource(url,[q]);attempts.set(d.label,(attempts.get(d.label)||0)+1);return new Response('Too many boolean operators',{status:429,headers:{'Retry-After':'1'}});},()=>date,timing);
- const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),env);assert.equal(response.status,429);assert.deepEqual(await response.json(),{error:'search_too_complex',message:'This search has too many terms. Remove some synonyms or additional terms and try again.'});assert.equal(calls,30);assert([...attempts.values()].every(n=>n<=3));assert.equal(env.TMM.values.get('count:2026-10-31'),'1');assert(!env.TMM.values.has('v3:topic:'+q.id));
+ const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:q.name,include})),env);assert.equal(response.status,429);assert.deepEqual(await response.json(),{error:'search_too_complex',message:'This search has too many terms. Remove some synonyms or additional terms and try again.'});assert.equal(calls,30);assert([...attempts.values()].every(n=>n<=3));assert.equal(env.TMM.values.get('count:2026-10-31'),'1');assert(!env.TMM.values.has('v4:topic:'+q.id));
 });
 
 test('long Retry-After is not retried early and source complexity errors use the plain message',async(t)=>{

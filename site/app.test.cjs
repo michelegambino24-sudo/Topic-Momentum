@@ -104,7 +104,7 @@ test("Refine bar applies subfields, regions and synonyms, retaining undo, saved 
   const original = app.context.location.hash;
   assert.equal(app.get("refine-bar").hidden, false);
   assert.match(app.get("refine-chips").innerHTML, /Only Law · 62%/);
-  assert.equal((app.get("refine-chips").innerHTML.match(/data-refine=/g) || []).length, 5);
+  assert.equal((app.get("refine-chips").innerHTML.match(/data-refine=/g) || []).length, 7);
   app.click({ refine: "0" }); await settle(); await settle();
   assert.equal(calls.at(-1).get("subfield"), "3308");
   assert.equal(app.get("topic-name").textContent, "Inheritance law, Law papers");
@@ -661,7 +661,7 @@ test("opening a Library card backed only by v1 rebuilds through its saved reques
   assert.equal(app.get("topic-name").textContent, "Lunar moss computing");
   assert.match(app.get("report-freshness").textContent, /Updated 1 Nov 2026/);
   assert.equal(kv.values.get("topic:" + old.id), original);
-  assert(kv.values.has("v3:topic:" + old.id));
+  assert(kv.values.has("v4:topic:" + old.id));
   app.navigate("#library"); await settle();
   assert.equal(requests.filter((url) => url.pathname === "/api/library").length, 2);
 });
@@ -677,7 +677,7 @@ test("library and child links open real Worker cache records without any OpenAle
   const child = shapeTopic({ ...normaliseQuery("lunar moss computing", "moon circuits", "T123"), subtopicName: "Orbital logic", parent: parent.id }, responses, saved);
   const kv = new MemoryKV();
   kv.values.set("library", JSON.stringify(updateLibrary(updateLibrary([], parent), child)));
-  for (const topic of [parent, child]) kv.values.set("v3:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
+  for (const topic of [parent, child]) kv.values.set("v4:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
   const worker = createWorker(() => assert.fail("Library navigation must never call OpenAlex"), () => new Date("2026-11-08T12:00:00Z"));
   const calls = [];
   const app = setup(async (url) => { calls.push(new URL(url)); return worker.fetch(new Request(url), { TMM: kv }); }, null, "#library");
@@ -708,7 +708,7 @@ test("library and child links open real Worker cache records without any OpenAle
   assert.equal(app.context.location.hash, "#library");
   assert.equal(calls.length, 3);
   assert.equal(kv.writes.length, 0);
-  assert.deepEqual(kv.reads, ["library", "v3:topic:" + child.id, "v3:topic:" + parent.id]);
+  assert.deepEqual(kv.reads, ["library", "v4:topic:" + child.id, "v4:topic:" + parent.id]);
 });
 
 test("site searches, adds synonyms, sends explore parent, and restores the last successful topic", async () => {

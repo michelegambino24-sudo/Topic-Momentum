@@ -33,11 +33,11 @@ test("one new selected-range query leaves the since-2020 top-one Library field q
   }
 });
 
-test("chip priority uses real shares, at most five choices, and full names with short labels", () => {
+test("chip priority uses real shares, three keyword choices, and full names with short labels", () => {
   const data = report();
   data.suggestedSynonyms = ["succession law", "estate law", "third alternative"];
   const choices = refinementCandidates(data);
-  assert.deepEqual(choices.map(item => item.kind), ["subfield", "subfield", "region", "region", "synonym"]);
+  assert.deepEqual(choices.map(item => item.kind), ["subfield", "subfield", "region", "region", "synonym", "synonym", "synonym"]);
   assert.equal(choices[0].label, "Only Law · 62%");
   assert.equal(choices[1].label, "Only Genetics · 30%");
   assert.equal(choices[4].term, "succession law");
