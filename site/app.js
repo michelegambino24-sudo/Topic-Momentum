@@ -26,21 +26,21 @@
   let activeSubfield = "";
   let activeExclusions = [], activeAuthored = [], activeUnderstandingKey = "", draftPlace = null, manualDraft = true;
   // A place chosen in the "Where" list always wins over a place written in the search bar. null = not chosen yet.
-  let pickedPlace = null;
+  let pickedPlace = null, pickedMode = "authored";
   const POPULAR_PLACES = ["worldwide", "country:US", "europe", "middleEast", "mena", "gcc", "country:AE", "country:SA", "africa", "asia"];
   function placeName(id) { return id === "country:US" ? "USA" : id === "worldwide" ? "Worldwide (no filter)" : globalThis.TMM_PLACES.byId[id].label; }
   function buildPlaceSelect() {
     const select = document.getElementById("place-select"), places = globalThis.TMM_PLACES;
     if (!select || !places || select.dataset.built) return;
-    const option = id => `<option value="${id}">${escape(placeName(id))}</option>`, byName = (a, b) => placeName(a).localeCompare(placeName(b));
-    const regions = Object.keys(places.regions).filter(id => !POPULAR_PLACES.includes(id)).sort(byName);
-    const countries = Object.keys(places.byId).filter(id => id.startsWith("country:") && !POPULAR_PLACES.includes(id)).sort(byName);
-    select.innerHTML = `<optgroup label="Popular">${POPULAR_PLACES.map(option).join("")}</optgroup><optgroup label="Regions">${regions.map(option).join("")}</optgroup><optgroup label="Countries">${countries.map(option).join("")}</optgroup><option value="custom" disabled hidden>Places from your text</option>`;
+    // Only these ten choices. Each region already contains every one of its countries, so a paper from Saudi Arabia
+    // is found under MENA, Middle East, GCC and Saudi Arabia, and a paper from Nigeria under Africa.
+    select.innerHTML = POPULAR_PLACES.filter(id => id === "worldwide" || places.byId[id]).map(id => `<option value="${id}">${escape(placeName(id))}</option>`).join("") + '<option value="custom" disabled hidden>Place from your text</option>';
     select.dataset.built = "1";
   }
   function applyPickedPlace() {
     if (pickedPlace === null) return;
-    const mode = draftPlace?.mode || "authored";
+    // The list starts on "researchers based there"; only the visible choice box changes it.
+    const mode = pickedMode;
     draftPlace = globalThis.TMM_PLACES.describe([pickedPlace], mode);
     activeAuthored = mode === "authored" && pickedPlace !== "worldwide" ? draftPlace.codes : [];
   }
@@ -1359,7 +1359,8 @@
       if (useAI) url.search = "";
       let sentenceToSend = options.sentence;
       if (useAI && pickedPlace !== null && !options.mode && !options.clarification && typeof sentenceToSend === "string") {
-        const typedWithoutPlace = globalThis.TMM_PLACES.resolve(sentenceToSend).withoutPlaces.trim();
+        // Dropping a typed place can leave a dangling word ("research about since 2020"): remove it.
+        const typedWithoutPlace = globalThis.TMM_PLACES.resolve(sentenceToSend).withoutPlaces.replace(/\s+(?:about|regarding|concerning|around|across|within|in|of|from|for|on)\s*(?=(?:since|until|between|after|before|during)\b|[?.!]*$)/gi, " ").replace(/\s+/g, " ").trim();
         if (typedWithoutPlace) sentenceToSend = typedWithoutPlace + (pickedPlace === "worldwide" ? "" : " in " + globalThis.TMM_PLACES.byId[pickedPlace].label);
       }
       let response;
@@ -1592,11 +1593,12 @@
     if (button.dataset.placeToggle !== undefined) {
       if (busy || !draftPlace) return;
       const other = draftPlace.mode === "authored" ? "mentions" : "authored";
+      pickedMode = other;
       if(!activeUnderstandingKey || !topic.understanding?.sentence){
         if(manualDraft && topic.placeIds?.length){
           search(draftTopic,synonyms(),null,false,false,readIncludeGroups(),$("from-input").value,$("to-input").value,activeSubfield,null,{placeIds:draftPlace.ids,placeMode:other,authoredCodes:other==="authored"?draftPlace.codes:[]});return;
         }
-        draftPlace={...draftPlace,mode:other};activeAuthored=other==="authored"?draftPlace.codes:[];renderUnderstood();return;
+        draftPlace={...draftPlace,mode:other};pickedMode=other;activeAuthored=other==="authored"?draftPlace.codes:[];renderUnderstood();return;
       }
       const back = { hash:reportHash(topic,cacheOnlyView),title:$("topic-name").textContent };
       search(draftTopic, synonyms(), topic.subtopicId ? {id:topic.subtopicId,name:baseTitle(topic)} : null, false, false, readIncludeGroups(), $("from-input").value, $("to-input").value, activeSubfield, back, {sentence:topic.understanding.sentence,mode:other});
