@@ -485,3 +485,10 @@ test("long topics also match their words in any order; short topics and place wo
   assert.equal(lib.buildSearchExpression(make("single-cell rna sequencing")), '("single-cell rna sequencing")');
   assert(lib.buildSearchExpression(make("CRISPR gene therapy", "genome editing")).includes('OR "genome editing"'));
 });
+test("a low-income population group is widened to its standard wordings", async () => {
+  const lib = await import("./lib.js");
+  assert(lib.widenPopulation(["low-income countries"]).includes("developing countries"));
+  assert.deepEqual(lib.widenPopulation(["autism"]), ["autism"]);
+  const query = lib.compileAIPlan({topic:"early childhood education",synonyms:[],includeGroups:[{terms:["economically disadvantaged countries","low-income countries"]}],excludeTerms:[],years:{from:2010,to:null},place:{codes:[],mode:"authored"}}, 2026).query;
+  assert(lib.buildSearchExpression(query).includes('"developing countries"'));
+});

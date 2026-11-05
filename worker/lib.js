@@ -189,12 +189,16 @@ export function validateAIPlan(raw, year) {
   if (excluded.includes(cleanTerm(raw.topic)) || raw.synonyms.some(value => excluded.includes(cleanTerm(value)))) fail();
   return {...JSON.parse(JSON.stringify(raw)),topic:raw.topic.split(",").map(part=>part.trim()).filter(Boolean).join(", ")};
 }
+// "low-income countries" is almost never written that way in an abstract: add the standard wordings of the same population.
+const LOW_INCOME = /\b(low|middle)[- ](and[- ](low|middle)[- ])?income\b|\bdeveloping (countries|nations|world)\b|\bglobal south\b|\blmics?\b/i;
+const LOW_INCOME_TERMS = ["low-income countries", "low- and middle-income countries", "lmic", "developing countries", "developing nations", "global south"];
+export const widenPopulation = terms => terms.some(term => LOW_INCOME.test(term)) ? [...new Set([...terms, ...LOW_INCOME_TERMS])] : terms;
 export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) {
   raw = validateAIPlan(raw, year);
   if (!["authored", "mentions"].includes(mode)) throw new Error("Invalid place mode");
   const details = raw.place.ids?globalThis.TMM_PLACES.describe(raw.place.ids,mode):placeDetails(raw.place.codes, SEARCH_PRESETS, globalThis.TMM_COUNTRY_GROUPS);
   const groupKey = group => JSON.stringify([...group].map(cleanTerm).sort());
-  let groups = current ? includeGroupsOf(current).map(group => [...group]) : raw.includeGroups.map(group => group.preset ? [...SEARCH_PRESETS[group.preset].terms] : [...group.terms]);
+  let groups = current ? includeGroupsOf(current).map(group => [...group]) : raw.includeGroups.map(group => group.preset ? [...SEARCH_PRESETS[group.preset].terms] : widenPopulation([...group.terms]));
   if (current && details.terms.length) groups = groups.filter(group => groupKey(group) !== groupKey(details.terms));
   if (!raw.place.ids && mode === "mentions" && details.terms.length && !groups.some(group => groupKey(group) === groupKey(details.terms))) groups.push(details.terms);
   const query = normaliseQuery(current?.name || raw.topic, (current?.synonyms || raw.synonyms).join(","), current?.subtopicId || "", groups, current?.from ?? raw.years.from, (current ? current.to : raw.years.to) ?? "", year, current?.subfieldId || "", SEARCH_PRESETS,
