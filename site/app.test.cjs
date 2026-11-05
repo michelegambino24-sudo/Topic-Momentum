@@ -2129,3 +2129,14 @@ test("an explicit place overrides typed geography during the staged search",asyn
  app.get("topic-input").value="autism in Europe";app.get("topic-input").listeners.input();app.submit();await settle();
  assert.equal(body.sentence,"autism in MENA");assert.equal(body.placeMode,"authored");
 });
+
+test("an example topic chip fills the sentence, place and years in one click", async () => {
+  const app = setup(async () => ({ ok: false, json: async () => ({}) }));
+  const chip = { getAttribute: () => "gut microbiome and depression since 2018" };
+  app.get("examples").listeners.click({ target: { closest: () => chip } });
+  assert.equal(app.get("topic-input").value, "gut microbiome and depression since 2018");
+  assert.equal(app.get("from-input").value, "2018");
+  app.get("examples").listeners.click({ target: { closest: () => chip } });
+  app.get("examples").listeners.click({ target: { closest: () => null } });
+  assert.equal(app.get("topic-input").value, "gut microbiome and depression since 2018");
+});

@@ -1502,16 +1502,27 @@
       });
     }
   } catch { /* The switch is optional. */ }
+  // Example topics: one click writes the sentence; the existing preview fills Where and Years from it.
+  document.getElementById("examples")?.addEventListener?.("click", event => {
+    const button = event.target?.closest?.("[data-example]");
+    if (!button || busy) return;
+    pickedPlace = null; pickedMode = "authored";
+    $("topic-input").value = button.getAttribute("data-example");
+    onSentenceInput();
+    syncPlaceSelect();
+    try { $("topic-input").focus(); } catch { /* Focus is a convenience. */ }
+  });
   document.getElementById("place-select")?.addEventListener?.("change", event => {
     if (busy) { syncPlaceSelect(); return; }
     pickedPlace = event.target.value === "custom" ? null : event.target.value;
     applyPickedPlace(); draftErrors = []; renderUnderstood();
   });
-  $("topic-input").addEventListener("input", () => {
+  const onSentenceInput = () => {
     evidenceController?.abort();evidenceState=null;requestVersion++;evidenceStatus("");
     $("search-clarification").hidden = true; pendingClarification = null;
     previewSentence(true);
-  });
+  };
+  $("topic-input").addEventListener("input", onSentenceInput);
   $("narrow-input").addEventListener("input", () => { if (!busy) previewNarrow(); });
   $("narrow-form").addEventListener("submit", event => {
     event.preventDefault();
