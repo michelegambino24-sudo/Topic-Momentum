@@ -6,7 +6,7 @@ import {REPORT_CACHE_PREFIX,isBroadSynonym} from "./lib.js";
 // Officially supports JSON mode on Workers AI (gpt-oss-120b does not, and its reasoning cut answers off).
 export const AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 export const AI_TTL = 7 * 24 * 60 * 60;
-const validKey = key => /^ai:search:v2:[a-f0-9]{64}$/.test(key || "");
+const validKey = key => /^ai:search:v3:[a-f0-9]{64}$/.test(key || "");
 const validCheck = check => check && Number.isInteger(check.matched) && Number.isInteger(check.total) && check.matched >= 0 && check.matched <= check.total && check.total <= 20;
 function displayLabels(raw, query) {
   const label = (value, choices) => choices.find(choice => cleanTerm(choice) === cleanTerm(value)) || value;
@@ -68,7 +68,7 @@ export async function interpretationKey(sentence, year) {
   const versions = Object.entries(SEARCH_PRESETS).map(([id, preset]) => [id, preset.version]);
   const input = JSON.stringify(["deterministic-places-v1",globalThis.TMM_PLACES.version, AI_MODEL, JUDGE_MODEL, year, versions, sentence.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ")]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return "ai:search:v2:" + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  return "ai:search:v3:" + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 // Binding calls, source requests and KV operations share a conservative Free-plan ledger.
@@ -160,6 +160,8 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
     }catch{return unverified(report);}
   }
   async function search(input,originalEnv,report,pipeline=null) {
+    // "women's empowerment" must search the word women, not the non-word "womens".
+    if(input&&typeof input==="object"&&typeof input.sentence==="string")input={...input,sentence:input.sentence.replace(/(\p{L}+)[’']s\b/gu,(whole,word)=>/^(children|kids|infants|teens|teenagers|students|mothers|who|what|where|there|here|that|it|he|she|let)$/i.test(word)?whole:word)};
     if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(key=>!["sentence","mode","placeMode","current","clarification"].includes(key))||typeof input.sentence!=="string"||!input.sentence.trim()||input.sentence.length>1000)return failure("Enter a search sentence under 1,000 characters and try again.");
     if(input.mode!==undefined&&!["authored","mentions"].includes(input.mode))return failure("Choose Written in or Mentions and try again.");
     if(input.placeMode!==undefined && !["authored","mentions"].includes(input.placeMode))return failure("Choose a place mode and try again.");
@@ -404,8 +406,15 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
           } catch(error){planningReason=error.reason || "ai_validation";}
           // Counts have their own source deadline; a failed planner cannot cancel them.
           session.signal=undefined;
-          const compiled=compileAIPlan(raw,year),result=await report(compiled.query,env,session);
+          let compiled=compileAIPlan(raw,year),result=await report(compiled.query,env,session);
           if(result.status!==200)return result;
+          // A planner that invents a required concept can empty the page: if nothing matches, drop the extra required groups and count again.
+          if(result.body.kpis?.total===0&&raw.includeGroups?.length&&session.requests<20&&end-clock()>20000){
+            try{
+              const loose={...raw,includeGroups:[]},looseCompiled=compileAIPlan(loose,year),looseResult=await report(looseCompiled.query,env,session);
+              if(looseResult.status===200&&looseResult.body.kpis?.total>0){raw=loose;compiled=looseCompiled;result=looseResult;usage.notes.push("No papers matched every required concept, so the extra required words were dropped.");}
+            }catch{ /* The original empty result stays. */ }
+          }
           const token="ai:prepared:v1:"+crypto.randomUUID();
           const record={savedAt:now().getTime(),sentence:input.sentence,raw,query:compiled.query,queryId:compiled.query.id,requests:session.requests,expertRanking:session.expertRanking || result.body.experts,planningReason};
           let evidenceKey=token,evidenceMessage=null;

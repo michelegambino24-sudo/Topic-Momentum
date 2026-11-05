@@ -478,7 +478,10 @@ test("long topics also match their words in any order; short topics and place wo
   const make = (name, synonyms = "") => lib.normaliseQuery(name, synonyms, "", "", 2010, "", 2026, "", lib.SEARCH_PRESETS, {});
   assert.equal(lib.buildSearchExpression(make("CRISPR gene therapy")), '("crispr gene therapy" OR (crispr AND gene AND therapy))');
   assert.equal(lib.buildSearchExpression(make("renewable energy")), '("renewable energy")');
-  assert.equal(lib.buildSearchExpression(make("heart failure in children")), '("heart failure in children")');
+  assert.equal(lib.buildSearchExpression(make("heart failure in children")), '("heart failure in children" OR (heart AND failure AND children))');
+  assert.equal(lib.buildSearchExpression(make("cybersecurity of connected cars")), '("cybersecurity of connected cars" OR (cybersecurity AND connected AND cars))');
+  assert.equal(lib.buildSearchExpression(make("gut microbiome and depression")), '("gut microbiome and depression" OR (gut AND microbiome AND depression))');
+  assert.equal(lib.buildSearchExpression(make("hydrogen fuel cell vehicles electrolysis cost")), '("hydrogen fuel cell vehicles electrolysis cost" OR (hydrogen AND fuel AND cell AND vehicles AND electrolysis AND cost))');
   assert.equal(lib.buildSearchExpression(make("single-cell rna sequencing")), '("single-cell rna sequencing")');
   assert(lib.buildSearchExpression(make("CRISPR gene therapy", "genome editing")).includes('OR "genome editing"'));
 });

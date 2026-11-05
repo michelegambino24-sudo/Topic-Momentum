@@ -138,3 +138,17 @@ test("failure to store the optional evidence token cannot erase a successful cou
  const first=await app.prepare();assert.equal(first.status,200);assert(first.body.kpis.total>0);assert.equal(first.body.evidenceKey,null);assert.match(first.body.evidenceMessage,/Retry/);
 });
 
+test("a planner-invented required concept that matches nothing is dropped and counts still appear",async()=>{
+ const app=setup({
+  model(data){if(data.task==="plan")return {response:{plan:{topic:"hydrogen fuel cell vehicles",synonyms:[],includeGroups:[{terms:["fcevs"],preset:null}],excludeTerms:[],years:{from:2010,to:null}},sources:[{path:"topic",source:data.sentence},{path:"includeGroups.0",source:"fuel cell"}],ambiguity:null},usage:{neurons:20}};},
+  source(p){if(JSON.stringify([...p.entries()]).toLowerCase().includes("fcevs"))return Response.json({meta:{count:0},results:[],group_by:[]});}
+ });
+ const result=await app.prepare("hydrogen fuel cell vehicles");
+ assert.equal(result.status,200);assert(result.body.kpis.total>0);
+ assert(!JSON.stringify(result.body.searchTerms).toLowerCase().includes("fcevs"));
+ assert(result.body.aiUsage.notes.some(note=>/extra required words were dropped/.test(note)));
+});
+test("possessive endings are removed before planning so women's becomes women",async()=>{
+ const app=setup({topic:"microfinance"});await app.prepare("microfinance and women's empowerment");
+ const plan=app.models.find(data=>data.task==="plan");assert.equal(plan.sentence,"microfinance and women empowerment");
+});

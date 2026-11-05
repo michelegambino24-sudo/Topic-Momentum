@@ -108,7 +108,7 @@ test("valid AI search checks actual titles, preserves real counts and caches que
   assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length, 4);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1"); assert.equal(app.kv.values.get("ai:count:2026-11-02"), "1");
   assert.equal(app.kv.writes.length, 7);
-  const core = JSON.parse(app.kv.values.get("v4:topic:" + result.id)).topic;
+  const core = JSON.parse(app.kv.values.get("v5:topic:" + result.id)).topic;
   assert(!core.understanding); assert(!core.papersKind);
   for (const call of app.aiCalls) {
     assert([AI_MODEL,"@cf/qwen/qwen3-30b-a3b-fp8"].includes(call.model));
@@ -234,7 +234,7 @@ test("sample and report retries share the same hard thirty-call ceiling and one 
   assert.equal(app.calls.length, 30);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1");
   assert.equal(app.kv.writes.length, 4);
-  assert(![...app.kv.values.keys()].some(key => key.startsWith("v4:topic:") || key.startsWith("ai:search:")));
+  assert(![...app.kv.values.keys()].some(key => key.startsWith("v5:topic:") || key.startsWith("ai:search:")));
 });
 
 test("semantic membership constrains semantic candidates while cited matches are independently checked", async () => {
@@ -376,7 +376,7 @@ test("the exact social-media/kids/attention failure never shows rejected papers 
   assert(!result.evidence.notices.includes("Many matching papers may be off-topic; narrow the search for reliable numbers"));
   assert(!result.evidence.notices.includes("The trend may be distorted by off-topic papers."));
   assert(!result.headline.includes("off-topic"));
-  const core = JSON.parse(app.kv.values.get("v4:topic:"+result.id)).topic;
+  const core = JSON.parse(app.kv.values.get("v5:topic:"+result.id)).topic;
   assert.deepEqual(result.kpis,core.kpis); assert.deepEqual(result.years,core.years); assert.deepEqual(result.countries,core.countries);
   assert(!core.evidence); assert(!core.understanding);
   assert(app.calls.length<=30);

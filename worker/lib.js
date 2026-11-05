@@ -251,7 +251,7 @@ export function queryParams(query) {
   return params;
 }
 
-export const REPORT_CACHE_PREFIX = "v4:topic:";
+export const REPORT_CACHE_PREFIX = "v5:topic:";
 
 export function refinementCandidates(report) {
   const result = [], groups = includeGroupsOf(report);
@@ -420,15 +420,15 @@ export function updateLibrary(index, topic) {
   return entries.map((item) => ({ ...item, children: entries.filter((child) => child.parent === item.id).map((child) => child.id) }));
 }
 
-const LOOSE_STOPWORDS = new Set(["the","and","for","with","from","into","its","our","their","than","that","this"]);
+const LOOSE_STOPWORDS = new Set(["the","and","for","with","from","into","its","our","their","than","that","this","of","in","on","to","an","by","at","as","is","are","after","before","about","using","via","between","during","over","under","within"]);
 export function buildSearchExpression(query) {
   // A long topic phrase ("CRISPR gene therapy") misses papers that word it differently ("CRISPR-based gene therapy").
   // With three or more content words the same words, in any order and distance, also count. Two-word topics stay exact phrases.
   const looseTopic = (name) => {
     const words = String(name || "").toLowerCase().split(/\s+/).filter(Boolean);
-    if (words.length < 3 || words.length > 5 || !words.every(word => /^[a-z0-9]+$/.test(word))) return null;
+    if (words.length < 3 || words.length > 8 || !words.every(word => /^[a-z0-9]+$/.test(word))) return null;
     const content = words.filter(word => word.length > 2 && !LOOSE_STOPWORDS.has(word));
-    return content.length >= 3 && content.length === words.length ? "(" + content.join(" AND ") + ")" : null;
+    return content.length >= 3 && content.length <= 6 ? "(" + content.join(" AND ") + ")" : null;
   };
   const group = (terms, topic) => {
     const parts = terms.map((term) => /[\s-]/.test(term) ? `"${term}"` : term);

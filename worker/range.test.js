@@ -175,21 +175,21 @@ test("bounded fallback windows use the historical endpoint and extend the one ye
 test("opening cached bounded reports repairs growth from saved counts without a source request",async()=>{
  const q=query(2018,2019),data=fixtures();data.years={group_by:[{key:'2014',key_display_name:'2014',count:100},{key:'2019',key_display_name:'2019',count:200}]};
  const correct=shapeTopic(q,data,date),old={...correct,kpis:{...correct.kpis,growth:9,growth5y:9,momentum:'Accelerating'}};
- const kv=new MemoryKV(),record=JSON.stringify({savedAt:date.getTime(),topic:old});kv.values.set('v4:topic:'+q.id,record);
+ const kv=new MemoryKV(),record=JSON.stringify({savedAt:date.getTime(),topic:old});kv.values.set('v5:topic:'+q.id,record);
  const worker=createWorker(()=>assert.fail('Repair must stay offline'),()=>date);
  const response=await worker.fetch(new Request('http://localhost/api/topic?'+new URLSearchParams({q:'moss',syn:'moon circuits',from:'2018',to:'2019',cache:'only'})),{TMM:kv});
- assert.equal(response.status,200);const repaired=await response.json();assert.equal(repaired.kpis.growth,2**.2-1);assert.equal(repaired.kpis.momentum,'Growing');assert(repaired.headline.includes('+15% a year over 2014–2019'));assert.equal(kv.values.get('v4:topic:'+q.id),record);assert.equal(kv.writes.length,0);
+ assert.equal(response.status,200);const repaired=await response.json();assert.equal(repaired.kpis.growth,2**.2-1);assert.equal(repaired.kpis.momentum,'Growing');assert(repaired.headline.includes('+15% a year over 2014–2019'));assert.equal(kv.values.get('v5:topic:'+q.id),record);assert.equal(kv.writes.length,0);
 });
 
 test("cached windows missing historical endpoints rebuild when admitted, and hide the wrong growth at the cap",async()=>{
  const q=query(2012,2013),data=fixtures();data.years={group_by:[{key:'2008',key_display_name:'2008',count:100},{key:'2013',key_display_name:'2013',count:200}]};
  const correct=shapeTopic(q,data,date),old={...correct,years:correct.years.filter(item=>item.year>=2010),kpis:{...correct.kpis,growth:9,growth5y:9,momentum:'Accelerating'}};
  for(const cap of ['0','90']){
-  const kv=new MemoryKV(),record=JSON.stringify({savedAt:date.getTime(),topic:old});kv.values.set('v4:topic:'+q.id,record);let calls=0;
+  const kv=new MemoryKV(),record=JSON.stringify({savedAt:date.getTime(),topic:old});kv.values.set('v5:topic:'+q.id,record);let calls=0;
   const worker=createWorker(async url=>{calls++;const d=[...buildQueries(q,2026),...buildQueries(q,2026,false)].find(({params})=>Object.entries(params).every(([k,v])=>url.searchParams.get(k)===v));assert(d);return Response.json(data[d.id]);},()=>date);
   const response=await worker.fetch(new Request('http://localhost/api/topic?'+new URLSearchParams({q:'moss',syn:'moon circuits',from:'2012',to:'2013',cache:'only'})),{TMM:kv,NEW_TOPICS_PER_DAY:cap,OPENALEX_KEY:'fixture-only-not-a-credential'});
   assert.equal(response.status,200);const result=await response.json();
-  if(cap==='0'){assert.equal(result.kpis.growth,null);assert.equal(result.kpis.momentum,'Not enough data');assert.equal(result.growthNeedsRebuild,true);assert(!result.headline.includes('+900%'));assert.equal(calls,0);assert.equal(kv.writes.length,0);assert.equal(kv.values.get('v4:topic:'+q.id),record);}
+  if(cap==='0'){assert.equal(result.kpis.growth,null);assert.equal(result.kpis.momentum,'Not enough data');assert.equal(result.growthNeedsRebuild,true);assert(!result.headline.includes('+900%'));assert.equal(calls,0);assert.equal(kv.writes.length,0);assert.equal(kv.values.get('v5:topic:'+q.id),record);}
   else{assert.equal(result.kpis.growth,2**.2-1);assert.equal(result.cached,false);assert.equal(calls, 14);assert(result.years.some(item=>item.year===2008));assert.equal(kv.values.get('count:2026-11-01'),'1');}
  }
 });

@@ -661,7 +661,7 @@ test("opening a Library card backed only by v1 rebuilds through its saved reques
   assert.equal(app.get("topic-name").textContent, "Lunar moss computing");
   assert.match(app.get("report-freshness").textContent, /Updated 1 Nov 2026/);
   assert.equal(kv.values.get("topic:" + old.id), original);
-  assert(kv.values.has("v4:topic:" + old.id));
+  assert(kv.values.has("v5:topic:" + old.id));
   app.navigate("#library"); await settle();
   assert.equal(requests.filter((url) => url.pathname === "/api/library").length, 2);
 });
@@ -677,7 +677,7 @@ test("library and child links open real Worker cache records without any OpenAle
   const child = shapeTopic({ ...normaliseQuery("lunar moss computing", "moon circuits", "T123"), subtopicName: "Orbital logic", parent: parent.id }, responses, saved);
   const kv = new MemoryKV();
   kv.values.set("library", JSON.stringify(updateLibrary(updateLibrary([], parent), child)));
-  for (const topic of [parent, child]) kv.values.set("v4:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
+  for (const topic of [parent, child]) kv.values.set("v5:topic:" + topic.id, JSON.stringify({ savedAt: saved.getTime(), topic }));
   const worker = createWorker(() => assert.fail("Library navigation must never call OpenAlex"), () => new Date("2026-11-08T12:00:00Z"));
   const calls = [];
   const app = setup(async (url) => { calls.push(new URL(url)); return worker.fetch(new Request(url), { TMM: kv }); }, null, "#library");
@@ -708,7 +708,7 @@ test("library and child links open real Worker cache records without any OpenAle
   assert.equal(app.context.location.hash, "#library");
   assert.equal(calls.length, 3);
   assert.equal(kv.writes.length, 0);
-  assert.deepEqual(kv.reads, ["library", "v4:topic:" + child.id, "v4:topic:" + parent.id]);
+  assert.deepEqual(kv.reads, ["library", "v5:topic:" + child.id, "v5:topic:" + parent.id]);
 });
 
 test("site searches, adds synonyms, sends explore parent, and restores the last successful topic", async () => {
@@ -1597,7 +1597,7 @@ test("AI sentence submissions show the checked readout and switch place mode wit
   const lib = await import("../worker/lib.js");
   const ai = JSON.parse(readFileSync(__dirname + "/../worker/fixtures/ai-search.json", "utf8"));
   const fixture = id => JSON.parse(readFileSync(__dirname + `/../worker/fixtures/${id}.json`, "utf8"));
-  const calls = [], key = "ai:search:v2:" + "a".repeat(64);
+  const calls = [], key = "ai:search:v3:" + "a".repeat(64);
   let newUnderstandings = 0;
   const initial = lib.compileAIPlan(ai.plan, 2026);
   const fetch = async (url, options = {}) => {
@@ -1961,7 +1961,7 @@ test("checked evidence labels, low precision and trend warnings survive renderin
   let data;
   const app=setup(async()=>({ok:true,json:async()=>data}),null,"#search",null,true);
   data={...report(app),papersKind:"checked",evidence:{version:3,accepted:2,candidates:6,notices:["Few papers match this question exactly","Many matching papers may be off-topic; narrow the search for reliable numbers","The trend may be distorted by off-topic papers."]},
-    understanding:{mode:"ai",key:"ai:search:v2:"+"b".repeat(64),sentence:"social media, kids, attention",check:{matched:13,total:20,early:{matched:4,total:10},late:{matched:9,total:10},lowPrecision:true,trendDistorted:true}}};
+    understanding:{mode:"ai",key:"ai:search:v3:"+"b".repeat(64),sentence:"social media, kids, attention",check:{matched:13,total:20,early:{matched:4,total:10},late:{matched:9,total:10},lowPrecision:true,trendDistorted:true}}};
   app.get("topic-input").value="social media, kids, attention";app.get("topic-input").listeners.input();app.submit();await settle();await settle();
   assert.equal(app.get("papers-heading").textContent,"Key papers");
   assert.equal(app.get("papers-source-note").textContent,"Checked by AI for this question · sorted by citations");
