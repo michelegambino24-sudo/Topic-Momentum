@@ -482,7 +482,8 @@ test("long topics also match their words in any order; short topics and place wo
   assert.equal(lib.buildSearchExpression(make("cybersecurity of connected cars")), '("cybersecurity of connected cars" OR (cybersecurity AND connected AND cars))');
   assert.equal(lib.buildSearchExpression(make("gut microbiome and depression")), '("gut microbiome and depression" OR (gut AND microbiome AND depression))');
   assert.equal(lib.buildSearchExpression(make("hydrogen fuel cell vehicles electrolysis cost")), '("hydrogen fuel cell vehicles electrolysis cost" OR (hydrogen AND fuel AND cell AND vehicles AND electrolysis AND cost))');
-  assert.equal(lib.buildSearchExpression(make("single-cell rna sequencing")), '("single-cell rna sequencing")');
+  assert.equal(lib.buildSearchExpression(make("single-cell rna sequencing")), '("single-cell rna sequencing" OR (single AND cell AND rna AND sequencing))');
+  assert.equal(lib.buildSearchExpression(make("anti-money laundering compliance")), '("anti-money laundering compliance" OR (anti AND money AND laundering AND compliance))');
   assert(lib.buildSearchExpression(make("CRISPR gene therapy", "genome editing")).includes('OR "genome editing"'));
 });
 test("a low-income population group is widened to its standard wordings", async () => {

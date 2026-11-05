@@ -431,7 +431,7 @@ export function buildSearchExpression(query) {
   // A long topic phrase ("CRISPR gene therapy") misses papers that word it differently ("CRISPR-based gene therapy").
   // With three or more content words the same words, in any order and distance, also count. Two-word topics stay exact phrases.
   const looseTopic = (name) => {
-    const words = String(name || "").toLowerCase().split(/\s+/).filter(Boolean);
+    const words = String(name || "").toLowerCase().split(/[\s-]+/).filter(Boolean);
     if (words.length < 3 || words.length > 8 || !words.every(word => /^[a-z0-9]+$/.test(word))) return null;
     const content = words.filter(word => word.length > 2 && !LOOSE_STOPWORDS.has(word));
     return content.length >= 3 && content.length <= 6 ? "(" + content.join(" AND ") + ")" : null;
