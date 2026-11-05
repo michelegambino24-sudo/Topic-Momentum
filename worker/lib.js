@@ -199,6 +199,8 @@ export function compileAIPlan(raw, year, mode = raw.place.mode, current = null) 
   const details = raw.place.ids?globalThis.TMM_PLACES.describe(raw.place.ids,mode):placeDetails(raw.place.codes, SEARCH_PRESETS, globalThis.TMM_COUNTRY_GROUPS);
   const groupKey = group => JSON.stringify([...group].map(cleanTerm).sort());
   let groups = current ? includeGroupsOf(current).map(group => [...group]) : raw.includeGroups.map(group => group.preset ? [...SEARCH_PRESETS[group.preset].terms] : widenPopulation([...group.terms]));
+  // An extra required group made only of longer versions of the topic ("islamic inheritance laws" for "inheritance laws") invents a narrower focus nobody asked for.
+  if (!current) { const topicKey = cleanTerm(raw.topic); groups = groups.filter(group => !(topicKey && group.length && group.every(term => cleanTerm(term).includes(topicKey)))); }
   if (current && details.terms.length) groups = groups.filter(group => groupKey(group) !== groupKey(details.terms));
   if (!raw.place.ids && mode === "mentions" && details.terms.length && !groups.some(group => groupKey(group) === groupKey(details.terms))) groups.push(details.terms);
   const query = normaliseQuery(current?.name || raw.topic, (current?.synonyms || raw.synonyms).join(","), current?.subtopicId || "", groups, current?.from ?? raw.years.from, (current ? current.to : raw.years.to) ?? "", year, current?.subfieldId || "", SEARCH_PRESETS,

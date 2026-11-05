@@ -492,3 +492,9 @@ test("a low-income population group is widened to its standard wordings", async 
   const query = lib.compileAIPlan({topic:"early childhood education",synonyms:[],includeGroups:[{terms:["economically disadvantaged countries","low-income countries"]}],excludeTerms:[],years:{from:2010,to:null},place:{codes:[],mode:"authored"}}, 2026).query;
   assert(lib.buildSearchExpression(query).includes('"developing countries"'));
 });
+test("a required group made only of longer versions of the topic is dropped", async () => {
+  const lib = await import("./lib.js");
+  const make = groups => lib.compileAIPlan({topic:"inheritance laws",synonyms:[],includeGroups:groups,excludeTerms:[],years:{from:2010,to:null},place:{codes:[],mode:"authored"}}, 2026).query;
+  assert(!lib.buildSearchExpression(make([{terms:["islamic inheritance laws","sharia inheritance laws"]}])).includes("islamic"));
+  assert(lib.buildSearchExpression(make([{terms:["women","girls"]}])).includes("women"));
+});
