@@ -1,5 +1,5 @@
 import { createAIService } from "./ai.js";
-import { dailyKey, normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors, explicitOpenAlexUsd } from "./lib.js";
+import { sourceBudgetMessage, dailyKey, normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors, explicitOpenAlexUsd } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
 export function createWorker(fetchSource = (...args) => fetch(...args), now = () => new Date(), timing = {}) {
@@ -122,6 +122,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                 }
                 status = response.status;
                 stage = "http_response";
+                // A long wait (or a payment-required answer) means the day's search budget is spent, not that a query was too complex.
+                if (status === 402 || (status === 429 && cooldownUntil - clock() > 60000)) throw Object.assign(new Error("Source budget used up"), {code:"source_budget"});
                 // Response.ok excludes every 3xx response as well as 4xx/5xx errors.
                 if (!response.ok) {
                   if (dev || (complex && status === 400)) {
@@ -143,7 +145,8 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
                       status === null ? "The request failed before an HTTP response was received." : "The source returned an unreadable JSON response.",
                   error: sanitiseCaughtError(caught, env.OPENALEX_KEY)
                 });
-                if (caught.code === "search_too_complex") throw caught;
+                if (caught.code === "search_too_complex" || caught.code === "source_budget") throw caught;
+                if (controller.signal.aborted && stage === "pacing" && cooldownUntil - clock() > 1500) throw Object.assign(new Error("Source budget used up"), {code:"source_budget"});
                 if (complex && controller.signal.aborted && stage === "pacing") throw complexityError(429);
                 throw new Error("Source unavailable");
               }
@@ -266,6 +269,7 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
           } catch (caught) {
             controller.abort();
             if (caught.code === "search_too_complex") return error(caught.code, COMPLEX_SEARCH_MESSAGE, caught.status);
+            if (caught.code === "source_budget") return error("source_budget", sourceBudgetMessage(date), 503);
             // Responses never include upstream details; development logs are sanitised above.
             return error("source_unavailable", "The research data source is unavailable. Try again later.", 502);
           } finally { clearTimeout(timeout); session.signal?.removeEventListener("abort", abortPreparation); if (complex) complexSearches--; }

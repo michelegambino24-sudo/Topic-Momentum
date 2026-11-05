@@ -858,7 +858,12 @@ export function dailyReset(date) {
   const next = new Date(date);
   next.setUTCHours(24, 0, 0, 0);
   const rome = new Intl.DateTimeFormat("en-GB", {timeZone:"Europe/Rome",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(next);
-  return {at:next.toISOString(),rome};
+  const dubai = new Intl.DateTimeFormat("en-GB", {timeZone:"Asia/Dubai",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(next);
+  return {at:next.toISOString(),rome,dubai};
+}
+export function sourceBudgetMessage(date) {
+  const reset = dailyReset(date);
+  return `Today's research search budget is used up, so new topics can't be searched until it resets at ${reset.dubai} Dubai time (${reset.rome} Rome). Saved reports and the Library still work.`;
 }
 export function aiFailureMessage(reason, date) {
   if(reason==="source_failed")return "The research source could not load papers for the AI check. Retry the check; your research counts are still available.";

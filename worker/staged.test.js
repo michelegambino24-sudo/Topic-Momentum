@@ -152,3 +152,9 @@ test("possessive endings are removed before planning so women's becomes women",a
  const app=setup({topic:"microfinance"});await app.prepare("microfinance and women's empowerment");
  const plan=app.models.find(data=>data.task==="plan");assert.equal(plan.sentence,"microfinance and women empowerment");
 });
+test("a spent OpenAlex day budget says when it resets instead of a generic outage",async()=>{
+ const app=setup({source:()=>new Response("budget",{status:429,headers:{"Retry-After":"3600"}})});
+ const result=await app.prepare("solar panel recycling methods");
+ assert.equal(result.status,503);assert.equal(result.body.error,"source_budget");
+ assert.match(result.body.message,/04:00 Dubai time \(01:00 Rome\)/);
+});
