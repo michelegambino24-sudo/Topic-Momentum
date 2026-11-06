@@ -1,4 +1,5 @@
 import { createAIService } from "./ai.js";
+import { createOpenAI, openAIConfigured } from "./openai.js";
 import { sourceBudgetMessage, dailyKey, normaliseQuery, normaliseSubfieldId, normaliseFilters, SEARCH_PRESETS, queryParams, legacyMultiGroupId, queryOperatorCount, retryDelay, COMPLEX_SEARCH_MESSAGE, MAX_SOURCE_REQUESTS, buildQueries, fallbackQueries, shapeTopic, originAllowed, sanitiseSourceError, sanitiseCaughtError, cacheIsFresh, dailyCap, updateLibrary, presentReport, publicLibrary, validateRange, REPORT_CACHE_PREFIX, REPORT_RETENTION_SECONDS, rankExpertAuthors, explicitOpenAlexUsd } from "./lib.js";
 
 // Injection keeps all automated tests offline. Production uses the built-in fetch.
@@ -291,8 +292,10 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
   } });
   return {
     async fetch(request, env) {
+      // The AI client exists only when the server-side OPENAI_API_KEY secret is set. Tests inject their own env.AI.
+      if (!env.AI && openAIConfigured(env)) env = { ...env, AI: createOpenAI(env) };
       const origin = request.headers.get("Origin");
-      const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Origin" };
+      const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", Vary: "Origin" };
       const respond = (body, status = 200, extra = {}) => new Response(body === null ? null : JSON.stringify(Array.isArray(body) ? body.map(presentReport) : presentReport(body)), { status, headers: { ...headers, ...extra } });
       const error = (code, message, status, extra) => respond({ error: code, message }, status, extra);
       if (!originAllowed(origin, env)) return error("origin_not_allowed", "This origin is not allowed. Open the configured site or use local development mode.", 403);

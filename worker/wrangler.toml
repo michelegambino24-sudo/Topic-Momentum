@@ -9,12 +9,14 @@ NEW_TOPICS_PER_DAY = "70"
 AI_SEARCHES_PER_DAY = "70"
 # Small results get a few AI-proposed related wordings, checked by code and by a count guard.
 AI_EXPAND_SMALL = "on"
-AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-AI_JUDGE_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
-# 70B planning; Qwen judging uses verified no-thinking JSON.
-# Daily usage is settled to measured neurons, never a fixed estimate per attempt.
-# 9000 neurons/day; 600 initially reserved, grown before calls up to 2400/search.
-# Unused reservations are refunded. At most 50 admitted attempts/day.
+# OpenAI: the model and the price used for cost limits. The API key is NOT here; it is the Worker secret OPENAI_API_KEY
+# (set with: npx wrangler secret put OPENAI_API_KEY). Update the two prices if you change the model.
+OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_INPUT_USD_PER_MTOK = "0.15"
+OPENAI_OUTPUT_USD_PER_MTOK = "0.60"
+# Spending guard. 1 unit = US$0.00001, so 100000 units is about US$1.00 a day; one search is capped at about US$0.03.
+# Usage is settled to the tokens OpenAI reports. At most AI_SEARCHES_PER_DAY AI searches a day.
+AI_DAILY_BUDGET_UNITS = "100000"
 AI_TIMEOUT_MS = "25000"
 AI_CHECK_TIMEOUT_MS = "12000"
 AI_PREPARATION_MS = "90000"
@@ -29,9 +31,6 @@ id = "276a9e65cd504d1092c476a7e5eabc9a"
 ip = "127.0.0.1"
 port = 8787
 local_protocol = "http"
-
-[ai]
-binding = "AI"
 
 [observability]
 enabled = true

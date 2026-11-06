@@ -157,3 +157,6 @@ vite.config.ts.timestamp-*
 # Impeccable local files
 .impeccable/config.local.json
 .impeccable/hook.cache.json
+
+# Local Wrangler/Miniflare state (can contain keys, logs and saved searches)
+.impeccable/journal-state/

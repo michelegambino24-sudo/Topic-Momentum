@@ -1,8 +1,9 @@
 # Topic Momentum Meter
 
 Plain HTML/CSS/JavaScript in `site/`, with a Cloudflare Worker and KV in `worker/`.
-Visitors need no account or key. Use only Cloudflare Workers Free, free KV, and
-GitHub Pages from this public repository. Do not enable paid plans or add billing.
+Visitors need no account or key. The Worker runs on Cloudflare Workers Free with free KV,
+the site on GitHub Pages from this public repository. AI checks call the OpenAI API, which is
+pay-as-you-go: the daily spending guard below limits it.
 The cap remains 90 new attempts per UTC day, including failed source attempts;
 cached reports remain fresh for seven days. KV counters can slightly overshoot
 under concurrent requests. No dependencies or site build step are required.
@@ -92,6 +93,21 @@ configuration, not secrets.
    Enter the key only at the hidden interactive prompt. Do not append it to the
    command or save it to a file. Check Wrangler confirms the secret was uploaded.
    This command deploys a new Worker version with the secret.
+
+   **AI checks use OpenAI.** Set its key the same way, once per environment:
+
+   ```powershell
+   npx wrangler secret put OPENAI_API_KEY --config worker/wrangler.toml
+   ```
+
+   The key lives only in the Worker, never in `site/` or Git. Moving from your personal key
+   to a company-managed key means running the same command with the new key: no code
+   changes. For local testing copy `worker/.dev.vars.example` to `worker/.dev.vars`
+   (Git ignores it) and fill in your own values. The model and the price used for the
+   spending guard are the `OPENAI_*` variables in `worker/wrangler.toml`; the daily
+   limit is `AI_DAILY_BUDGET_UNITS` (1 unit = US$0.00001, so 100000 is about US$1 a
+   day). Without the key the site still works for counts, and AI checks stay off.
+   Security findings and open decisions are in `SECURITY_AUDIT.md`.
 
 9. Configure the public URL:
 

@@ -281,12 +281,16 @@ test("restored context for edited filters clears evidence but retains a switchab
   assert.equal(app.aiCalls.length,4);
 });
 
-test("deploy configuration pins only the free model and the 70/70 caps", () => {
+test("deploy configuration uses OpenAI with a spending guard and no secret or Cloudflare AI binding", () => {
   const configuration = readFileSync(new URL("./wrangler.toml", import.meta.url), "utf8");
   assert.match(configuration, /NEW_TOPICS_PER_DAY = "70"/);
   assert.match(configuration, /AI_SEARCHES_PER_DAY = "70"/);
-  assert.match(configuration, /\[ai\]\s+binding = "AI"/);
-  assert.match(configuration, /AI_MODEL = "@cf\/meta\/llama-3\.3-70b-instruct-fp8-fast"/);
+  assert.doesNotMatch(configuration, /\[ai\]/);
+  assert.doesNotMatch(configuration, /@cf\//);
+  assert.match(configuration, /OPENAI_MODEL = "[a-z0-9.\-]+"/);
+  assert.match(configuration, /AI_DAILY_BUDGET_UNITS = "\d+"/);
+  assert.doesNotMatch(configuration, /sk-[A-Za-z0-9_\-]{16,}/);
+  assert.doesNotMatch(configuration, /OPENAI_API_KEY\s*=/);
 });
 
 test("semantic retries start at least one second apart even with a zero Retry-After", async () => {
@@ -421,9 +425,9 @@ test("candidate relevance is batched by 25, deduped and sorted by citations with
   assert.equal(body.experts[0].count,600);
 });
 
-test("measured neuron ledger blocks at 9000 and refunds the in-flight reservation",async()=>{
- const {AI_DAILY_CAP,AI_DAILY_NEURONS}=await import("./ai.js");assert(AI_DAILY_CAP>=40);assert.equal(AI_DAILY_NEURONS,9000);
- const app=setup();app.kv.values.set("ai:usage:2026-11-02",JSON.stringify({used:9000,reserved:0}));
+test("measured cost ledger blocks at the daily budget and refunds the in-flight reservation",async()=>{
+ const {AI_DAILY_CAP,AI_DAILY_NEURONS}=await import("./ai.js");assert(AI_DAILY_CAP>=40);assert.equal(AI_DAILY_NEURONS,100000);
+ const app=setup();app.kv.values.set("ai:usage:2026-11-02",JSON.stringify({used:100000,reserved:0}));
  const response=await app.search();assert.equal(response.status,503);assert.equal((await response.json()).aiReason,"daily_neuron_limit");assert.equal(app.aiCalls.length,0);
  const good=setup();const body=await(await good.search()).json(),ledger=JSON.parse(good.kv.values.get("ai:usage:2026-11-02"));
  assert.equal(ledger.reserved,0);assert.equal(ledger.used,body.aiUsage.neurons);assert(body.aiUsage.measured);

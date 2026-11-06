@@ -2130,13 +2130,25 @@ test("an explicit place overrides typed geography during the staged search",asyn
  assert.equal(body.sentence,"autism in MENA");assert.equal(body.placeMode,"authored");
 });
 
-test("an example topic chip fills the sentence, place and years in one click", async () => {
+test("the single Try an example button fills a different example each click and cycles through all of them", async () => {
   const app = setup(async () => ({ ok: false, json: async () => ({}) }));
-  const chip = { getAttribute: () => "gut microbiome and depression since 2018" };
-  app.get("examples").listeners.click({ target: { closest: () => chip } });
-  assert.equal(app.get("topic-input").value, "gut microbiome and depression since 2018");
-  assert.equal(app.get("from-input").value, "2018");
-  app.get("examples").listeners.click({ target: { closest: () => chip } });
+  const button = {};
+  const seen = [];
+  for (let i = 0; i < 24; i++) {
+    app.get("examples").listeners.click({ target: { closest: () => button } });
+    const value = app.get("topic-input").value;
+    assert(value.length > 3);
+    if (i) assert.notEqual(value, seen.at(-1), "never the same example twice in a row");
+    seen.push(value);
+  }
+  assert.equal(new Set(seen.slice(0, 12)).size, 12, "all twelve examples appear before any repeats");
+  assert.equal(new Set(seen.slice(12)).size, 12);
+  const before = app.get("topic-input").value;
   app.get("examples").listeners.click({ target: { closest: () => null } });
-  assert.equal(app.get("topic-input").value, "gut microbiome and depression since 2018");
+  assert.equal(app.get("topic-input").value, before);
+});
+test("the search page has exactly one example button and the old example chips are gone", () => {
+  const html = readFileSync(__dirname + "/app.html", "utf8");
+  assert.equal((html.match(/data-try-example/g) || []).length, 1);
+  assert.equal((html.match(/data-example=/g) || []).length, 0);
 });

@@ -1503,11 +1503,22 @@
     }
   } catch { /* The switch is optional. */ }
   // Example topics: one click writes the sentence; the existing preview fills Where and Years from it.
+  // One button, a different example each time: sentences the parser is known to handle, shown in random order without repeats until all were used.
+  const EXAMPLE_SENTENCES = ["early childhood education outcomes in low-income countries", "microfinance Africa", "inheritance laws Middle East", "gut microbiome and depression since 2018", "CRISPR gene therapy", "supply chain resilience after COVID", "food security and climate change in Africa", "machine learning for drug discovery", "epigenetics in children since 2020", "AI and its impact on jobs, wages and productivity", "neurotechnology in the UAE, last 5 years", "screen time and sleep in teenagers"];
+  let exampleBag = [], lastExample = "";
+  const nextExample = () => {
+    if (!exampleBag.length) {
+      exampleBag = EXAMPLE_SENTENCES.slice();
+      for (let i = exampleBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [exampleBag[i], exampleBag[j]] = [exampleBag[j], exampleBag[i]]; }
+      if (exampleBag.at(-1) === lastExample) exampleBag.unshift(exampleBag.pop()); // never show the same one twice in a row
+    }
+    return lastExample = exampleBag.pop();
+  };
   document.getElementById("examples")?.addEventListener?.("click", event => {
-    const button = event.target?.closest?.("[data-example]");
+    const button = event.target?.closest?.("[data-try-example]");
     if (!button || busy) return;
     pickedPlace = null; pickedMode = "authored";
-    $("topic-input").value = button.getAttribute("data-example");
+    $("topic-input").value = nextExample();
     onSentenceInput();
     syncPlaceSelect();
     try { $("topic-input").focus(); } catch { /* Focus is a convenience. */ }

@@ -147,11 +147,11 @@ test("the sixty-ninth source admission and seventieth AI admission are permitted
  const checked=await app.check(first.body);assert.equal(checked.status,200);assert.equal(app.kv.values.get("ai:count:2026-11-04"),"70");
  const next=await app.prepare("research on a different topic");assert.equal(next.status,429);
 });
-test("the 9000-neuron guard falls back to counts without overspending",async()=>{
- const app=setup();app.kv.values.set("ai:usage:2026-11-04",JSON.stringify({used:8990,reserved:0}));
+test("the daily cost guard falls back to counts without overspending",async()=>{
+ const app=setup();app.kv.values.set("ai:usage:2026-11-04",JSON.stringify({used:99990,reserved:0}));
  const first=await app.prepare();assert.equal(first.status,200);assert.equal(first.body.planningReason,"daily_neuron_limit");assert.equal(app.models.length,0);
  const checked=await app.check(first.body);assert.equal(checked.body.aiReason,"daily_neuron_limit");assert.equal(app.models.length,0);
- assert.deepEqual(JSON.parse(app.kv.values.get("ai:usage:2026-11-04")),{used:8990,reserved:0});
+ assert.deepEqual(JSON.parse(app.kv.values.get("ai:usage:2026-11-04")),{used:99990,reserved:0});
 });
 test("planning cache expires at seven days, and a corrupt cache falls back safely",async()=>{
  const app=setup();await app.prepare();

@@ -21,7 +21,9 @@ test("demo evaluation is sequential, prints plan/checks/top lists and flags unve
 });
 
 test("historical eight-question measurements remain valid records, predating source grounding and self-check",async()=>{
-  const {AI_DAILY_CAP,AI_DAILY_NEURONS,AI_MODEL,JUDGE_MODEL}=await import("./ai.js");
+  const {AI_DAILY_CAP}=await import("./ai.js");
+  // This file records the earlier Cloudflare-era measurements, so it keeps its own model names and 9000-neuron budget.
+  const AI_MODEL="@cf/meta/llama-3.3-70b-instruct-fp8-fast",JUDGE_MODEL="@cf/qwen/qwen3-30b-a3b-fp8",AI_DAILY_NEURONS=9000;
   const {readFileSync}=await import("node:fs");
   const result=JSON.parse(readFileSync(new URL("../tools/evidence-measurements-final.json",import.meta.url),"utf8"));
   const canonical=JSON.parse(readFileSync(new URL("./fixtures/eval-questions.json",import.meta.url),"utf8"));

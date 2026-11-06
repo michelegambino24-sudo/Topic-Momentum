@@ -143,10 +143,7 @@
   }
 
   renderStatic();
-  $("demo-replay").addEventListener("click", () => {
-    root.scrollIntoView({ behavior: "instant", block: "center" });
-    play();
-  });
+  $("demo-replay").addEventListener("click", play); // The button sits inside the demo, so no scrolling is needed.
   window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (event) => {
     reduceMotion = event.matches;
     if (reduceMotion) play();

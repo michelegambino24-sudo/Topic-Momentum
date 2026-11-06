@@ -1,10 +1,11 @@
 import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, isTighterPlan, judgeTitles, titleSample, semanticQuery, semanticMembership, shapePapers, normaliseQuery, includeGroupsOf, cacheIsFresh, dailyCap, cleanTerm, cleanAIPlanTerms, reliabilitySamples, reliabilityCheck, checkedEvidence, EVIDENCE_NOTICES, buildQueries, groundedPlanSchema, groundPlan, reconcileGrounding, validateGroundedResponse, planRequirements, questionRequirements, passingTitleIds, verifiedExperts, expertCandidateQuery, rankExpertAuthors, openAlexUsage, dailyKey, aiFailureMessage, literalQuestionPlan, parseModelReply, aiAttemptDiagnostic, aiTimeouts, aiStopReason, tighteningFailures, safeAIDetail, selfCheckRequirements, SELF_CHECK_TIMEOUT_NOTE, expansionTerms, EXPANSION_BELOW, EXPANSION_MAX_GROWTH } from "./lib.js";
 import "../site/query-parser.js";
+import { DEFAULT_MODEL, createOpenAI, openAIConfigured, unitsPerToken } from "./openai.js";
 import { COUNTRY_CODES, REGIONS, countryLabel } from "./countries.js";
 import {REPORT_CACHE_PREFIX,isBroadSynonym} from "./lib.js";
 
-// Officially supports JSON mode on Workers AI (gpt-oss-120b does not, and its reasoning cut answers off).
-export const AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+// Default OpenAI model for planning and judging. The deployed model can be changed with the OPENAI_MODEL variable (see openai.js).
+export const AI_MODEL = DEFAULT_MODEL;
 export const AI_TTL = 7 * 24 * 60 * 60;
 const validKey = key => /^ai:search:v3:[a-f0-9]{64}$/.test(key || "");
 const validCheck = check => check && Number.isInteger(check.matched) && Number.isInteger(check.total) && check.matched >= 0 && check.matched <= check.total && check.total <= 20;
@@ -14,7 +15,7 @@ function displayLabels(raw, query) {
     synonyms: query.synonyms.map(value => label(value, raw.synonyms)), exclusions: (query.excludeTerms || []).map(value => label(value, raw.excludeTerms)) };
 }
 const failure = (message, status = 400) => ({ status, body: { error: "invalid_query", message } });
-// Workers AI structured output rejects some JSON Schema keywords ("Unimplemented keys"). Strip them before sending;
+// Strip JSON Schema keywords the model API may not support before sending;
 // validateAIPlan and the title-judgement checks still enforce these rules on the answer.
 const UNSUPPORTED_SCHEMA_KEYS = new Set(["uniqueItems"]);
 export const modelSchema = value => Array.isArray(value) ? value.map(modelSchema)
@@ -116,16 +117,19 @@ function currentQuery(value, year) {
   return query;
 }
 
-export const JUDGE_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
-export const QWEN_JUDGE = "@cf/qwen/qwen3-30b-a3b-fp8";
-export const AI_NEURONS_PER_SEARCH = 2400; // Hard ceiling; unknown usage stays conservatively charged.
+export const JUDGE_MODEL = DEFAULT_MODEL;
+// Cost is counted in units of US$0.00001 (kept under the historical "neurons" names used by stored records and tests).
+export const AI_NEURONS_PER_SEARCH = 3000; // About US$0.03 per search. Hard ceiling; unknown usage stays conservatively charged.
 export const AI_RESERVATION = 600; // Grow before calls and refund unused allowance.
-export const AI_DAILY_NEURONS = 9000;
+export const AI_DAILY_NEURONS = 100000; // About US$1.00 a day unless AI_DAILY_BUDGET_UNITS says otherwise.
+export const dailyBudgetUnits = env => { const n = Number(env?.AI_DAILY_BUDGET_UNITS); return Number.isSafeInteger(n) && n > 0 && n <= 5000000 ? n : AI_DAILY_NEURONS; };
 export const AI_DAILY_CAP = 70;
 export const AI_LIMIT_MESSAGE = "Today's AI checks are used up. They reset at 01:00 (Rome time). Saved reports and the Library still work.";
-export function aiTurnBound(params, model = AI_MODEL) {
+export function aiTurnBound(params, model = AI_MODEL, env = {}) {
+  // Upper bound: one token per input byte plus the full output allowance.
   const input = new TextEncoder().encode(JSON.stringify(params.messages || params.prompt) + JSON.stringify(params.response_format)).length + 256;
-  return input * (model === QWEN_JUDGE ? .004625 : .026668) + params.max_tokens * (model === QWEN_JUDGE ? .030475 : .204805);
+  const rate = unitsPerToken(env);
+  return input * rate.input + params.max_tokens * rate.output;
 }
 const checkedRecord = record => {
   if(record?.evidenceVersion!==3 || !validCheck(record.check) || !record.evidence || typeof record.queryId!=="string")return false;
@@ -145,7 +149,6 @@ const judgeInstructions = 'Return only {"pass":[ids]}. A title passes if it is p
 export function judgeParameters(question, required, titles, year, model = JUDGE_MODEL) {
   const system=judgeInstructions, data=JSON.stringify({question,required,titles:titles.map((title,i)=>({id:i+1,title})),year}).replace(/</g,"\\u003c").replace(/>/g,"\\u003e");
   const params={temperature:0,max_tokens:128,response_format:{type:"json_schema",json_schema:{type:"object",additionalProperties:false,required:["pass"],properties:{pass:{type:"array",items:{type:"integer"}}}}}};
-  if(model===QWEN_JUDGE)return {...params,raw:true,prompt:"<|im_start|>system\n"+system+"<|im_end|>\n<|im_start|>user\n"+data+"\n/no_think<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"};
   return {...params,messages:[{role:"system",content:system},{role:"user",content:data}]};
 }
 
@@ -220,7 +223,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
       let settledNeurons=0;
       let reservedUsage=false,retryLeft=pipeline?0:1,replans={coverage:1,selfCheck:1},countedSearch=false,clarified=false;
       const requestId=crypto.randomUUID();usage.requestId=requestId;
-      const detail=value=>safeAIDetail(value,[env.OPENALEX_KEY]);
+      const detail=value=>safeAIDetail(value,[env.OPENALEX_KEY,env.OPENAI_API_KEY]);
       const recordCheck=value=>{const event=detail({requestId,...value});usage.checks.push(event);console.log("AI plan check",JSON.stringify(event));return event;};
       const limits=aiTimeouts(env),controller=new AbortController(),end=clock()+limits.preparation,timer=setTimeout(()=>controller.abort(),limits.preparation);
       session.signal=controller.signal;
@@ -250,13 +253,13 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
           if(pipeline && session.operations>=34)throw Object.assign(new Error("Request budget exhausted"),{reason:"request_limit"});
           const stopped=aiStopReason(controller.signal.aborted,clock(),end,usage.calls);
           if(stopped)throw Object.assign(new Error("AI preparation stopped"),{reason:stopped});
-          const bound=aiTurnBound(params,model);
+          const bound=aiTurnBound(params,model,env);
           if(usage.neurons+bound>AI_NEURONS_PER_SEARCH)throw Object.assign(new Error("Checking budget exhausted"),{reason:"search_neuron_limit"});
           if (usage.neurons-settledNeurons+bound>heldNeurons) {
             const additional=pipeline?usage.neurons-settledNeurons+bound-heldNeurons:Math.ceil((usage.neurons+bound-heldNeurons)/AI_RESERVATION)*AI_RESERVATION;
             const extended=await locked(env.TMM,usageKey,async()=>{
               const ledger=await env.TMM.get(usageKey,"json") || {used:0,reserved:0};
-              if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+additional>AI_DAILY_NEURONS)return false;
+              if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+additional>dailyBudgetUnits(env))return false;
               ledger.reserved+=additional;
               await env.TMM.put(usageKey,JSON.stringify(ledger),{expirationTtl:172800});return true;
             });
@@ -290,7 +293,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
             if(timedOut && !error.reason)error.reason=clock()>=end?"ai_total_deadline":"ai_call_timeout";
             const category=error.category || (timedOut?"timeout":"provider_error");
             turn.outcome=category;turn.reason=error.reason || "ai_"+category;
-            const diagnostic=aiAttemptDiagnostic({stage,attempt,call:usage.calls,category,error,parseableJSON,rawReply,secrets:[env.OPENALEX_KEY]});
+            const diagnostic=aiAttemptDiagnostic({stage,attempt,call:usage.calls,category,error,parseableJSON,rawReply,secrets:[env.OPENALEX_KEY,env.OPENAI_API_KEY]});
             usage.errors.push(diagnostic);
             console.log("AI attempt failed",JSON.stringify(diagnostic));
             if(!charged){usage.neurons+=bound;phase.neurons+=bound;usage.byModel[model]=(usage.byModel[model]||0)+bound;usage.measured=false;}
@@ -461,7 +464,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
           const understanding={mode:"ai",key,sentence:input.sentence,labels:displayLabels(existing.raw,compiled.query),place:compiled.place,check:exact?existing.check:null,changed:!exact};
           result.body=exact?overlay(result.body,existing,understanding,true):{...unverified(result.body,"search_changed"),understanding};return result;
         }
-        if(!env.AI||env.AI_MODEL&&env.AI_MODEL!==AI_MODEL||env.AI_JUDGE_MODEL&&env.AI_JUDGE_MODEL!==JUDGE_MODEL)return blocked("ai_binding_unavailable");
+        if(!env.AI)return blocked("ai_binding_unavailable");
         if(!pipeline&&(await env.TMM.get("count:"+day,"json")||0)>=Math.min(70,dailyCap(env.NEW_TOPICS_PER_DAY)))return {status:429,body:{error:"daily_limit",message:"Daily limit reached. Try again tomorrow or browse the Library.",aiReason:"source_limit",aiUsage:usage}};
         const dayKey="ai:count:"+day;
         const cap=Math.min(AI_DAILY_CAP,dailyCap(env.AI_SEARCHES_PER_DAY??AI_DAILY_CAP));
@@ -470,7 +473,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
         const budget=await locked(env.TMM,usageKey,async()=>{
           const ledger=await env.TMM.get(usageKey,"json")||{used:0,reserved:0};
           const reservation=pipeline?150:AI_RESERVATION; // A whole paper check measures about 20 neurons: one lump avoids two storage operations per AI call.
-          if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+reservation>AI_DAILY_NEURONS)return false;
+          if(!Number.isFinite(ledger.used)||!Number.isFinite(ledger.reserved)||ledger.used<0||ledger.reserved<0||ledger.used+ledger.reserved+reservation>dailyBudgetUnits(env))return false;
           heldNeurons=reservation;ledger.reserved+=reservation;await env.TMM.put(usageKey,JSON.stringify(ledger),{expirationTtl:172800});return true;
         });if(!budget)return blocked("daily_neuron_limit");reservedUsage=true;
         const verified=pipeline?.record?{raw:pipeline.record.raw,sources:[]}:await plan();if(verified.clarification)return verified.clarification;if(verified.advisory)return verified.advisory;

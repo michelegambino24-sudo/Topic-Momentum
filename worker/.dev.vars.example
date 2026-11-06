@@ -1,1 +1,4 @@
-OPENALEX_KEY=
+# Copy this file to .dev.vars (which Git ignores) and fill in your own values.
+# Never commit .dev.vars and never put these values in the website files.
+OPENALEX_KEY=your-openalex-key-here
+OPENAI_API_KEY=your-openai-key-here
