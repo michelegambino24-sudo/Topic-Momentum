@@ -42,7 +42,7 @@ function setup(fetch, saved = null, initialHash = "#search", summaries = null, a
     localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) }
   });
   vm.runInContext('window = globalThis; windowListeners = {}; window.addEventListener = (type, fn) => { windowListeners[type] = fn; };', context);
-  for (const name of ["config.js", "sample-topic.js", "map-data.js", "search-presets.js", "places.js", "query-parser.js", "map-feedback.js", "app.js"]) vm.runInContext(source(name), context);
+  for (const name of ["config.js", "sample-topic.js", "map-data.js", "search-presets.js", "places.js", "query-parser.js", "map-feedback.js", "chatgpt-prompt.js", "app.js"]) vm.runInContext(source(name), context);
   return { context, stored, navigate(hash) { context.location.hash = hash; }, get: doc.getElementById, copied: () => copied,
     submit() { doc.getElementById("search-form").listeners.submit({ preventDefault() {} }); },
     click(dataset) { const button = { dataset, setAttribute() {} }; doc.listeners.click({ target: { closest: () => button } }); }
@@ -2151,4 +2151,38 @@ test("the search page has exactly one example button and the old example chips a
   const html = readFileSync(__dirname + "/app.html", "utf8");
   assert.equal((html.match(/data-try-example/g) || []).length, 1);
   assert.equal((html.match(/data-example=/g) || []).length, 0);
+});
+
+test("Copy for ChatGPT puts the prompt and the checked report content on the clipboard", async () => {
+  const app = setup(async () => ({ ok: true, json: async () => checkedReport(counts) }), null, "#search", null, true);
+  const counts = stagedReport(app);
+  assert.equal(app.get("copy-chatgpt").disabled, true, "disabled on the sample report");
+  app.get("topic-input").value = "fixture topic"; app.get("topic-input").listeners.input(); app.submit();
+  await settle(); await settle();
+  assert.equal(app.get("copy-chatgpt").disabled, false);
+  await app.get("copy-chatgpt").listeners.click();
+  const text = app.copied();
+  assert.match(text, /^Generate four options in an image/);
+  assert.match(text, /STEP 1 \(now\): Do NOT generate the image yet/);
+  assert.match(text, /reply with their numbers \(for example: 1,2,3\)/);
+  assert.match(text, /\nCONTENT:\nHeadline: /);
+  assert.match(text, /Papers published: /);
+  assert.match(text, /Papers per year: /);
+  assert.match(text, /Leading experts \(.*checked by AI.*\): Research author 12/);
+  assert.match(text, /- A relevant checked paper — 40 citations — Research author, Research journal, 2025/);
+  assert.match(text, /Source: OpenAlex/);
+  assert(!text.includes("{{CONTENT}}"));
+  assert.doesNotMatch(text, /\bECA\b|early childhood|childhood/i, "no client names in the prompt");
+  assert.match(text, /Strategy&/);
+});
+
+test("Copy for ChatGPT leaves out experts and papers that were not checked", async () => {
+  const app = setup(async () => ({ ok: true, json: async () => counts }), null, "#search", null, true);
+  const counts = stagedReport(app);
+  app.get("topic-input").value = "fixture topic"; app.get("topic-input").listeners.input(); app.submit();
+  await settle(); await settle();
+  await app.get("copy-chatgpt").listeners.click();
+  const text = app.copied();
+  assert.doesNotMatch(text, /Leading experts|Key papers/);
+  assert.match(text, /Experts and key papers were not checked/);
 });

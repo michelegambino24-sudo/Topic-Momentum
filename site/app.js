@@ -803,11 +803,12 @@
     const labels = [...new Set([0, Math.floor((years.length - 1) / 2), years.length - 1])].map((i) => `<text class="chart-label" x="${x(i)}" y="${height - 8}" text-anchor="middle">${years[i].year}</text>`).join("");
     const area = complete.length > 1 ? `<path class="chart-area" d="${path(complete)} L${complete.at(-1).x},${baseline} L${complete[0].x},${baseline} Z"/>` : "";
     const dashed = partial && complete.length ? `<path class="chart-line partial-year" d="${path([complete.at(-1), partial])}"/>` : "";
+    const partialNote = partial && complete.length ? `<text class="chart-label chart-partial-label" x="${partial.x}" y="${Math.min(baseline - 6, Math.max(top + 8, partial.y >= complete.at(-1).y ? partial.y + 18 : partial.y - 10))}" text-anchor="end">${partial.year}, year so far</text>` : "";
     const dots = points.map((point) => {
       const label = `${point.year}: ${papers(point.count)}${point === partial ? " (year to date)" : ""}`;
       return `<circle class="chart-point${point === partial ? " partial-point" : ""}" cx="${point.x}" cy="${point.y}" r="3" tabindex="0" aria-label="${escape(label)}"><title>${escape(label)}</title></circle>`;
     }).join("");
-    return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Papers published each year. The current year isn’t over, so its line is dashed. Focus a point and use the arrow keys to compare years.">${grid}${area}<path class="chart-line" d="${path(complete)}"/>${dashed}<line class="chart-crosshair" x1="0" x2="0" y1="${top}" y2="${baseline}" aria-hidden="true"/>${dots}${labels}</svg><div class="chart-readout" aria-hidden="true" hidden></div>`;
+    return `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Papers published each year. The current year isn’t over, so its line is dashed. Focus a point and use the arrow keys to compare years.">${grid}${area}<path class="chart-line" d="${path(complete)}"/>${dashed}<line class="chart-crosshair" x1="0" x2="0" y1="${top}" y2="${baseline}" aria-hidden="true"/>${dots}${labels}${partialNote}</svg><div class="chart-readout" aria-hidden="true" hidden></div>`;
   }
 
   function renderRankings() {
@@ -964,7 +965,7 @@
     const empty = topic.kpis.total === 0;
     $("no-results").hidden = !empty;
     $("report-content").hidden = empty;
-    $("export-csv").disabled = empty || busy;
+    $("export-csv").disabled = empty || busy; $("copy-chatgpt").disabled = empty || busy || isSample;
     if (empty) {
       // Never leave the previous report's suggestions behind on an empty result.
       $("suggested-synonyms").innerHTML = "";
@@ -1260,7 +1261,7 @@
     busy = loading;
     setPresentationLoading(loading);
     renderSaveState();
-    $("export-csv").disabled = loading || topic.kpis.total === 0;
+    $("export-csv").disabled = loading || topic.kpis.total === 0; $("copy-chatgpt").disabled = loading || topic.kpis.total === 0 || isSample;
     $("search-form").toggleAttribute("aria-busy", loading);
     $("narrow-form").toggleAttribute("aria-busy", loading);
     document.querySelectorAll('#search-form input, #search-form select, #search-form button, #suggested-synonyms button, #subtopics button, #refine-chips button, #narrow-form input, #narrow-form button').forEach((control) => { control.disabled = loading; });
@@ -1749,6 +1750,56 @@
       search(`${terms.name} ${button.dataset.nextTerm}`, [], null, false, false, groupsOf(topic), reportRange(topic).from, reportRange(topic).to);
     }
     if (button.dataset.field !== undefined) { selectedField = button.dataset.field; renderLibrary(); }
+  });
+  function chatGptContent() {
+    const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+    const list = (label, items) => items.length ? label + ": " + items.join(" · ") : "";
+    const range = reportRange(topic), thisYear = new Date().getFullYear();
+    const window = growthWindow(topic), growth = primaryGrowth(topic);
+    const evidenceReady = topic.evidence?.version === 3 && topic.papersKind === "checked" && topic.understanding?.mode === "ai" && topic.understanding?.check;
+    const named = (items) => (items || []).filter((item) => clean(item?.name));
+    const years = (Array.isArray(topic.years) ? topic.years : []).filter((item) => item.year >= range.from && (range.to == null || item.year <= range.to));
+    const earlier = (item) => item.early ?? (item.growth === null ? 0 : Number.isFinite(item.growth) && item.growth > -1 ? Math.round(item.late / (1 + item.growth)) : undefined);
+    const subtopic = (item) => {
+      const before = earlier(item), showCounts = Number.isFinite(before) && before >= 0 && (before < 20 || item.growth > 3);
+      return clean(item.name) + " " + number(item.late) + " (" + (showCounts ? before + " → " + item.late : item.growth === undefined ? "no change shown" : percent(item.growth)) + ")";
+    };
+    const lines = [];
+    lines.push("Headline: " + clean(topic.headline));
+    const filters = $("understanding-line").hidden ? "" : clean($("understanding-line").textContent);
+    lines.push("Search: " + clean(baseTitle(topic)) + " · " + rangeLabel(range)
+      + (topic.selectedSubfield ? " · field: " + clean(topic.selectedSubfield.name) : "") + (filters ? " · " + filters : ""));
+    lines.push("");
+    lines.push("Papers published: " + number(topic.kpis.total) + " papers " + periodPhrase(range) + (Number.isFinite(topic.kpis.lastYear) ? " · " + number(topic.kpis.lastYear) + " in " + (window.growthEndYear ?? "the last full year") : ""));
+    lines.push("Growth: " + (growth === null || growth === undefined ? "not enough data" : percent(growth) + " a year" + (Number.isFinite(window.growthStartYear) ? " (" + window.growthStartYear + "–" + window.growthEndYear + ")" : "")) + " · Momentum: " + clean(topic.kpis.momentum));
+    if (years.length) lines.push("Papers per year: " + years.map((item) => item.year + " " + number(item.count) + (item.year === thisYear ? " (year so far, not complete)" : "")).join(" · "));
+    const countries = named(topic.countries).slice(0, 10).map((item) => clean(item.name) + " " + number(item.count));
+    if (countries.length) lines.push("", "Top places (papers with authors based there): " + countries.join(" · ") + (topic.regionalCounts ? ". UAE: " + number(topic.regionalCounts.uae) + " papers. GCC: " + number(topic.regionalCounts.gcc) + " papers." : ""));
+    const experts = evidenceReady ? named(topic.experts).slice(0, 10).map((item) => clean(item.name) + " " + number(item.count)) : [];
+    if (experts.length) lines.push("", "Leading experts (most active in this field, checked by AI; number = papers): " + experts.join(" · "));
+    const paperRows = evidenceReady ? (topic.papers || []).filter((item) => clean(item?.title)).slice(0, 5) : [];
+    if (paperRows.length) lines.push("", "Key papers (checked by AI, sorted by citations):", ...paperRows.map((item) => "- " + clean(item.title) + " — " + number(item.citations) + (item.citations === 1 ? " citation" : " citations") + " — " + clean(item.authors) + ", " + clean(item.journal) + ", " + item.year));
+    const subtopics = named(topic.subtopics).slice(0, 10).map(subtopic);
+    if (subtopics.length) lines.push("", "Key research sub-topics (papers; change): " + subtopics.join(" · "));
+    const journals = named(topic.journals).slice(0, 10).map((item) => clean(item.name) + " " + number(item.count));
+    if (journals.length) lines.push("", "Top journals (papers): " + journals.join(" · "));
+    lines.push("", "Note: Source: OpenAlex, " + dateText(topic.updated) + ". Counts of papers with these terms in title or abstract; countries are where authors are based and can overlap." + (evidenceReady ? " Experts and key papers were checked by AI on titles." : " Experts and key papers were not checked."));
+    return lines.filter((line, index, all) => line !== "" || all[index - 1] !== "").join("\n");
+  }
+  function chatGptMessage() { return globalThis.TMM_CHATGPT_PROMPT.replace("{{CONTENT}}", () => chatGptContent()); }
+  $("copy-chatgpt").addEventListener("click", async () => {
+    if (isSample || busy) return;
+    const text = chatGptMessage();
+    let done = false;
+    try { await navigator.clipboard.writeText(text); done = true; } catch {}
+    if (!done) {
+      const box = document.createElement("textarea");
+      box.value = text; box.setAttribute("readonly", ""); box.style.position = "fixed"; box.style.opacity = "0";
+      document.body.appendChild(box); box.select();
+      try { done = document.execCommand("copy"); } catch {}
+      box.remove();
+    }
+    notify(done ? "Copied. Paste it into ChatGPT, then answer its question." : "Couldn’t copy automatically. Try again from a secure (https) page.", !done);
   });
   $("copy-headline").addEventListener("click", async () => {
     const text = `${isSample ? "Sample data: " : ""}${topic.headline}`;

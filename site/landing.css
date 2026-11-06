@@ -59,7 +59,11 @@
 .demo-kpis div{padding:12px 0;min-width:0}
 .demo-kpis span{display:block;font-size:.75rem;color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .demo-kpis strong{display:block;font-family:var(--font-display);font-weight:400;font-size:1.625rem;font-variant-numeric:tabular-nums;margin-top:2px}
+.demo-chart{position:relative}
 .demo-chart svg{display:block;width:100%;height:auto}
+.demo-partial-label{position:absolute;transform:translate(-100%,10px);font-size:.75rem;line-height:1.2;color:var(--secondary);white-space:nowrap;pointer-events:none}
+.is-playing:not(.show-report) .demo-partial-label{opacity:0}
+.is-playing.show-report .demo-partial-label{transition:opacity 300ms ease-out 1400ms}
 .demo-line{fill:none;stroke:var(--chart);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
 .demo-partial{stroke-dasharray:5 5;opacity:.7}
 .demo-area{fill:var(--chart);opacity:.12}

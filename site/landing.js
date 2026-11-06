@@ -59,7 +59,9 @@
     const area = complete.length > 1 ? `${line} L${complete.at(-1)[0].toFixed(1)},${height - bottom} L${complete[0][0].toFixed(1)},${height - bottom} Z` : "";
     const dashed = partialIndex > 0 ? `<path class="demo-line demo-partial" d="M${complete.at(-1)[0].toFixed(1)},${complete.at(-1)[1].toFixed(1)} L${points[partialIndex][0].toFixed(1)},${points[partialIndex][1].toFixed(1)}"/>` : "";
     const label = (i) => `<text x="${x(i).toFixed(1)}" y="${height - 6}" text-anchor="${i === 0 ? "start" : i === years.length - 1 ? "end" : "middle"}">${years[i].year}</text>`;
-    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="presentation"><path class="demo-area" d="${area}"/><path class="demo-line" pathLength="1" d="${line}"/>${dashed}<g class="demo-axis">${label(0)}${label(Math.floor((years.length - 1) / 2))}${label(years.length - 1)}</g></svg>`;
+    // The picture stretches to fit, so the label is plain HTML placed by percentage, just under the end of the dashed line.
+    const note = partialIndex > 0 ? `<span class="demo-partial-label" style="left:${(points[partialIndex][0] / width * 100).toFixed(2)}%;top:${(points[partialIndex][1] / height * 100).toFixed(2)}%">${data.partialYear}, year so far</span>` : "";
+    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="presentation"><path class="demo-area" d="${area}"/><path class="demo-line" pathLength="1" d="${line}"/>${dashed}<g class="demo-axis">${label(0)}${label(Math.floor((years.length - 1) / 2))}${label(years.length - 1)}</g></svg>${note}`;
   }
 
   const kpis = [
