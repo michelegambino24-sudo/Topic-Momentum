@@ -66,8 +66,24 @@ const decode = result => {
 };
 // A checked result is saved under its interpretation key, which only the browser that ran the search knows.
 // This pointer, keyed by the report's own search ID, lets any other browser find the same checked result.
-// Shorter than the report key's own prefix, so it fits wherever the report key fits.
-export const queryPointerKey = queryId => "ai:q:v1:" + queryId;
+// Searches that name many countries make very long keys, and the storage service rejects those once they are
+// URL-encoded. Long ones use a short hash instead. A hash clash is harmless: a stored result is only used when
+// its own search ID matches the search being opened.
+function hashText(text, seed) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0");
+}
+export const queryPointerKey = queryId => {
+  const key = "ai:q:v1:" + queryId;
+  return encodeURIComponent(key).length <= 400 ? key : "ai:q:v1h:" + hashText(queryId, 0) + hashText(queryId, 1);
+};
 export async function interpretationKey(sentence, year) {
   const versions = Object.entries(SEARCH_PRESETS).map(([id, preset]) => [id, preset.version]);
   const input = JSON.stringify(["deterministic-places-v1",globalThis.TMM_PLACES.version, AI_MODEL, JUDGE_MODEL, year, versions, sentence.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ")]);

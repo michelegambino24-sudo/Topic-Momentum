@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createWorker } from "./worker.js";
 import { MemoryKV } from "./kv-fixture.js";
 import { COUNTRY_CODES } from "./countries.js";
-import { AI_MODEL, interpretationKey } from "./ai.js";
+import { AI_MODEL, interpretationKey, queryPointerKey } from "./ai.js";
 import { SEARCH_PRESETS, aiPlanSchema, validateAIPlan, compileAIPlan, judgeTitles, normaliseQuery, buildQueries, fallbackQueries, publicLibrary, queryParams, CACHE_MAX_AGE_MS } from "./lib.js";
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -516,4 +516,15 @@ test("tightening samples and source transport failures count without hiding part
  const app=setup([data.plan,judgments(12),tighter,judgments(18)],{costUsd:.00025,source:url=>{if(url.searchParams.has("search.semantic"))throw new Error("network failure");return null;}});
  const body=await(await app.search()).json(),cost=body.openalexUsage;
  assert.equal(cost.calls,app.calls.length);assert.equal(cost.byStage.tighteningReliability,2);assert(cost.attempts.some(item=>item.query==="semanticPapers"&&item.status===null));assert.equal(cost.reportedUsd,null);assert(cost.partialReportedUsd>0);assert.equal(cost.estimatedUsd,cost.calls*.001);
+});
+
+test("pointer keys stay readable for short searches and become short hashes for very long ones", () => {
+  assert.equal(queryPointerKey("machine learning"), "ai:q:v1:machine learning");
+  const countries = JSON.stringify([...COUNTRY_CODES].slice(0, 60));
+  const long = "ageing population healthcare costs|aging population medical costs|authored:" + countries;
+  const key = queryPointerKey(long);
+  assert.match(key, /^ai:q:v1h:[a-f0-9]{32}$/);
+  assert.equal(queryPointerKey(long), key);
+  assert.notEqual(queryPointerKey(long + "x"), key);
+  assert(encodeURIComponent(key).length < 100);
 });
