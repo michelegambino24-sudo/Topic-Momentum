@@ -107,7 +107,7 @@ test("valid AI search checks actual titles, preserves real counts and caches que
   assert.equal(result.kpis.total, realTotal);
   assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length, 4);
   assert.equal(app.kv.values.get("count:2026-11-02"), "1"); assert.equal(app.kv.values.get("ai:count:2026-11-02"), "1");
-  assert.equal(app.kv.writes.length, 7);
+  assert.equal(app.kv.writes.length, 8);
   const core = JSON.parse(app.kv.values.get("v5:topic:" + result.id)).topic;
   assert(!core.understanding); assert(!core.papersKind);
   for (const call of app.aiCalls) {
@@ -123,7 +123,7 @@ test("valid AI search checks actual titles, preserves real counts and caches que
   assert(membership.searchParams.get("filter").includes(" NOT "));
   const repeated = await (await app.search()).json();
   assert.equal(repeated.id, result.id); assert.deepEqual(repeated.understanding.check, result.understanding.check);
-  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length,4); assert.equal(app.kv.writes.length, 7);
+  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length,4); assert.equal(app.kv.writes.length, 8);
 });
 
 test("place mode switches reuse cached interpretation without inference and preserve current edits", async () => {
@@ -202,7 +202,7 @@ test("interpretation keys include year and preset versions; GET cache-only resto
   const params = queryParams(compileAIPlan(data.plan, 2026).query); params.set("cache", "only"); params.set("understanding", body.understanding.key);
   const restored = await (await app.worker.fetch(new Request("http://localhost/api/topic?" + params), app.env)).json();
   assert.deepEqual(restored.understanding.check, body.understanding.check);
-  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length,4); assert.equal(app.kv.writes.length, 7);
+  assert.equal(app.calls.length, 20); assert.equal(app.aiCalls.length,4); assert.equal(app.kv.writes.length, 8);
   const record = JSON.parse(app.kv.values.get(body.understanding.key)); record.savedAt -= CACHE_MAX_AGE_MS;
   app.kv.values.set(body.understanding.key, JSON.stringify(record));
   const expired = await app.search({ sentence: data.sentence, mode: "mentions" });
@@ -267,7 +267,7 @@ test("simultaneous identical questions coalesce within an isolate without duplic
   assert(responses.every(response => response.status === 200));
   const bodies = await Promise.all(responses.map(response => response.json()));
   assert(bodies.every(body => body.id === bodies[0].id));
-  assert.equal(app.aiCalls.length,4); assert.equal(app.calls.length, 20); assert.equal(app.kv.writes.length, 7);
+  assert.equal(app.aiCalls.length,4); assert.equal(app.calls.length, 20); assert.equal(app.kv.writes.length, 8);
 });
 
 test("restored context for edited filters clears evidence but retains a switchable place", async () => {

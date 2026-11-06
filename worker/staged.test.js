@@ -28,7 +28,8 @@ function setup(options={}){
   return Response.json(fixture("papers"));
  },()=>date,{now:()=>time,sleep:async ms=>{time+=ms;}});
  const post=async(phase,input)=>{const response=await worker.fetch(new Request("https://worker.invalid/api/search?phase="+phase,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}),env);return {status:response.status,body:await response.json()};};
- return {kv,env,calls,models,post,prepare:(sentence="autism")=>post("prepare",{sentence}),check:report=>post("evidence",{key:report.evidenceKey,id:report.id})};
+ const get=async path=>{const response=await worker.fetch(new Request("https://worker.invalid"+path),env);return {status:response.status,body:await response.json()};};
+ return {kv,env,calls,models,post,get,prepare:(sentence="autism")=>post("prepare",{sentence}),check:report=>post("evidence",{key:report.evidenceKey,id:report.id})};
 }
 test("one planning call precedes counts; evidence reuses the same cached query without a report rebuild",async()=>{
  const app=setup(),first=await app.prepare();assert.equal(first.status,200);assert.equal(first.body.papersKind,"unavailable");
@@ -75,6 +76,31 @@ test("missing/expired cached report and query-ID tampering never rebuild a repor
  const app=setup(),first=await app.prepare(),before=app.calls.length;
  assert.equal((await app.post("evidence",{key:first.body.evidenceKey,id:"different query"})).status,400);
  app.kv.values.delete(REPORT_CACHE_PREFIX+first.body.id);assert.equal((await app.check(first.body)).status,400);assert.equal(app.calls.length,before);
+});
+test("a plain link from another browser gets the checked papers and experts without any new AI or source call",async()=>{
+ const app=setup(),first=await app.prepare(),checked=await app.check(first.body);assert.equal(checked.body.papersKind,"checked");
+ const calls=app.calls.length,models=app.models.length;
+ // No understanding key and no browser storage: only the topic in the link.
+ const plain=await app.get("/api/topic?q=autism");
+ assert.equal(plain.status,200);assert.equal(plain.body.id,first.body.id);assert.equal(plain.body.papersKind,"checked");
+ assert.deepEqual(plain.body.papers,checked.body.papers);assert.deepEqual(plain.body.experts,checked.body.experts);assert.equal(plain.body.understanding.mode,"ai");
+ const saved=await app.get("/api/topic?q=autism&cache=only");assert.equal(saved.body.papersKind,"checked");
+ assert.equal(app.calls.length,calls);assert.equal(app.models.length,models);
+});
+test("a plain link stays counts-only when no checked result exists, is for a different search, or has expired",async()=>{
+ const app=setup(),first=await app.prepare();
+ assert.notEqual((await app.get("/api/topic?q=autism")).body.papersKind,"checked");
+ await app.check(first.body);
+ assert.notEqual((await app.get("/api/topic?q=autism&from=2015")).body.papersKind,"checked");
+ const checkedKey=[...app.kv.values.keys()].find(key=>/^ai:search:v3:[a-f0-9]{64}$/.test(key)),record=JSON.parse(app.kv.values.get(checkedKey));
+ record.savedAt-=7*86400000;app.kv.values.set(checkedKey,JSON.stringify(record));
+ assert.notEqual((await app.get("/api/topic?q=autism&cache=only")).body.papersKind,"checked");
+ app.kv.values.set([...app.kv.values.keys()].find(key=>key.startsWith("ai:q:v1:")),"not-a-key");
+ assert.notEqual((await app.get("/api/topic?q=autism&cache=only")).body.papersKind,"checked");
+});
+test("failing to store the lookup pointer never loses a checked result",async()=>{
+ const app=setup(),put=app.kv.put.bind(app.kv);app.kv.put=async(key,...args)=>{if(key.startsWith("ai:q:v1:"))throw new Error("pointer store failed");return put(key,...args);};
+ const first=await app.prepare(),checked=await app.check(first.body);assert.equal(checked.status,200);assert.equal(checked.body.papersKind,"checked");
 });
 test("title-only warning requires ten titles and a share below thirty percent",()=>{
  assert.equal(reliabilityCheck({matched:2,total:5},{matched:0,total:4}).lowPrecision,false);

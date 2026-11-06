@@ -64,6 +64,10 @@ const decode = result => {
   const value = result?.response ?? result?.choices?.[0]?.message?.content ?? result?.choices?.[0]?.text;
   return parseModelReply(value);
 };
+// A checked result is saved under its interpretation key, which only the browser that ran the search knows.
+// This pointer, keyed by the report's own search ID, lets any other browser find the same checked result.
+// Shorter than the report key's own prefix, so it fits wherever the report key fits.
+export const queryPointerKey = queryId => "ai:q:v1:" + queryId;
 export async function interpretationKey(sentence, year) {
   const versions = Object.entries(SEARCH_PRESETS).map(([id, preset]) => [id, preset.version]);
   const input = JSON.stringify(["deterministic-places-v1",globalThis.TMM_PLACES.version, AI_MODEL, JUDGE_MODEL, year, versions, sentence.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ")]);
@@ -158,6 +162,16 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
       const understanding={mode:"ai",key,sentence:record.sentence,labels:displayLabels(record.raw,{name:report.searchTerms?.name||report.name,synonyms:report.synonyms,excludeTerms:report.excludeTerms}),check:exact?record.check:null,place,changed:!exact};
       return exact?overlay(report,record,understanding,true):{...unverified(report,"search_changed"),understanding};
     }catch{return unverified(report);}
+  }
+  // Plain links carry no interpretation key: find the fresh checked result saved for exactly this search ID, or null.
+  async function checkedKeyForQuery(queryId,env) {
+    if(!env.TMM||typeof queryId!=="string")return null;
+    try {
+      const key=await env.TMM.get(queryPointerKey(queryId));
+      if(!validKey(key))return null;
+      const record=await env.TMM.get(key,"json");
+      return checkedRecord(record)&&cacheIsFresh(record,now().getTime())&&record.queryId===queryId?key:null;
+    }catch{return null;}
   }
   async function search(input,originalEnv,report,pipeline=null) {
     // "women's empowerment" must search the word women, not the non-word "womens".
@@ -502,6 +516,7 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
         await settleUsage();
         const record={evidenceVersion:3,savedAt:now().getTime(),sentence:input.sentence,raw,sources:finalSources,decision,queryId:compiled.query.id,check:reliability,evidence,judgments:[...judgments].map(([workTitleKey,onTopic])=>({workTitleKey,onTopic})),budget:{...usage,sourceCalls:session.requests}};
         await env.TMM.put(key,JSON.stringify(record),{expirationTtl:AI_TTL});
+        try{await env.TMM.put(queryPointerKey(record.queryId),key,{expirationTtl:AI_TTL});}catch{ /* The pointer only helps other browsers; the checked result itself is saved. */ }
         result.body=overlay(result.body,record,{mode:"ai",key,sentence:input.sentence,labels:displayLabels(raw,compiled.query),place:compiled.place,check:reliability,changed:false});return result;
       }catch(error){if(env.ENVIRONMENT==="dev")console.warn("AI checks stopped:",String(error.message||error).slice(0,200));return blocked(clock()>=end?"ai_total_deadline":error.reason||"checking_failed");}
       finally{clearTimeout(timer);controller.abort();try{
@@ -531,5 +546,5 @@ export function createAIService({now,clock,locked,reserve,source,waitForAI=deadl
       return search({sentence:record.sentence},env,()=>{throw new Error("Evidence must reuse the saved report");},{kind:"evidence",record,token:input.key,report:cached.topic});
     });
   }
-  return {search,attach,prepare,evidence};
+  return {search,attach,checkedKeyForQuery,prepare,evidence};
 }

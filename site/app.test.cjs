@@ -708,7 +708,7 @@ test("library and child links open real Worker cache records without any OpenAle
   assert.equal(app.context.location.hash, "#library");
   assert.equal(calls.length, 3);
   assert.equal(kv.writes.length, 0);
-  assert.deepEqual(kv.reads, ["library", "v5:topic:" + child.id, "v5:topic:" + parent.id]);
+  assert.deepEqual(kv.reads, ["library", "v5:topic:" + child.id, "ai:q:v1:" + child.id, "v5:topic:" + parent.id, "ai:q:v1:" + parent.id]);
 });
 
 test("site searches, adds synonyms, sends explore parent, and restores the last successful topic", async () => {

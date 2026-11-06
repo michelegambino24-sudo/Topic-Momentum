@@ -239,7 +239,8 @@ test("cache-only reads serve both fresh and stale reports without counters, inde
   const stale = await app.search(req(undefined, { cache: "only" }));
   assert.equal(stale.status, 200);
   assert.deepEqual(await stale.json(), { ...topic, cached: true, stale: true });
-  assert.deepEqual(app.kv.reads, ["v5:topic:" + topic.id, "v5:topic:" + topic.id]);
+  const pointer = "ai:q:v1:" + topic.id; // A plain read also looks up a saved checked result for the same search.
+  assert.deepEqual(app.kv.reads, ["v5:topic:" + topic.id, pointer, "v5:topic:" + topic.id, pointer]);
   assert.equal(app.kv.writes.length, writes);
   assert.equal(app.state.calls, 14);
 });
@@ -293,7 +294,7 @@ test("at the cap, missing v2 records fall back to matching v1 records without wr
     assert.equal(app.kv.values.get("topic:" + topic.id), legacy);
     assert.equal(app.kv.writes.length, 0);
     assert.equal(app.state.calls, 0);
-    assert.deepEqual(app.kv.reads, ["v5:topic:" + topic.id, "count:2026-10-31", "v2:topic:" + topic.id, "topic:" + topic.id]);
+    assert.deepEqual(app.kv.reads, ["v5:topic:" + topic.id, "count:2026-10-31", "v2:topic:" + topic.id, "topic:" + topic.id, "ai:q:v1:" + topic.id]);
     assert.equal((await app.search(req("absent report", extra))).status, 429);
     app.kv.values.set("topic:wrong record", JSON.stringify({ savedAt: start, topic }));
     assert.equal((await app.search(req("wrong record", extra))).status, 429);

@@ -330,9 +330,14 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
         try { return respond(publicLibrary(await env.TMM.get("library", "json") || [])); }
         catch { return storageError(); }
       }
-      const result = await topicResponse(url, env, respond, error);
-      if (!result.ok || !url.searchParams.has("understanding")) return result;
-      return respond(await aiService.attach(await result.json(), url.searchParams.get("understanding"), env));
+      // Remember the report ID of a successful answer without parsing the response again.
+      let reportId;
+      const result = await topicResponse(url, env, (body, status, extra) => { reportId = body?.id; return respond(body, status, extra); }, error);
+      if (!result.ok) return result;
+      if (url.searchParams.has("understanding")) return respond(await aiService.attach(await result.json(), url.searchParams.get("understanding"), env));
+      // A plain link has no interpretation key: attach the checked papers and experts saved for this exact search, if any.
+      const checkedKey = await aiService.checkedKeyForQuery(reportId, env);
+      return checkedKey ? respond(await aiService.attach(await result.json(), checkedKey, env)) : result;
     }
   };
 }
