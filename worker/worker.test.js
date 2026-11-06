@@ -375,3 +375,21 @@ test('a terminal complex-search failure cancels queued outbound starts',async()=
  const worker=createWorker(async(url,options)=>{calls++;signal=options.signal;return new Response('Request URL too long',{status:414});},()=>date,timing);
  const response=await worker.fetch(request('/api/topic?'+new URLSearchParams({q:'lunar moss computing',include})),{...env,ENVIRONMENT:'production'});assert.equal(response.status,400);assert.equal(calls,1);assert.equal(signal.aborted,true);
 });
+
+test("sub-topic accepts the parent ID of a filtered report but still rejects an unrelated parent", async () => {
+  const exclude = encodeURIComponent(JSON.stringify(["cancer"]));
+  const base = "/api/topic?q=lunar%20moss%20computing&subtopic=T123&subtopicName=Orbital%20logic&exclude=" + exclude + "&authored=AE,SA";
+  const parentFor = (parent) => request(base + "&parent=" + encodeURIComponent(parent));
+  const message = async (parent) => {
+    const worker = createWorker(async () => { throw new Error("stop before the source"); }, () => date);
+    const response = await worker.fetch(parentFor(parent), env);
+    return { status: response.status, body: await response.json() };
+  };
+  const mismatch = "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.";
+  const filtered = normaliseQuery("lunar moss computing", "", "", [], 2010, "", 2026, "", undefined, { excludeTerms: ["cancer"], authoredCodes: ["AE", "SA"] }).id;
+  assert.notEqual((await message(filtered)).body.message, mismatch);
+  assert.notEqual((await message("lunar moss computing")).body.message, mismatch);
+  const wrong = await message("some other topic");
+  assert.equal(wrong.status, 400);
+  assert.equal(wrong.body.message, mismatch);
+});

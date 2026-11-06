@@ -189,8 +189,11 @@ export function createWorker(fetchSource = (...args) => fetch(...args), now = ()
       catch { return error("invalid_query", "The sub-topic ID is invalid. Choose a sub-topic from the report and try again.", 400); }
       query.headlineName = rawQuery.trim();
       const parentQuery = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear, subfieldId);
-      if (subtopicId && parent && parent !== parentQuery.id && parent !== legacyMultiGroupId(parentQuery)) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
-      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parentQuery.id, parentName: parentName.trim() || rawQuery.trim() });
+      // The report the sub-topic was chosen from may have filters (places, excluded terms) in its ID, so accept that parent too.
+      const filteredParent = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear, subfieldId, SEARCH_PRESETS, filters);
+      const parentIds = [parentQuery.id, filteredParent.id, legacyMultiGroupId(parentQuery), legacyMultiGroupId(filteredParent)].filter(Boolean);
+      if (subtopicId && parent && !parentIds.includes(parent)) return error("invalid_query", "The sub-topic parent does not match its search terms. Open the parent report and choose the sub-topic again.", 400);
+      if (subtopicId) Object.assign(query, { subtopicName: subtopicName.trim(), parent: parent === filteredParent.id ? filteredParent.id : parentQuery.id, parentName: parentName.trim() || rawQuery.trim() });
       else if (subfieldId) query.parent = normaliseQuery(rawQuery, rawSynonyms, "", rawInclude, range.from, range.to, currentYear, "", SEARCH_PRESETS, filters).id;
       else if (query.excludeTerms?.length || query.authoredCodes?.length || query.placeIds?.length || query.includeTerms?.length || query.includeGroups?.length || (range.from !== 2010 || range.to !== null)) query.parent = normaliseQuery(rawQuery, rawSynonyms).id;
       else if (parent) query.parent = parent;
