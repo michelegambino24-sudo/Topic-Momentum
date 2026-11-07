@@ -589,3 +589,4 @@ nav{margin-left:auto}.tour-start{background:transparent;border:1px solid #FFFFFF
 @media(max-width:700px){.tour-card{width:calc(100vw - 24px);padding:22px 22px 20px}.tour-icon{width:60px;height:60px}.tour-icon svg{width:34px;height:34px}.tour-title{font-size:28px}.tour-text{font-size:19px}.tour-nav button{padding:10px 20px;font-size:18px}}
 .tour-nav .primary:hover,.tour-nav .primary:active{background:var(--tc);border-color:var(--tc);color:#FFFFFF;filter:brightness(1.18)}
 .tour-count{color:#B7CB8A}.tour-card[data-chapter=skills] .tour-count{color:#7FD0D0}.tour-card[data-chapter=safety] .tour-count{color:#F2A45E}
+.tour-card{cursor:grab;touch-action:none}.tour-card button{cursor:pointer}.tour-card.tour-dragging{cursor:grabbing;user-select:none;transition:none!important}
